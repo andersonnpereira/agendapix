@@ -55,6 +55,8 @@ export async function sendWhatsApp(
 
       case "evolution": {
         const baseUrl = process.env.EVOLUTION_API_URL || "";
+        // Evolution API v2: número sem @s.whatsapp.net, com DDI 55
+        const normalized = phone.startsWith("55") ? phone : `55${phone}`;
         const res = await fetch(
           `${baseUrl}/message/sendText/${instanceId}`,
           {
@@ -64,9 +66,8 @@ export async function sendWhatsApp(
               apikey: token,
             },
             body: JSON.stringify({
-              number: `${phone}@s.whatsapp.net`,
-              options: { delay: 1200 },
-              textMessage: { text: message },
+              number: normalized,
+              text: message,
             }),
           }
         );

@@ -20,12 +20,6 @@ const KEY_TYPES: { value: PixKeyType; label: string }[] = [
   { value: "aleatoria", label: "Chave aleatória" },
 ];
 
-const WA_PROVIDERS = [
-  { value: "mock", label: "Nenhum (modo teste)" },
-  { value: "zapi", label: "Z-API" },
-  { value: "evolution", label: "Evolution API" },
-  { value: "ultramsg", label: "Ultramsg" },
-];
 
 export default function ConfiguracoesPage() {
   const supabase = createClient();
@@ -47,10 +41,6 @@ export default function ConfiguracoesPage() {
   const [pixMerchantCity, setPixMerchantCity] = useState("");
   const [pixError, setPixError] = useState("");
 
-  // WhatsApp
-  const [waProvider, setWaProvider] = useState("mock");
-  const [waToken, setWaToken] = useState("");
-  const [waInstanceId, setWaInstanceId] = useState("");
 
   // Mensagens customizadas
   const [msgConfirmacao, setMsgConfirmacao] = useState("");
@@ -58,13 +48,15 @@ export default function ConfiguracoesPage() {
   const [msgLembrete, setMsgLembrete] = useState("");
 
   // QR Code WhatsApp
-  const [qrStatus, setQrStatus] = useState<"idle" | "loading" | "connected" | "disconnected">("idle");
+  const [qrStatus, setQrStatus] = useState<"idle" | "loading" | "connected" | "disconnected">("loading");
   const [qrBase64, setQrBase64] = useState("");
+  const [qrError, setQrError] = useState("");
 
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "";
 
   const fetchQrRef = useRef(fetchQr);
   useEffect(() => { fetchQrRef.current = fetchQr; });
+  // Auto-refresh a cada 5s enquanto desconectado
   useEffect(() => {
     if (qrStatus !== "disconnected") return;
     const interval = setInterval(() => fetchQrRef.current(), 5000);
@@ -73,6 +65,7 @@ export default function ConfiguracoesPage() {
 
   async function fetchQr() {
     setQrStatus("loading");
+    setQrError("");
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) { setQrStatus("idle"); return; }
     try {
@@ -87,9 +80,11 @@ export default function ConfiguracoesPage() {
         setQrStatus("disconnected");
         setQrBase64(data.qr || "");
       } else {
+        setQrError(data.error || "Erro ao carregar QR code.");
         setQrStatus("idle");
       }
     } catch {
+      setQrError("Erro de conexão.");
       setQrStatus("idle");
     }
   }
@@ -113,13 +108,11 @@ export default function ConfiguracoesPage() {
       setPixKeyType((p.pix_key_type as PixKeyType) || "celular");
       setPixMerchantName(p.pix_merchant_name || "");
       setPixMerchantCity(p.pix_merchant_city || "");
-      setWaProvider(p.whatsapp_provider || "mock");
-      setWaToken(p.whatsapp_token || "");
-      setWaInstanceId(p.whatsapp_instance_id || "");
       setMsgConfirmacao(p.msg_confirmacao || "");
       setMsgPix(p.msg_pix || "");
       setMsgLembrete(p.msg_lembrete || "");
     })();
+    fetchQr();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -171,9 +164,7 @@ export default function ConfiguracoesPage() {
         pix_key_type: pixKeyType,
         pix_merchant_name: pixMerchantName,
         pix_merchant_city: pixMerchantCity,
-        whatsapp_provider: waProvider,
-        whatsapp_token: waToken || null,
-        whatsapp_instance_id: waInstanceId || null,
+        whatsapp_provider: "evolution",
         msg_confirmacao: msgConfirmacao || null,
         msg_pix: msgPix || null,
         msg_lembrete: msgLembrete || null,
@@ -293,41 +284,64 @@ export default function ConfiguracoesPage() {
         )}
       </section>
 
-      {/* WhatsApp API */}
+      {/* Conexão WhatsApp */}
       <section className="card space-y-4">
-        <h2 className="font-semibold text-slate-900">WhatsApp Automático</h2>
-        <p className="text-sm text-slate-500">
-          Configure para que a confirmação de agendamento seja enviada automaticamente ao cliente.
-        </p>
-        <div>
-          <label className="label">Provedor</label>
-          <select className="input" value={waProvider} onChange={(e) => setWaProvider(e.target.value)}>
-            {WA_PROVIDERS.map((p) => (
-              <option key={p.value} value={p.value}>{p.label}</option>
-            ))}
-          </select>
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="font-semibold text-slate-900">WhatsApp Automático</h2>
+            <p className="text-xs text-slate-400 mt-0.5">Conecte seu WhatsApp para enviar mensagens automáticas aos clientes.</p>
+          </div>
+          {qrStatus === "connected" && (
+            <span className="text-xs bg-green-100 text-green-700 font-semibold px-2.5 py-1 rounded-full shrink-0">● Conectado</span>
+          )}
+          {qrStatus === "disconnected" && (
+            <span className="text-xs bg-red-100 text-red-600 font-semibold px-2.5 py-1 rounded-full shrink-0">● Desconectado</span>
+          )}
         </div>
-        {waProvider !== "mock" && (
-          <>
-            <div>
-              <label className="label">ID da instância</label>
-              <input className="input" value={waInstanceId} onChange={(e) => setWaInstanceId(e.target.value)} placeholder="Ex: 3D1234..." />
-            </div>
-            <div>
-              <label className="label">Token</label>
-              <input className="input" type="password" value={waToken} onChange={(e) => setWaToken(e.target.value)} placeholder="Seu token da API" />
-            </div>
-            <p className="text-xs text-slate-400">
-              {waProvider === "zapi" && "Z-API: Dashboard > Instâncias > Copiar Token. Também defina ZAPI_CLIENT_TOKEN no .env."}
-              {waProvider === "evolution" && "Evolution API: informe o nome da instância e a apikey global. Defina EVOLUTION_API_URL no .env."}
-              {waProvider === "ultramsg" && "Ultramsg: Dashboard > Instance ID e Token."}
-            </p>
-          </>
+
+        {qrStatus === "loading" && (
+          <p className="text-sm text-slate-400 text-center py-4">Carregando...</p>
         )}
-        {waProvider === "mock" && (
-          <p className="text-xs text-amber-600 bg-amber-50 rounded p-2">
-            Modo teste: as mensagens serão apenas registradas no log do servidor. Nenhum WhatsApp será enviado.
-          </p>
+
+        {qrStatus === "idle" && qrError && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-sm text-red-700 space-y-2">
+            <p>{qrError}</p>
+            <button className="text-xs underline text-red-600" onClick={fetchQr}>Tentar novamente</button>
+          </div>
+        )}
+
+        {qrStatus === "connected" && (
+          <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-sm text-green-800 text-center space-y-2">
+            <p className="text-2xl">✅</p>
+            <p className="font-semibold">WhatsApp conectado!</p>
+            <p>As mensagens serão enviadas automaticamente.</p>
+            <button className="text-xs text-green-600 underline mt-1" onClick={fetchQr}>
+              Verificar novamente
+            </button>
+          </div>
+        )}
+
+        {qrStatus === "disconnected" && (
+          <div className="space-y-3">
+            <p className="text-sm text-slate-600 text-center">
+              Abra o <strong>WhatsApp</strong> → <strong>Aparelhos conectados</strong> → escaneie o QR:
+            </p>
+            {qrBase64 ? (
+              <div className="flex justify-center">
+                <img
+                  src={qrBase64}
+                  alt="QR Code WhatsApp"
+                  className="w-56 h-56 rounded-2xl border-2 border-brand/20 shadow-md"
+                />
+              </div>
+            ) : (
+              <p className="text-sm text-red-500 text-center">Erro ao gerar QR code.</p>
+            )}
+            <p className="text-xs text-slate-400 text-center">Atualiza automaticamente a cada 5 segundos.</p>
+            <button className="btn text-sm w-full border border-slate-200" onClick={fetchQr}>
+              ↺ Atualizar agora
+            </button>
+          </div>
         )}
       </section>
 
@@ -375,64 +389,6 @@ export default function ConfiguracoesPage() {
         </div>
       </section>
 
-      {/* Conexão WhatsApp — QR Code */}
-      {waProvider === "evolution" && waInstanceId && waToken && (
-        <section className="card space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="font-semibold text-slate-900">Conexão WhatsApp</h2>
-            {qrStatus === "connected" && (
-              <span className="text-xs bg-green-100 text-green-700 font-semibold px-2.5 py-1 rounded-full">● Conectado</span>
-            )}
-            {qrStatus === "disconnected" && (
-              <span className="text-xs bg-red-100 text-red-600 font-semibold px-2.5 py-1 rounded-full">● Desconectado</span>
-            )}
-          </div>
-
-          {qrStatus === "idle" && (
-            <button className="btn-primary w-full" onClick={fetchQr}>
-              Verificar conexão
-            </button>
-          )}
-
-          {qrStatus === "loading" && (
-            <p className="text-sm text-slate-400 text-center py-2">Verificando...</p>
-          )}
-
-          {qrStatus === "connected" && (
-            <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-sm text-green-800 text-center space-y-2">
-              <p className="text-2xl">✅</p>
-              <p className="font-semibold">WhatsApp conectado!</p>
-              <p>As mensagens serão enviadas automaticamente.</p>
-              <button className="text-xs text-green-600 underline mt-1" onClick={fetchQr}>
-                Verificar novamente
-              </button>
-            </div>
-          )}
-
-          {qrStatus === "disconnected" && (
-            <div className="space-y-3">
-              <p className="text-sm text-slate-600 text-center">
-                Abra o <strong>WhatsApp Business</strong> → <strong>Aparelhos conectados</strong> → escaneie o QR code:
-              </p>
-              {qrBase64 ? (
-                <div className="flex justify-center">
-                  <img
-                    src={qrBase64}
-                    alt="QR Code WhatsApp"
-                    className="w-56 h-56 rounded-2xl border-2 border-brand/20 shadow-md"
-                  />
-                </div>
-              ) : (
-                <p className="text-sm text-red-500 text-center">Erro ao gerar QR code. Tente novamente.</p>
-              )}
-              <p className="text-xs text-slate-400 text-center">Atualiza automaticamente a cada 5 segundos.</p>
-              <button className="btn text-sm w-full border border-slate-200" onClick={fetchQr}>
-                ↺ Atualizar agora
-              </button>
-            </div>
-          )}
-        </section>
-      )}
 
       {error && <p className="text-sm text-red-600 text-center">{error}</p>}
 

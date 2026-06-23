@@ -35,13 +35,9 @@ export async function POST(req: NextRequest) {
     if (!charge.client_phone) {
       return NextResponse.json({ error: "Número do cliente não informado." }, { status: 400 });
     }
-    if (!charge.pix_payload) {
-      return NextResponse.json({ error: "Código Pix não gerado para esta cobrança." }, { status: 400 });
-    }
-
     const { data: profile, error: pErr } = await supabase
       .from("profiles")
-      .select("business_name, whatsapp_instance_id, msg_pix, msg_lembrete")
+      .select("business_name, whatsapp_instance_id, msg_pix, msg_lembrete, pix_key")
       .eq("id", user.id)
       .single();
 
@@ -69,7 +65,7 @@ export async function POST(req: NextRequest) {
             charge.client_name || "Cliente",
             charge.description || "Serviço",
             formatBRL(charge.amount_cents),
-            charge.pix_payload,
+            profile.pix_key || "",
             profile.msg_lembrete || null,
             dueDateFormatted
           )
@@ -77,7 +73,7 @@ export async function POST(req: NextRequest) {
             charge.client_name || "Cliente",
             charge.description || "Serviço",
             formatBRL(charge.amount_cents),
-            charge.pix_payload,
+            profile.pix_key || "",
             profile.msg_pix || null
           )
     );

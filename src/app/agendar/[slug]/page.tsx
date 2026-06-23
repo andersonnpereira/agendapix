@@ -31,6 +31,13 @@ export default async function AgendarPage({ params }: Props) {
     .order("weekday")
     .order("start_time");
 
+  const { data: dateOverrides } = await supabase
+    .from("date_overrides")
+    .select("date")
+    .eq("profile_id", profile.id);
+
+  const blockedDates = (dateOverrides || []).map((o: { date: string }) => o.date);
+
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="max-w-lg mx-auto px-4 py-8 space-y-6">
@@ -66,6 +73,7 @@ export default async function AgendarPage({ params }: Props) {
             profileId={profile.id}
             services={services}
             availability={availability || []}
+            blockedDates={blockedDates}
           />
         )}
       </div>

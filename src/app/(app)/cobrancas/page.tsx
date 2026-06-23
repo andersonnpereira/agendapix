@@ -75,7 +75,6 @@ export default function CobrancasPage() {
   const [reminderText, setReminderText] = useState("");
   const [pixModal, setPixModal] = useState<Charge | null>(null);
   const [pixOptKey, setPixOptKey] = useState(true);
-  const [pixOptPayload, setPixOptPayload] = useState(false);
   const [pixOptLink, setPixOptLink] = useState(false);
   const [flashSent, setFlashSent] = useState<string | null>(null);
 
@@ -144,9 +143,6 @@ export default function CobrancasPage() {
     if (pixOptKey && profile?.pix_key) {
       lines.push(``, `🔑 Chave Pix:`, profile.pix_key);
     }
-    if (pixOptPayload && charge.pix_payload) {
-      lines.push(``, `📋 Copia e cola:`, charge.pix_payload);
-    }
     if (pixOptLink && profile?.payment_link) {
       lines.push(``, `🔗 Link de pagamento:`, profile.payment_link);
     }
@@ -157,7 +153,6 @@ export default function CobrancasPage() {
   function openPixModal(charge: Charge) {
     setPixModal(charge);
     setPixOptKey(!!profile?.pix_key);
-    setPixOptPayload(false);
     setPixOptLink(!!profile?.payment_link);
   }
 
@@ -166,7 +161,7 @@ export default function CobrancasPage() {
       charge.client_name || "Cliente",
       charge.description || "Serviço",
       formatBRL(charge.amount_cents),
-      charge.pix_payload || "",
+      profile?.pix_key || "",
       profile?.msg_lembrete || null,
       formatDate(charge.due_date)
     );
@@ -492,7 +487,7 @@ export default function CobrancasPage() {
                       reminderModal.client_name || "Cliente",
                       reminderModal.description || "Serviço",
                       formatBRL(reminderModal.amount_cents),
-                      reminderModal.pix_payload || "",
+                      profile?.pix_key || "",
                       profile?.msg_lembrete || null,
                       formatDate(reminderModal.due_date)
                     ))
@@ -557,22 +552,6 @@ export default function CobrancasPage() {
                 </span>
               </label>
 
-              <label className={`flex items-start gap-3 cursor-pointer rounded-xl border p-3 transition-colors ${pixOptPayload ? "border-brand bg-brand-light/30" : "border-slate-200"} ${!pixModal.pix_payload ? "opacity-50 cursor-not-allowed" : ""}`}>
-                <input
-                  type="checkbox"
-                  checked={pixOptPayload}
-                  onChange={(e) => setPixOptPayload(e.target.checked)}
-                  className="w-4 h-4 mt-0.5 accent-brand"
-                  disabled={!pixModal.pix_payload}
-                />
-                <span className="text-sm flex-1">
-                  <span className="font-medium block">📋 Código copia e cola</span>
-                  <span className="text-xs text-slate-400 mt-0.5 block">
-                    {pixModal.pix_payload ? "String longa compatível com qualquer banco" : "Não gerado para esta cobrança"}
-                  </span>
-                </span>
-              </label>
-
               <label className={`flex items-start gap-3 cursor-pointer rounded-xl border p-3 transition-colors ${pixOptLink ? "border-brand bg-brand-light/30" : "border-slate-200"} ${!profile?.payment_link ? "opacity-50 cursor-not-allowed" : ""}`}>
                 <input
                   type="checkbox"
@@ -603,7 +582,7 @@ export default function CobrancasPage() {
               <button className="flex-1 btn border border-slate-200" onClick={() => setPixModal(null)}>Cancelar</button>
               <button
                 className="flex-1 btn-primary"
-                disabled={(!pixOptKey && !pixOptPayload && !pixOptLink) || actionId === pixModal.id + "-wa"}
+                disabled={(!pixOptKey && !pixOptLink) || actionId === pixModal.id + "-wa"}
                 onClick={() => doSend(pixModal, buildPixMessage(pixModal), "pix")}
               >
                 {actionId === pixModal.id + "-wa" ? "Enviando..." : "📲 Enviar pelo WhatsApp"}

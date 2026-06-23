@@ -4,10 +4,10 @@ export const DEFAULT_MSG_CONFIRMACAO =
   `Olá, {nome}! 👋\n\nSeu agendamento foi *confirmado*! ✅\n\n✂️ Serviço: *{servico}*\n📅 Data: *{data}* às *{horario}*\n\n*{negocio}* te espera! Qualquer dúvida é só chamar. 😊`;
 
 export const DEFAULT_MSG_PIX =
-  `Olá, {nome}! 💳\n\nAqui está o Pix para o serviço *{servico}*:\n💰 Valor: *{valor}*\n\n📋 *Pix copia e cola:*\n{pix}\n\nObrigado pelo atendimento! 🙏`;
+  `Olá, {nome}! 💳\n\nAqui está o Pix para o serviço *{servico}*:\n💰 Valor: *{valor}*\n\n🔑 *Chave Pix:*\n{pix}\n\nObrigado pelo atendimento! 🙏`;
 
 export const DEFAULT_MSG_LEMBRETE =
-  `Olá, {nome}! 👋\n\nPassando para lembrar que o pagamento do serviço *{servico}* no valor de *{valor}* vence em *{data}*.\n\n📋 *Pix copia e cola:*\n{pix}\n\nSe já pagou, desconsidere. Obrigado! 😊`;
+  `Olá, {nome}! 👋\n\nPassando para lembrar que o pagamento do serviço *{servico}* no valor de *{valor}* vence em *{data}*.\n\n🔑 *Chave Pix:*\n{pix}\n\nSe já pagou, desconsidere. Obrigado! 😊`;
 
 export interface SendWhatsAppParams {
   to: string; // apenas dígitos, com DDI: "5511999998888"

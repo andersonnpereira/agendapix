@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
     // Busca cobranças com lembrete agendado que ainda não foi enviado
     const { data: charges, error } = await admin
       .from("charges")
-      .select("*, profiles!inner(whatsapp_provider, whatsapp_token, whatsapp_instance_id, msg_lembrete)")
+      .select("*, profiles!inner(whatsapp_provider, whatsapp_token, whatsapp_instance_id, msg_lembrete, pix_key)")
       .eq("auto_reminder", true)
       .eq("status", "pendente")
       .lte("scheduled_reminder_at", now)
@@ -38,9 +38,10 @@ export async function GET(req: NextRequest) {
         whatsapp_token: string | null;
         whatsapp_instance_id: string | null;
         msg_lembrete: string | null;
+        pix_key: string | null;
       };
 
-      if (!charge.client_phone || !charge.pix_payload) continue;
+      if (!charge.client_phone) continue;
 
       const amount = formatBRL(charge.amount_cents);
       let message: string;
@@ -54,7 +55,7 @@ export async function GET(req: NextRequest) {
           nome: charge.client_name || "Cliente",
           servico: charge.description || "Serviço",
           valor: amount,
-          pix: charge.pix_payload,
+          pix: profile.pix_key || "",
           data: dueDateFormatted,
         });
       } else {
@@ -62,7 +63,7 @@ export async function GET(req: NextRequest) {
           charge.client_name || "Cliente",
           charge.description || "Serviço",
           amount,
-          charge.pix_payload,
+          profile.pix_key || "",
           null,
           dueDateFormatted
         );

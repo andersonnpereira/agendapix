@@ -4,12 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase-browser";
 import {
-  generatePixBRCode,
   validatePixKey,
   normalizePixKey,
   type PixKeyType,
 } from "@/lib/pix";
-import { PixDisplay } from "@/components/PixDisplay";
 import { CopyLinkButton } from "@/components/CopyLinkButton";
 import { slugify } from "@/lib/format";
 import { DEFAULT_MSG_CONFIRMACAO, DEFAULT_MSG_PIX, DEFAULT_MSG_LEMBRETE } from "@/lib/whatsapp";
@@ -120,25 +118,6 @@ export default function ConfiguracoesPage() {
     fetchQr();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Prévia do Pix ao vivo
-  let pixPreview = "";
-  if (pixKey && pixMerchantName && pixMerchantCity) {
-    const v = validatePixKey(pixKey, pixKeyType);
-    if (v.valid) {
-      try {
-        pixPreview = generatePixBRCode({
-          pixKey: normalizePixKey(pixKey, pixKeyType),
-          amount: 1,
-          merchantName: pixMerchantName,
-          merchantCity: pixMerchantCity,
-          txid: "TESTE",
-        });
-      } catch {
-        pixPreview = "";
-      }
-    }
-  }
 
   async function save() {
     setError("");
@@ -282,12 +261,6 @@ export default function ConfiguracoesPage() {
             <input className="input" value={pixMerchantCity} onChange={(e) => setPixMerchantCity(e.target.value)} placeholder="SAO PAULO" />
           </div>
         </div>
-        {pixPreview && (
-          <div className="pt-2 border-t border-slate-100">
-            <p className="text-xs text-slate-500 mb-3 text-center">Prévia — código de teste (R$ 1,00)</p>
-            <PixDisplay payload={pixPreview} />
-          </div>
-        )}
       </section>
 
       {/* Conexão WhatsApp */}

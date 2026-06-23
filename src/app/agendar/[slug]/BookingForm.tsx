@@ -21,6 +21,7 @@ type Props = {
   profileId: string;
   services: Service[];
   availability: AvailBlock[];
+  blockedDates?: string[];
 };
 
 function timeToMin(t: string) {
@@ -66,15 +67,16 @@ function calcSlots(
 }
 
 // Gera lista de datas disponíveis para os próximos 60 dias (inclui hoje no horário de Brasília)
-function getAvailableDates(blocks: AvailBlock[]): string[] {
+function getAvailableDates(blocks: AvailBlock[], blockedDates: string[] = []): string[] {
   const availableWeekdays = new Set(blocks.map((b) => b.weekday));
+  const blocked = new Set(blockedDates);
   const dates: string[] = [];
 
   for (let i = 0; i < 60; i++) {
     const base = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
     base.setDate(base.getDate() + i);
     const dateStr = `${base.getFullYear()}-${String(base.getMonth() + 1).padStart(2, "0")}-${String(base.getDate()).padStart(2, "0")}`;
-    if (availableWeekdays.has(base.getDay())) {
+    if (availableWeekdays.has(base.getDay()) && !blocked.has(dateStr)) {
       dates.push(dateStr);
     }
   }
@@ -175,7 +177,7 @@ function CalendarPicker({
   );
 }
 
-export default function BookingForm({ profileId, services, availability }: Props) {
+export default function BookingForm({ profileId, services, availability, blockedDates = [] }: Props) {
   const supabase = createClient();
   const [step, setStep] = useState<Step>("service");
   const [selectedService, setSelectedService] = useState<Service | null>(null);
@@ -188,7 +190,7 @@ export default function BookingForm({ profileId, services, availability }: Props
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
-  const availableDates = getAvailableDates(availability);
+  const availableDates = getAvailableDates(availability, blockedDates);
 
   async function onDateChange(date: string) {
     setSelectedDate(date);

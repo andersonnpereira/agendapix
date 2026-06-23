@@ -33,6 +33,8 @@ type Profile = {
   pix_merchant_name: string | null;
   pix_merchant_city: string | null;
   payment_link: string | null;
+  msg_lembrete: string | null;
+  msg_pix: string | null;
 };
 
 const STATUS_BADGE: Record<string, string> = {
@@ -99,7 +101,7 @@ export default function CobrancasPage() {
 
     const { data: p } = await supabase
       .from("profiles")
-      .select("id, pix_key, pix_key_type, pix_merchant_name, pix_merchant_city, payment_link")
+      .select("id, pix_key, pix_key_type, pix_merchant_name, pix_merchant_city, payment_link, msg_lembrete, msg_pix")
       .eq("id", user.id)
       .single();
     setProfile(p);
@@ -165,7 +167,7 @@ export default function CobrancasPage() {
       charge.description || "Serviço",
       formatBRL(charge.amount_cents),
       charge.pix_payload || "",
-      null,
+      profile?.msg_lembrete || null,
       formatDate(charge.due_date)
     );
     setReminderModal(charge);
@@ -491,7 +493,7 @@ export default function CobrancasPage() {
                       reminderModal.description || "Serviço",
                       formatBRL(reminderModal.amount_cents),
                       reminderModal.pix_payload || "",
-                      null,
+                      profile?.msg_lembrete || null,
                       formatDate(reminderModal.due_date)
                     ))
                   }

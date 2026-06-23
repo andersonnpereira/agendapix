@@ -1,32 +1,32 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient as createSupabaseClient } from "@supabase/supabase-js";
-import { sendWhatsApp, msgPix } from "@/lib/whatsapp";
+import { createClient } from "@/lib/supabase-server";
+import { sendWhatsApp, msgPix, msgLembrete } from "@/lib/whatsapp";
 import { formatBRL } from "@/lib/format";
-
-const supabaseAdmin = () =>
-  createSupabaseClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
 
 /**
  * POST /api/whatsapp-charge
- * Body: { charge_id: string }
- * Envia o código Pix da cobrança via WhatsApp usando o provedor configurado.
+ * Body: { charge_id: string, type?: "pix" | "lembrete" }
+ * Envia o código Pix ou lembrete via Evolution API usando a sessão autenticada.
  */
 export async function POST(req: NextRequest) {
   try {
-    const { charge_id } = await req.json();
+    const { charge_id, type = "pix" } = await req.json();
     if (!charge_id) {
       return NextResponse.json({ error: "charge_id obrigatório." }, { status: 400 });
     }
 
-    const supabase = supabaseAdmin();
+    const supabase = createClient();
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
+    }
 
     const { data: charge, error: cErr } = await supabase
       .from("charges")
       .select("*")
       .eq("id", charge_id)
+      .eq("profile_id", user.id)
       .single();
 
     if (cErr || !charge) {
@@ -41,27 +41,50 @@ export async function POST(req: NextRequest) {
 
     const { data: profile, error: pErr } = await supabase
       .from("profiles")
-      .select("business_name, whatsapp_provider, whatsapp_token, whatsapp_instance_id")
-      .eq("id", charge.profile_id)
+      .select("business_name, whatsapp_instance_id, msg_pix, msg_lembrete")
+      .eq("id", user.id)
       .single();
 
     if (pErr || !profile) {
       return NextResponse.json({ error: "Perfil não encontrado." }, { status: 404 });
     }
 
-    const message = msgPix(
-      charge.client_name || "Cliente",
-      charge.description || "Serviço",
-      formatBRL(charge.amount_cents),
-      charge.pix_payload
-    );
+    if (!profile.whatsapp_instance_id) {
+      return NextResponse.json({ error: "WhatsApp não conectado. Conecte na página de Configurações." }, { status: 400 });
+    }
+
+    const instanceId = profile.whatsapp_instance_id;
+    const evolutionKey = process.env.EVOLUTION_API_KEY;
+
+    if (!evolutionKey) {
+      return NextResponse.json({ error: "EVOLUTION_API_KEY não configurada." }, { status: 500 });
+    }
+
+    const [year, month, day] = (charge.due_date || "").split("-");
+    const dueDateFormatted = charge.due_date ? `${day}/${month}/${year}` : "";
+
+    const message = type === "lembrete"
+      ? msgLembrete(
+          charge.client_name || "Cliente",
+          charge.description || "Serviço",
+          formatBRL(charge.amount_cents),
+          charge.pix_payload,
+          profile.msg_lembrete || null,
+          dueDateFormatted
+        )
+      : msgPix(
+          charge.client_name || "Cliente",
+          charge.description || "Serviço",
+          formatBRL(charge.amount_cents),
+          charge.pix_payload,
+          profile.msg_pix || null
+        );
 
     const result = await sendWhatsApp({
       to: charge.client_phone,
       message,
-      provider: profile.whatsapp_provider as "mock" | "zapi" | "evolution" | "ultramsg",
-      token: profile.whatsapp_token || undefined,
-      instanceId: profile.whatsapp_instance_id || undefined,
+      provider: "evolution",
+      instanceId,
     });
 
     if (!result.ok) {
@@ -74,7 +97,7 @@ export async function POST(req: NextRequest) {
       .eq("id", charge_id);
 
     return NextResponse.json({ ok: true });
-  } catch {
-    return NextResponse.json({ error: "Erro interno." }, { status: 500 });
+  } catch (e) {
+    return NextResponse.json({ error: `Erro interno: ${String(e)}` }, { status: 500 });
   }
 }

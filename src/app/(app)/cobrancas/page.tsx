@@ -5,7 +5,6 @@ import { createClient } from "@/lib/supabase-browser";
 import { formatBRL, parseToCents } from "@/lib/format";
 import { generatePixBRCode, normalizePixKey, type PixKeyType } from "@/lib/pix";
 import { PixDisplay } from "@/components/PixDisplay";
-import { msgPix, msgLembrete } from "@/lib/whatsapp";
 
 type Charge = {
   id: string;
@@ -32,9 +31,6 @@ type Profile = {
   pix_key_type: string | null;
   pix_merchant_name: string | null;
   pix_merchant_city: string | null;
-  whatsapp_provider: string;
-  whatsapp_token: string | null;
-  whatsapp_instance_id: string | null;
 };
 
 const STATUS_BADGE: Record<string, string> = {
@@ -92,7 +88,7 @@ export default function CobrancasPage() {
 
     const { data: p } = await supabase
       .from("profiles")
-      .select("id, pix_key, pix_key_type, pix_merchant_name, pix_merchant_city, whatsapp_provider, whatsapp_token, whatsapp_instance_id")
+      .select("id, pix_key, pix_key_type, pix_merchant_name, pix_merchant_city")
       .eq("id", user.id)
       .single();
     setProfile(p);
@@ -157,43 +153,35 @@ export default function CobrancasPage() {
     showToast("Cobrança marcada como paga.");
   }
 
-  async function sendPixWhatsApp(charge: Charge) {
-    if (!charge.client_phone) { showToast("Sem número de WhatsApp."); return; }
-    if (!charge.pix_payload) { showToast("Sem código Pix gerado."); return; }
-    setActionId(charge.id + "-wa");
+  async function sendViaAPI(charge: Charge, type: "pix" | "lembrete") {
+    if (!charge.client_phone) { showToast("Sem número de WhatsApp cadastrado."); return; }
+    if (!charge.pix_payload) { showToast("Sem código Pix gerado para essa cobrança."); return; }
 
-    const message = msgPix(
-      charge.client_name || "Cliente",
-      charge.description || "Serviço",
-      formatBRL(charge.amount_cents),
-      charge.pix_payload
-    );
+    const actionKey = type === "pix" ? "-wa" : "-lembrete";
+    setActionId(charge.id + actionKey);
+    try {
+      const res = await fetch("/api/whatsapp-charge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ charge_id: charge.id, type }),
+      });
 
-    const phone = charge.client_phone.replace(/\D/g, "");
-    const url = `https://wa.me/${phone.startsWith("55") ? phone : "55" + phone}?text=${encodeURIComponent(message)}`;
-
-    // Se tem provedor configurado, usa API automática; senão, abre wa.me
-    if (profile?.whatsapp_provider && profile.whatsapp_provider !== "mock") {
-      try {
-        const res = await fetch("/api/whatsapp-charge", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ charge_id: charge.id }),
-        });
-        if (res.ok) {
-          await supabase.from("charges").update({ reminders_sent: charge.reminders_sent + 1 }).eq("id", charge.id);
-          showToast("Pix enviado pelo WhatsApp!");
-          setActionId(null);
-          load();
-          return;
-        }
-      } catch { /* fallback para wa.me */ }
+      if (res.ok) {
+        setCharges((prev) =>
+          prev.map((c) =>
+            c.id === charge.id ? { ...c, reminders_sent: c.reminders_sent + 1 } : c
+          )
+        );
+        showToast(type === "pix" ? "✅ Pix enviado pelo WhatsApp!" : "✅ Lembrete enviado pelo WhatsApp!");
+      } else {
+        const body = await res.json().catch(() => ({}));
+        showToast(`Erro: ${body.error || "Falha ao enviar WhatsApp"}`);
+      }
+    } catch {
+      showToast("Erro de conexão ao enviar WhatsApp.");
+    } finally {
+      setActionId(null);
     }
-
-    window.open(url, "_blank");
-    await supabase.from("charges").update({ reminders_sent: charge.reminders_sent + 1 }).eq("id", charge.id);
-    setActionId(null);
-    load();
   }
 
   async function excluirCobranca(id: string) {
@@ -206,22 +194,7 @@ export default function CobrancasPage() {
   }
 
   async function sendLembrete(charge: Charge) {
-    if (!charge.client_phone || !charge.pix_payload) { showToast("Sem número ou Pix gerado."); return; }
-    setActionId(charge.id + "-lembrete");
-
-    const message = msgLembrete(
-      charge.client_name || "Cliente",
-      charge.description || "Serviço",
-      formatBRL(charge.amount_cents),
-      charge.pix_payload
-    );
-
-    const phone = charge.client_phone.replace(/\D/g, "");
-    const url = `https://wa.me/${phone.startsWith("55") ? phone : "55" + phone}?text=${encodeURIComponent(message)}`;
-    window.open(url, "_blank");
-    await supabase.from("charges").update({ reminders_sent: charge.reminders_sent + 1 }).eq("id", charge.id);
-    setActionId(null);
-    load();
+    await sendViaAPI(charge, "lembrete");
   }
 
   async function criarCobranca() {
@@ -379,19 +352,19 @@ export default function CobrancasPage() {
                     {c.pix_payload && (
                       <button
                         className="btn-primary text-xs px-3 py-1.5"
-                        onClick={() => sendPixWhatsApp(c)}
+                        onClick={() => sendViaAPI(c, "pix")}
                         disabled={actionId === c.id + "-wa"}
                       >
-                        {actionId === c.id + "-wa" ? "..." : "📲 Enviar Pix (WA)"}
+                        {actionId === c.id + "-wa" ? "Enviando..." : "📲 Enviar Pix (WA)"}
                       </button>
                     )}
                     {c.pix_payload && (
                       <button
                         className="btn text-xs px-3 py-1.5 border border-slate-200 hover:bg-slate-50"
-                        onClick={() => sendLembrete(c)}
+                        onClick={() => sendViaAPI(c, "lembrete")}
                         disabled={actionId === c.id + "-lembrete"}
                       >
-                        🔔 Lembrete
+                        {actionId === c.id + "-lembrete" ? "Enviando..." : "🔔 Lembrete"}
                       </button>
                     )}
                     <button

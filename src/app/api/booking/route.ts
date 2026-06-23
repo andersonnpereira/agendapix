@@ -40,50 +40,57 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // Notifica o profissional por e-mail (fire-and-forget)
+    // Notifica o profissional (fire-and-forget, não bloqueia a resposta)
     (async () => {
       try {
         const { data: profile } = await supabase
           .from("profiles")
-          .select("notification_email, business_name, phone, whatsapp_provider, whatsapp_instance_id")
+          .select("notification_email, business_name, phone, whatsapp_instance_id")
           .eq("id", profile_id)
           .single();
 
         const { data: service } = service_id
-          ? await supabase
-              .from("services")
-              .select("name")
-              .eq("id", service_id)
-              .single()
+          ? await supabase.from("services").select("name").eq("id", service_id).single()
           : { data: null };
-
-        const email =
-          profile?.notification_email;
 
         const [year, month, day] = date.split("-");
         const dateFormatted = `${day}/${month}/${year}`;
         const serviceName = service?.name || "Serviço";
 
-        // Notificação WhatsApp ao profissional (principal)
-        if (profile?.phone && profile.whatsapp_provider === "evolution" && profile.whatsapp_instance_id) {
-          const ownerMsg =
-            `📅 *Novo agendamento recebido!*\n\n` +
-            `👤 *Cliente:* ${client_name}\n` +
-            `✂️ *Serviço:* ${serviceName}\n` +
-            `📅 *Data:* ${dateFormatted} às ${time.slice(0, 5)}\n` +
-            `📱 *WhatsApp:* ${client_phone}`;
+        const ownerMsg =
+          `📅 *Novo agendamento recebido!*\n\n` +
+          `👤 *Cliente:* ${client_name}\n` +
+          `✂️ *Serviço:* ${serviceName}\n` +
+          `📅 *Data:* ${dateFormatted} às ${time.slice(0, 5)}\n` +
+          `📱 *WhatsApp:* ${client_phone}`;
 
-          await sendWhatsApp({
-            to: profile.phone,
+        // Notificação WhatsApp ao profissional
+        const ownerPhone = profile?.phone;
+        const instanceId = profile?.whatsapp_instance_id;
+        const evolutionKey = process.env.EVOLUTION_API_KEY;
+
+        if (ownerPhone && instanceId && evolutionKey) {
+          const result = await sendWhatsApp({
+            to: ownerPhone,
             message: ownerMsg,
             provider: "evolution",
-            instanceId: profile.whatsapp_instance_id,
+            instanceId,
+          });
+          if (!result.ok) {
+            console.error("[booking notify WA]", result.error);
+          }
+        } else {
+          console.warn("[booking notify WA] pulado —", {
+            semTelefone: !ownerPhone,
+            semInstancia: !instanceId,
+            semChaveEvolution: !evolutionKey,
           });
         }
 
         // Notificação por e-mail (fallback)
+        const email = profile?.notification_email;
         if (email) {
-          await sendEmail({
+          const emailOk = await sendEmail({
             to: email,
             subject: `Novo agendamento — ${client_name}`,
             html: htmlNovoAgendamento({
@@ -95,9 +102,12 @@ export async function POST(req: NextRequest) {
               siteUrl: process.env.NEXT_PUBLIC_SITE_URL || "",
             }),
           });
+          if (!emailOk) {
+            console.error("[booking notify email] falhou ao enviar para", email);
+          }
         }
-      } catch {
-        // notificação é best-effort
+      } catch (e) {
+        console.error("[booking notify erro]", e);
       }
     })();
 

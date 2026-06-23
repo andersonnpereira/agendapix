@@ -73,6 +73,8 @@ export default function CobrancasPage() {
   // Modais de ação
   const [reminderModal, setReminderModal] = useState<Charge | null>(null);
   const [reminderText, setReminderText] = useState("");
+  const [reminderSendMode, setReminderSendMode] = useState<"now" | "schedule">("now");
+  const [reminderScheduledAt, setReminderScheduledAt] = useState("");
   const [pixModal, setPixModal] = useState<Charge | null>(null);
   const [pixOptKey, setPixOptKey] = useState(true);
   const [pixOptLink, setPixOptLink] = useState(false);
@@ -167,6 +169,38 @@ export default function CobrancasPage() {
     );
     setReminderModal(charge);
     setReminderText(text);
+    setReminderSendMode("now");
+    setReminderScheduledAt("");
+  }
+
+  async function scheduleReminder(charge: Charge) {
+    if (!reminderScheduledAt) return;
+    setActionId(charge.id + "-lembrete");
+    try {
+      const { error } = await supabase
+        .from("charges")
+        .update({
+          auto_reminder: true,
+          scheduled_reminder_at: new Date(reminderScheduledAt).toISOString(),
+          last_auto_reminder_at: null,
+        })
+        .eq("id", charge.id);
+      if (!error) {
+        setCharges((prev) =>
+          prev.map((c) =>
+            c.id === charge.id
+              ? { ...c, auto_reminder: true, scheduled_reminder_at: reminderScheduledAt }
+              : c
+          )
+        );
+        showToast("⏰ Lembrete agendado!");
+        setReminderModal(null);
+      } else {
+        showToast("Erro ao agendar lembrete.");
+      }
+    } finally {
+      setActionId(null);
+    }
   }
 
   async function doSend(charge: Charge, message: string, type: "pix" | "lembrete") {
@@ -476,6 +510,46 @@ export default function CobrancasPage() {
               <p className="text-slate-500">{reminderModal.description} · <strong>{formatBRL(reminderModal.amount_cents)}</strong></p>
               {reminderModal.due_date && <p className="text-xs text-slate-400">Vence em {formatDate(reminderModal.due_date)}</p>}
             </div>
+            {/* Quando enviar */}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setReminderSendMode("now")}
+                className={`flex-1 py-2 rounded-xl text-sm font-medium border transition-colors ${
+                  reminderSendMode === "now"
+                    ? "bg-brand text-white border-brand"
+                    : "border-slate-200 text-slate-600 hover:border-brand"
+                }`}
+              >
+                📲 Enviar agora
+              </button>
+              <button
+                type="button"
+                onClick={() => setReminderSendMode("schedule")}
+                className={`flex-1 py-2 rounded-xl text-sm font-medium border transition-colors ${
+                  reminderSendMode === "schedule"
+                    ? "bg-brand text-white border-brand"
+                    : "border-slate-200 text-slate-600 hover:border-brand"
+                }`}
+              >
+                ⏰ Agendar envio
+              </button>
+            </div>
+
+            {reminderSendMode === "schedule" && (
+              <div>
+                <label className="label text-sm">Data e hora do envio</label>
+                <input
+                  type="datetime-local"
+                  className="input"
+                  value={reminderScheduledAt}
+                  onChange={(e) => setReminderScheduledAt(e.target.value)}
+                  min={new Date().toISOString().slice(0, 16)}
+                />
+                <p className="text-xs text-slate-400 mt-1">O sistema enviará automaticamente neste horário.</p>
+              </div>
+            )}
+
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="label mb-0 text-sm">Mensagem</label>
@@ -498,7 +572,7 @@ export default function CobrancasPage() {
               </div>
               <textarea
                 className="input resize-none text-sm font-mono leading-relaxed"
-                rows={9}
+                rows={7}
                 value={reminderText}
                 onChange={(e) => setReminderText(e.target.value)}
               />
@@ -506,13 +580,23 @@ export default function CobrancasPage() {
             </div>
             <div className="flex gap-3">
               <button className="flex-1 btn border border-slate-200" onClick={() => setReminderModal(null)}>Cancelar</button>
-              <button
-                className="flex-1 btn-primary"
-                disabled={!reminderText.trim() || actionId === reminderModal.id + "-lembrete"}
-                onClick={() => doSend(reminderModal, reminderText, "lembrete")}
-              >
-                {actionId === reminderModal.id + "-lembrete" ? "Enviando..." : "📲 Enviar"}
-              </button>
+              {reminderSendMode === "now" ? (
+                <button
+                  className="flex-1 btn-primary"
+                  disabled={!reminderText.trim() || actionId === reminderModal.id + "-lembrete"}
+                  onClick={() => doSend(reminderModal, reminderText, "lembrete")}
+                >
+                  {actionId === reminderModal.id + "-lembrete" ? "Enviando..." : "📲 Enviar agora"}
+                </button>
+              ) : (
+                <button
+                  className="flex-1 btn-primary"
+                  disabled={!reminderScheduledAt || actionId === reminderModal.id + "-lembrete"}
+                  onClick={() => scheduleReminder(reminderModal)}
+                >
+                  {actionId === reminderModal.id + "-lembrete" ? "Salvando..." : "⏰ Agendar"}
+                </button>
+              )}
             </div>
           </div>
         </div>

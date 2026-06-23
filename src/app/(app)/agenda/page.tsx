@@ -115,13 +115,22 @@ export default function AgendaPage() {
         body: JSON.stringify({ booking_id: booking.id }),
       });
       if (res.ok) {
+        setBookings((prev) =>
+          prev.map((b) =>
+            b.id === booking.id ? { ...b, status: "confirmado", whatsapp_sent: true } : b
+          )
+        );
         showToast("✅ Confirmado! WhatsApp enviado ao cliente.");
       } else {
-        // mesmo com erro no WA, confirma o status
+        // mesmo com erro no WA, confirma o status localmente e no DB
         await supabase.from("bookings").update({ status: "confirmado" }).eq("id", booking.id);
+        setBookings((prev) =>
+          prev.map((b) =>
+            b.id === booking.id ? { ...b, status: "confirmado" } : b
+          )
+        );
         showToast("Confirmado, mas WhatsApp não foi enviado. Verifique as configurações.");
       }
-      load();
     } finally {
       setActionLoading(null);
     }

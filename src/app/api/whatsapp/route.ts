@@ -1,12 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import { createClient } from "@/lib/supabase-server";
 import { sendWhatsApp, msgConfirmacao } from "@/lib/whatsapp";
-
-const supabaseAdmin = () =>
-  createSupabaseClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
 
 /**
  * POST /api/whatsapp
@@ -23,7 +17,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "booking_id obrigatório." }, { status: 400 });
     }
 
-    const supabase = supabaseAdmin();
+    const supabase = createClient();
 
     // Busca booking + serviço + profile
     const { data: booking, error: bErr } = await supabase
@@ -74,10 +68,15 @@ export async function POST(req: NextRequest) {
     }
 
     // Atualiza booking
-    await supabase
+    const { error: uErr } = await supabase
       .from("bookings")
       .update({ status: "confirmado", whatsapp_sent: true })
       .eq("id", booking_id);
+
+    if (uErr) {
+      console.error("[whatsapp confirm] erro ao atualizar booking:", uErr.message);
+      return NextResponse.json({ error: `Erro ao atualizar agendamento: ${uErr.message}` }, { status: 500 });
+    }
 
     return NextResponse.json({ ok: true });
   } catch {

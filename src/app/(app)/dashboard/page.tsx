@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase-server";
 import { formatBRL } from "@/lib/format";
 import { CopyLinkButton } from "@/components/CopyLinkButton";
+import { ShareLinkButton } from "@/components/ShareLinkButton";
 
 export default async function DashboardPage() {
   const supabase = createClient();
@@ -40,6 +41,13 @@ export default async function DashboardPage() {
     .eq("profile_id", user.id)
     .neq("status", "pago");
 
+  const { count: overdueCount } = await supabase
+    .from("charges")
+    .select("*", { count: "exact", head: true })
+    .eq("profile_id", user.id)
+    .eq("status", "pendente")
+    .lt("due_date", today);
+
   const { data: paidCharges } = await supabase
     .from("charges")
     .select("amount_cents, paid_at")
@@ -74,8 +82,22 @@ export default async function DashboardPage() {
             className="input text-sm bg-white flex-1 truncate"
           />
           <CopyLinkButton text={publicLink} />
+          <ShareLinkButton url={publicLink} title="Agende comigo!" />
         </div>
       </div>
+
+      {/* Alerta de cobranças atrasadas */}
+      {(overdueCount ?? 0) > 0 && (
+        <Link href="/cobrancas?status=pendente" className="card bg-red-50 border-red-200 py-3 px-4 flex items-center justify-between">
+          <div>
+            <p className="text-sm font-semibold text-red-700">
+              ⚠️ {overdueCount} cobrança{overdueCount! > 1 ? "s" : ""} atrasada{overdueCount! > 1 ? "s" : ""}
+            </p>
+            <p className="text-xs text-red-500 mt-0.5">Envie um lembrete agora</p>
+          </div>
+          <span className="text-red-400 text-sm">→</span>
+        </Link>
+      )}
 
       {/* Métricas */}
       <div className="grid grid-cols-3 gap-3">

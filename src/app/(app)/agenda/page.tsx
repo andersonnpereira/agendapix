@@ -40,6 +40,7 @@ export default function AgendaPage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<Filter>("hoje");
+  const [search, setSearch] = useState("");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [toast, setToast] = useState("");
   const [chargeModal, setChargeModal] = useState<Booking | null>(null);
@@ -72,7 +73,7 @@ export default function AgendaPage() {
     else if (filter === "proximos") query = query.gt("date", today).lte("date", new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10));
 
     const { data } = await query;
-    setBookings((data as Booking[]) || []);
+    setBookings((data as Booking[]) ?? []);
     setLoading(false);
   }, [supabase, filter]);
 
@@ -186,6 +187,13 @@ export default function AgendaPage() {
     return `${day}/${m}/${y}`;
   };
 
+  const filtered = search.trim()
+    ? bookings.filter((b) =>
+        b.client_name.toLowerCase().includes(search.toLowerCase()) ||
+        b.client_phone.includes(search)
+      )
+    : bookings;
+
   return (
     <div className="space-y-5">
       {/* Toast */}
@@ -196,6 +204,14 @@ export default function AgendaPage() {
       )}
 
       <h1 className="text-2xl font-bold text-slate-900">Agenda</h1>
+
+      {/* Busca */}
+      <input
+        className="input text-sm"
+        placeholder="Buscar por nome ou telefone..."
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+      />
 
       {/* Filtros */}
       <div className="flex gap-2">
@@ -216,15 +232,19 @@ export default function AgendaPage() {
 
       {loading ? (
         <p className="text-slate-400 text-sm">Carregando...</p>
-      ) : bookings.length === 0 ? (
+      ) : filtered.length === 0 ? (
         <div className="card text-center text-slate-500 text-sm py-10">
           <p className="text-3xl mb-3">📅</p>
-          <p>Nenhum agendamento{filter === "hoje" ? " para hoje" : filter === "proximos" ? " nos próximos 7 dias" : ""}.</p>
-          <p className="mt-1 text-xs">Compartilhe seu link na bio para receber clientes.</p>
+          <p>
+            {search
+              ? `Nenhum resultado para "${search}".`
+              : `Nenhum agendamento${filter === "hoje" ? " para hoje" : filter === "proximos" ? " nos próximos 7 dias" : ""}.`}
+          </p>
+          {!search && <p className="mt-1 text-xs">Compartilhe seu link na bio para receber clientes.</p>}
         </div>
       ) : (
         <div className="space-y-3">
-          {bookings.map((b) => {
+          {filtered.map((b) => {
             const st = STATUS_LABELS[b.status];
             const isLoading = (suf: string) => actionLoading === `${b.id}-${suf}`;
             return (

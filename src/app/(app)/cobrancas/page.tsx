@@ -65,6 +65,7 @@ export default function CobrancasPage() {
   const [openPix, setOpenPix] = useState<string | null>(null); // charge id
   const [toast, setToast] = useState("");
   const [actionId, setActionId] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
   // Form nova cobrança
   const [fClientName, setFClientName] = useState("");
@@ -188,6 +189,15 @@ export default function CobrancasPage() {
     await supabase.from("charges").update({ reminders_sent: charge.reminders_sent + 1 }).eq("id", charge.id);
     setActionId(null);
     load();
+  }
+
+  async function excluirCobranca(id: string) {
+    setActionId(id + "-del");
+    await supabase.from("charges").delete().eq("id", id);
+    setActionId(null);
+    setConfirmDelete(null);
+    load();
+    showToast("Cobrança excluída.");
   }
 
   async function sendLembrete(charge: Charge) {
@@ -359,7 +369,7 @@ export default function CobrancasPage() {
                         {actionId === c.id + "-wa" ? "..." : "📲 Enviar Pix (WA)"}
                       </button>
                     )}
-                    {c.pix_payload && c.reminders_sent > 0 && (
+                    {c.pix_payload && (
                       <button
                         className="btn text-xs px-3 py-1.5 border border-slate-200 hover:bg-slate-50"
                         onClick={() => sendLembrete(c)}
@@ -380,9 +390,36 @@ export default function CobrancasPage() {
                 {c.status === "pago" && c.paid_at && (
                   <p className="text-xs text-slate-400">Pago em {formatDate(c.paid_at.slice(0, 10))}</p>
                 )}
+                <button
+                  className="btn text-xs px-3 py-1.5 border border-red-200 text-red-500 hover:bg-red-50 ml-auto"
+                  onClick={() => setConfirmDelete(c.id)}
+                >
+                  Excluir
+                </button>
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Modal confirmar exclusão */}
+      {confirmDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-sm p-5 space-y-4 text-center">
+            <p className="text-2xl">🗑️</p>
+            <h3 className="font-bold text-slate-900">Excluir cobrança?</h3>
+            <p className="text-sm text-slate-500">Essa ação não pode ser desfeita.</p>
+            <div className="flex gap-3">
+              <button className="flex-1 btn border border-slate-200" onClick={() => setConfirmDelete(null)}>Cancelar</button>
+              <button
+                className="flex-1 btn bg-red-500 text-white hover:bg-red-600"
+                disabled={actionId === confirmDelete + "-del"}
+                onClick={() => excluirCobranca(confirmDelete)}
+              >
+                {actionId === confirmDelete + "-del" ? "..." : "Excluir"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

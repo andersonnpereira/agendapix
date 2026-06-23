@@ -110,11 +110,13 @@ export default function BookingForm({ profileId, services, availability }: Props
       .eq("date", date)
       .in("status", ["pendente", "confirmado"]);
 
-    const bookedForCalc = (booked || []).map((b) => ({
-      time: b.time as string,
-      // @ts-expect-error join
-      duration_minutes: b.services?.duration_minutes || selectedService.duration_minutes,
-    }));
+    const bookedForCalc = (booked || []).map((b) => {
+      const svc = b.services as unknown;
+      const dur = Array.isArray(svc)
+        ? (svc[0] as { duration_minutes: number } | undefined)?.duration_minutes
+        : (svc as { duration_minutes: number } | null)?.duration_minutes;
+      return { time: b.time as string, duration_minutes: dur || selectedService.duration_minutes };
+    });
 
     const slots = calcSlots(availability, weekday, selectedService.duration_minutes, bookedForCalc);
     setAvailableSlots(slots);

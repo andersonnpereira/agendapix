@@ -12,6 +12,7 @@ import {
 import { PixDisplay } from "@/components/PixDisplay";
 import { CopyLinkButton } from "@/components/CopyLinkButton";
 import { slugify } from "@/lib/format";
+import { DEFAULT_MSG_CONFIRMACAO, DEFAULT_MSG_PIX, DEFAULT_MSG_LEMBRETE } from "@/lib/whatsapp";
 
 const KEY_TYPES: { value: PixKeyType; label: string }[] = [
   { value: "celular", label: "Celular" },
@@ -108,9 +109,9 @@ export default function ConfiguracoesPage() {
       setPixKeyType((p.pix_key_type as PixKeyType) || "celular");
       setPixMerchantName(p.pix_merchant_name || "");
       setPixMerchantCity(p.pix_merchant_city || "");
-      setMsgConfirmacao(p.msg_confirmacao || "");
-      setMsgPix(p.msg_pix || "");
-      setMsgLembrete(p.msg_lembrete || "");
+      setMsgConfirmacao(p.msg_confirmacao || DEFAULT_MSG_CONFIRMACAO);
+      setMsgPix(p.msg_pix || DEFAULT_MSG_PIX);
+      setMsgLembrete(p.msg_lembrete || DEFAULT_MSG_LEMBRETE);
     })();
     fetchQr();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -346,46 +347,109 @@ export default function ConfiguracoesPage() {
       </section>
 
       {/* Mensagens customizadas */}
-      <section className="card space-y-4">
+      <section className="card space-y-5">
         <div>
           <h2 className="font-semibold text-slate-900">Mensagens WhatsApp</h2>
-          <p className="text-xs text-slate-400 mt-1">Deixe em branco para usar o padrão. Variáveis disponíveis abaixo de cada campo.</p>
+          <p className="text-xs text-slate-400 mt-1">Edite o texto e use as variáveis destacadas para personalizar cada mensagem.</p>
         </div>
 
-        <div>
-          <label className="label">Confirmação de agendamento</label>
+        {/* Confirmação */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <label className="label mb-0">✅ Confirmação de agendamento</label>
+            <button
+              type="button"
+              className="text-xs text-brand underline"
+              onClick={() => setMsgConfirmacao(DEFAULT_MSG_CONFIRMACAO)}
+            >
+              Restaurar padrão
+            </button>
+          </div>
           <textarea
-            className="input resize-none text-sm"
-            rows={4}
+            className="input resize-none text-sm font-mono leading-relaxed"
+            rows={5}
             value={msgConfirmacao}
             onChange={(e) => setMsgConfirmacao(e.target.value)}
-            placeholder={`Olá, {nome}! Seu agendamento foi confirmado!\n✅ {servico} em {data} às {horario}\n{negocio} te espera!`}
           />
-          <p className="text-xs text-slate-400 mt-1">Variáveis: <code>{"{nome}"}</code> <code>{"{servico}"}</code> <code>{"{data}"}</code> <code>{"{horario}"}</code> <code>{"{negocio}"}</code></p>
+          <div className="flex flex-wrap gap-1.5">
+            {["{nome}", "{servico}", "{data}", "{horario}", "{negocio}"].map((v) => (
+              <button
+                key={v}
+                type="button"
+                className="text-xs bg-brand-light text-brand-dark font-mono px-2 py-0.5 rounded-md hover:bg-brand hover:text-white transition-colors"
+                onClick={() => setMsgConfirmacao((prev) => prev + v)}
+                title={`Inserir ${v}`}
+              >
+                {v}
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div>
-          <label className="label">Envio de cobrança Pix</label>
+        {/* Pix */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <label className="label mb-0">💳 Envio de cobrança Pix</label>
+            <button
+              type="button"
+              className="text-xs text-brand underline"
+              onClick={() => setMsgPix(DEFAULT_MSG_PIX)}
+            >
+              Restaurar padrão
+            </button>
+          </div>
           <textarea
-            className="input resize-none text-sm"
-            rows={4}
+            className="input resize-none text-sm font-mono leading-relaxed"
+            rows={5}
             value={msgPix}
             onChange={(e) => setMsgPix(e.target.value)}
-            placeholder={`Olá, {nome}! Aqui está o Pix de {valor} para {servico}.\n\n{pix}`}
           />
-          <p className="text-xs text-slate-400 mt-1">Variáveis: <code>{"{nome}"}</code> <code>{"{servico}"}</code> <code>{"{valor}"}</code> <code>{"{pix}"}</code></p>
+          <div className="flex flex-wrap gap-1.5">
+            {["{nome}", "{servico}", "{valor}", "{pix}"].map((v) => (
+              <button
+                key={v}
+                type="button"
+                className="text-xs bg-brand-light text-brand-dark font-mono px-2 py-0.5 rounded-md hover:bg-brand hover:text-white transition-colors"
+                onClick={() => setMsgPix((prev) => prev + v)}
+                title={`Inserir ${v}`}
+              >
+                {v}
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div>
-          <label className="label">Lembrete de pagamento</label>
+        {/* Lembrete */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <label className="label mb-0">🔔 Lembrete de pagamento</label>
+            <button
+              type="button"
+              className="text-xs text-brand underline"
+              onClick={() => setMsgLembrete(DEFAULT_MSG_LEMBRETE)}
+            >
+              Restaurar padrão
+            </button>
+          </div>
           <textarea
-            className="input resize-none text-sm"
-            rows={4}
+            className="input resize-none text-sm font-mono leading-relaxed"
+            rows={5}
             value={msgLembrete}
             onChange={(e) => setMsgLembrete(e.target.value)}
-            placeholder={`Olá, {nome}! Lembrete: {servico} no valor de {valor} ainda está pendente.\n\n{pix}`}
           />
-          <p className="text-xs text-slate-400 mt-1">Variáveis: <code>{"{nome}"}</code> <code>{"{servico}"}</code> <code>{"{valor}"}</code> <code>{"{pix}"}</code> <code>{"{data}"}</code></p>
+          <div className="flex flex-wrap gap-1.5">
+            {["{nome}", "{servico}", "{valor}", "{pix}", "{data}"].map((v) => (
+              <button
+                key={v}
+                type="button"
+                className="text-xs bg-brand-light text-brand-dark font-mono px-2 py-0.5 rounded-md hover:bg-brand hover:text-white transition-colors"
+                onClick={() => setMsgLembrete((prev) => prev + v)}
+                title={`Inserir ${v}`}
+              >
+                {v}
+              </button>
+            ))}
+          </div>
         </div>
       </section>
 

@@ -1,5 +1,14 @@
 export type WhatsAppProvider = "mock" | "zapi" | "evolution" | "ultramsg";
 
+export const DEFAULT_MSG_CONFIRMACAO =
+  `Olá, {nome}! 👋\n\nSeu agendamento foi *confirmado*! ✅\n\n✂️ Serviço: *{servico}*\n📅 Data: *{data}* às *{horario}*\n\n*{negocio}* te espera! Qualquer dúvida é só chamar. 😊`;
+
+export const DEFAULT_MSG_PIX =
+  `Olá, {nome}! 💳\n\nAqui está o Pix para o serviço *{servico}*:\n💰 Valor: *{valor}*\n\n📋 *Pix copia e cola:*\n{pix}\n\nObrigado pelo atendimento! 🙏`;
+
+export const DEFAULT_MSG_LEMBRETE =
+  `Olá, {nome}! 👋\n\nPassando para lembrar que o pagamento do serviço *{servico}* no valor de *{valor}* vence em *{data}*.\n\n📋 *Pix copia e cola:*\n{pix}\n\nSe já pagou, desconsidere. Obrigado! 😊`;
+
 export interface SendWhatsAppParams {
   to: string; // apenas dígitos, com DDI: "5511999998888"
   message: string;
@@ -123,17 +132,8 @@ export function msgConfirmacao(
   businessName: string,
   customTemplate?: string | null
 ): string {
-  if (customTemplate) {
-    return formatTemplate(customTemplate, { nome: clientName, servico: serviceName, data: date, horario: time, negocio: businessName });
-  }
-  return (
-    `Olá, ${clientName}! 👋\n\n` +
-    `Seu agendamento foi *confirmado*!\n\n` +
-    `✅ Serviço: ${serviceName}\n` +
-    `📅 Data: ${date}\n` +
-    `🕐 Horário: ${time}\n\n` +
-    `*${businessName}* te espera. Qualquer dúvida, é só chamar!\n\nObrigado 😊`
-  );
+  const tpl = customTemplate || DEFAULT_MSG_CONFIRMACAO;
+  return formatTemplate(tpl, { nome: clientName, servico: serviceName, data: date, horario: time, negocio: businessName });
 }
 
 export function msgPix(
@@ -143,16 +143,8 @@ export function msgPix(
   pixPayload: string,
   customTemplate?: string | null
 ): string {
-  if (customTemplate) {
-    return formatTemplate(customTemplate, { nome: clientName, servico: serviceName, valor: amount, pix: pixPayload });
-  }
-  return (
-    `Olá, ${clientName}! 💳\n\n` +
-    `Aqui está o Pix para o serviço *${serviceName}*:\n` +
-    `💰 Valor: *${amount}*\n\n` +
-    `📋 Pix copia e cola:\n${pixPayload}\n\n` +
-    `Obrigado pelo atendimento! 🙏`
-  );
+  const tpl = customTemplate || DEFAULT_MSG_PIX;
+  return formatTemplate(tpl, { nome: clientName, servico: serviceName, valor: amount, pix: pixPayload });
 }
 
 export function msgLembrete(
@@ -163,14 +155,6 @@ export function msgLembrete(
   customTemplate?: string | null,
   dueDate?: string | null
 ): string {
-  if (customTemplate) {
-    return formatTemplate(customTemplate, { nome: clientName, servico: description, valor: amount, pix: pixPayload, data: dueDate || "" });
-  }
-  return (
-    `Olá, ${clientName}! 👋\n\n` +
-    `Lembrete de pagamento pendente:\n` +
-    `📌 *${description}* — ${amount}\n\n` +
-    `📋 Pix copia e cola:\n${pixPayload}\n\n` +
-    `Se já pagou, desconsidere. Obrigado! 😊`
-  );
+  const tpl = customTemplate || DEFAULT_MSG_LEMBRETE;
+  return formatTemplate(tpl, { nome: clientName, servico: description, valor: amount, pix: pixPayload, data: dueDate || "" });
 }

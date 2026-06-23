@@ -13,6 +13,7 @@ type Booking = {
   time: string;
   status: "pendente" | "confirmado" | "concluido" | "cancelado";
   whatsapp_sent: boolean;
+  notes: string | null;
   services: { name: string; price_cents: number; duration_minutes: number } | null;
 };
 
@@ -292,6 +293,11 @@ export default function AgendaPage() {
                       {b.services?.name || "Serviço"} · {formatDate(b.date)} às {b.time?.slice(0, 5)}
                     </p>
                     <p className="text-xs text-slate-400 mt-0.5">{b.client_phone}</p>
+                    {b.notes && (
+                      <p className="text-xs text-amber-700 bg-amber-50 rounded-lg px-2 py-0.5 mt-1 italic">
+                        📝 {b.notes}
+                      </p>
+                    )}
                   </div>
                   <span className={`text-xs font-semibold px-2 py-1 rounded-full ${st.color}`}>
                     {st.label}

@@ -189,6 +189,7 @@ export default function BookingForm({ profileId, services, availability, blocked
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [clientName, setClientName] = useState("");
   const [clientPhone, setClientPhone] = useState("");
+  const [clientNotes, setClientNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
@@ -242,6 +243,7 @@ export default function BookingForm({ profileId, services, availability, blocked
           service_id: selectedService.id,
           client_name: clientName,
           client_phone: clientPhone,
+          client_notes: clientNotes,
           date: selectedDate,
           time: selectedTime + ":00",
         }),
@@ -401,6 +403,16 @@ export default function BookingForm({ profileId, services, availability, blocked
               inputMode="tel"
             />
             <p className="text-xs text-slate-400 mt-1">A confirmação chegará aqui.</p>
+          </div>
+          <div>
+            <label className="label">Observação (opcional)</label>
+            <textarea
+              className="input resize-none text-sm"
+              rows={3}
+              value={clientNotes}
+              onChange={(e) => setClientNotes(e.target.value)}
+              placeholder="Ex: prefiro franja curta, alergia a produto X, chegar 5 min antes..."
+            />
           </div>
           <button
             className="btn-primary w-full"

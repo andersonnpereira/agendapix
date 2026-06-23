@@ -12,8 +12,7 @@ const supabaseAdmin = () =>
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { profile_id, service_id, client_name, client_phone, date, time } =
-      body;
+    const { profile_id, service_id, client_name, client_phone, client_notes, date, time } = body;
 
     if (!profile_id || !client_name || !client_phone || !date || !time) {
       return NextResponse.json({ error: "Dados incompletos." }, { status: 400 });
@@ -29,6 +28,7 @@ export async function POST(req: NextRequest) {
         service_id: service_id || null,
         client_name,
         client_phone,
+        notes: client_notes || null,
         date,
         time,
         status: "pendente",
@@ -38,6 +38,45 @@ export async function POST(req: NextRequest) {
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    // Auto-cria/vincula cliente usando service role key (opcional — não bloqueia o booking)
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (serviceKey) {
+      try {
+        const admin = createSupabaseClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          serviceKey,
+          { auth: { autoRefreshToken: false, persistSession: false } }
+        );
+
+        // Busca cliente existente pelo telefone + profile
+        const { data: existing } = await admin
+          .from("clients")
+          .select("id")
+          .eq("profile_id", profile_id)
+          .eq("phone", client_phone)
+          .maybeSingle();
+
+        let clientId: string | null = null;
+        if (existing) {
+          clientId = existing.id;
+        } else {
+          const { data: created } = await admin
+            .from("clients")
+            .insert({ profile_id, name: client_name, phone: client_phone, source: "link", status: "ativo" })
+            .select("id")
+            .single();
+          clientId = created?.id || null;
+        }
+
+        if (clientId) {
+          await admin.from("bookings").update({ client_id: clientId }).eq("id", booking.id);
+        }
+      } catch (e) {
+        // não bloqueia o fluxo principal
+        console.warn("[booking client-link]", e);
+      }
     }
 
     // Busca perfil + serviço em paralelo para notificação
@@ -56,14 +95,17 @@ export async function POST(req: NextRequest) {
     const dateFormatted = `${day}/${month}/${year}`;
     const serviceName = (service as { name: string } | null)?.name || "Serviço";
 
-    const ownerMsg =
+    let ownerMsg =
       `📅 *Novo agendamento recebido!*\n\n` +
       `👤 *Cliente:* ${client_name}\n` +
       `✂️ *Serviço:* ${serviceName}\n` +
       `📅 *Data:* ${dateFormatted} às ${time.slice(0, 5)}\n` +
       `📱 *WhatsApp:* ${client_phone}`;
 
-    // Notificação WhatsApp ao profissional (síncrono — Vercel mata fire-and-forget)
+    if (client_notes) {
+      ownerMsg += `\n📝 *Observação:* ${client_notes}`;
+    }
+
     const ownerPhone = profile?.phone;
     const instanceId = profile?.whatsapp_instance_id;
     const evolutionKey = process.env.EVOLUTION_API_KEY;
@@ -78,16 +120,8 @@ export async function POST(req: NextRequest) {
       if (!result.ok) {
         console.error("[booking notify WA]", result.error);
       }
-    } else {
-      console.warn("[booking notify WA] pulado —", {
-        semTelefone: !ownerPhone,
-        semInstancia: !instanceId,
-        semChaveEvolution: !evolutionKey,
-        semEvoUrl: !process.env.EVOLUTION_API_URL,
-      });
     }
 
-    // E-mail como fallback (não bloqueia se falhar)
     const email = profile?.notification_email;
     if (email) {
       sendEmail({

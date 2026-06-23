@@ -50,6 +50,34 @@ const RECURRENCE_LABELS: Record<string, string> = {
   monthly: "Mensal",
 };
 
+const WEEKDAY_NAMES = ["domingo", "segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado"];
+
+function getRecurrenceInfo(dueDate: string, recurrence: string): { label: string; nextDates: string[] } | null {
+  if (recurrence === "none" || !dueDate) return null;
+  const base = new Date(dueDate + "T00:00:00");
+  const day = base.getDate();
+  const weekdayName = WEEKDAY_NAMES[base.getDay()];
+  const fmt = (d: Date) => `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
+
+  const nextDates: string[] = [];
+  let cur = new Date(base);
+  for (let i = 0; i < 4; i++) {
+    if (recurrence === "monthly") cur.setMonth(cur.getMonth() + 1);
+    else if (recurrence === "weekly") cur.setDate(cur.getDate() + 7);
+    else if (recurrence === "biweekly") cur.setDate(cur.getDate() + 14);
+    nextDates.push(fmt(new Date(cur)));
+  }
+
+  const label =
+    recurrence === "monthly"
+      ? `Todo mês no dia ${day}`
+      : recurrence === "weekly"
+      ? `Toda ${weekdayName}`
+      : `A cada 14 dias`;
+
+  return { label, nextDates };
+}
+
 function nextDate(from: string, rec: string): string {
   const d = new Date(from + "T00:00:00");
   if (rec === "weekly") d.setDate(d.getDate() + 7);
@@ -734,6 +762,26 @@ export default function CobrancasPage() {
                     <option key={v} value={v}>{l}</option>
                   ))}
                 </select>
+                {(() => {
+                  const info = getRecurrenceInfo(fDueDate, fRecurrence);
+                  if (!info) return null;
+                  return (
+                    <div className="mt-2 bg-brand-light border border-brand/20 rounded-xl p-3 space-y-2">
+                      <p className="text-sm font-medium text-brand-dark">🔁 {info.label}</p>
+                      <div className="space-y-1">
+                        <p className="text-xs text-slate-500 font-medium">Próximas cobranças:</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {info.nextDates.map((d, i) => (
+                            <span key={i} className="text-xs bg-white border border-brand/30 text-brand-dark px-2 py-0.5 rounded-full font-mono">
+                              {d}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                      <p className="text-xs text-slate-400">A cobrança é gerada automaticamente após marcar cada pagamento como pago.</p>
+                    </div>
+                  );
+                })()}
               </div>
               <div className="col-span-2 border-t border-slate-100 pt-3">
                 <label className="flex items-center gap-3 cursor-pointer">

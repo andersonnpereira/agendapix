@@ -109,28 +109,45 @@ export default function AgendaPage() {
   async function confirmar(booking: Booking) {
     setActionLoading(booking.id + "-confirmar");
     try {
-      const res = await fetch("/api/whatsapp", {
+      // 1. Atualiza status no DB usando o cliente do browser (tem auth → RLS passa)
+      const { error: dbErr } = await supabase
+        .from("bookings")
+        .update({ status: "confirmado" })
+        .eq("id", booking.id);
+
+      if (dbErr) {
+        showToast("Erro ao confirmar agendamento. Tente novamente.");
+        return;
+      }
+
+      // 2. Atualiza estado local imediatamente
+      setBookings((prev) =>
+        prev.map((b) =>
+          b.id === booking.id ? { ...b, status: "confirmado" } : b
+        )
+      );
+
+      // 3. Envia WhatsApp via API (best-effort)
+      fetch("/api/whatsapp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ booking_id: booking.id }),
-      });
-      if (res.ok) {
-        setBookings((prev) =>
-          prev.map((b) =>
-            b.id === booking.id ? { ...b, status: "confirmado", whatsapp_sent: true } : b
-          )
-        );
-        showToast("✅ Confirmado! WhatsApp enviado ao cliente.");
-      } else {
-        // mesmo com erro no WA, confirma o status localmente e no DB
-        await supabase.from("bookings").update({ status: "confirmado" }).eq("id", booking.id);
-        setBookings((prev) =>
-          prev.map((b) =>
-            b.id === booking.id ? { ...b, status: "confirmado" } : b
-          )
-        );
-        showToast("Confirmado, mas WhatsApp não foi enviado. Verifique as configurações.");
-      }
+      })
+        .then((res) => {
+          if (res.ok) {
+            setBookings((prev) =>
+              prev.map((b) =>
+                b.id === booking.id ? { ...b, whatsapp_sent: true } : b
+              )
+            );
+            showToast("✅ Confirmado! WhatsApp enviado ao cliente.");
+          } else {
+            showToast("Confirmado! (WhatsApp não pôde ser enviado — verifique configurações)");
+          }
+        })
+        .catch(() => {
+          showToast("Confirmado! (Falha ao enviar WhatsApp)");
+        });
     } finally {
       setActionLoading(null);
     }

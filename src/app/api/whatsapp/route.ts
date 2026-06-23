@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
 
     const { data: profile, error: pErr } = await supabase
       .from("profiles")
-      .select("business_name, whatsapp_provider, whatsapp_token, whatsapp_instance_id")
+      .select("business_name, whatsapp_provider, whatsapp_token, whatsapp_instance_id, msg_confirmacao")
       .eq("id", booking.profile_id)
       .single();
 
@@ -54,7 +54,8 @@ export async function POST(req: NextRequest) {
       (booking.services as { name: string } | null)?.name || "Serviço",
       dateFormatted,
       booking.time?.slice(0, 5),
-      profile.business_name || "Profissional"
+      profile.business_name || "Profissional",
+      profile.msg_confirmacao
     );
 
     const result = await sendWhatsApp({

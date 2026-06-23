@@ -21,6 +21,9 @@ type Charge = {
   recurrence: "none" | "weekly" | "biweekly" | "monthly";
   next_due_date: string | null;
   booking_id: string | null;
+  scheduled_reminder_at: string | null;
+  auto_reminder: boolean;
+  last_auto_reminder_at: string | null;
 };
 
 type Profile = {
@@ -74,6 +77,8 @@ export default function CobrancasPage() {
   const [fAmount, setFAmount] = useState("");
   const [fDueDate, setFDueDate] = useState(new Date().toISOString().slice(0, 10));
   const [fRecurrence, setFRecurrence] = useState("none");
+  const [fAutoReminder, setFAutoReminder] = useState(false);
+  const [fScheduledAt, setFScheduledAt] = useState("");
   const [fSaving, setFSaving] = useState(false);
 
   const showToast = (msg: string) => {
@@ -249,10 +254,13 @@ export default function CobrancasPage() {
       due_date: fDueDate,
       recurrence: fRecurrence,
       next_due_date: fRecurrence !== "none" ? nextDate(fDueDate, fRecurrence) : null,
+      auto_reminder: fAutoReminder,
+      scheduled_reminder_at: fAutoReminder && fScheduledAt ? new Date(fScheduledAt).toISOString() : null,
     });
 
     setFClientName(""); setFClientPhone(""); setFDescription(""); setFAmount("");
     setFDueDate(new Date().toISOString().slice(0, 10)); setFRecurrence("none");
+    setFAutoReminder(false); setFScheduledAt("");
     setFSaving(false);
     setShowModal(false);
     load();
@@ -331,6 +339,14 @@ export default function CobrancasPage() {
                   )}
                   {c.reminders_sent > 0 && (
                     <p className="text-xs text-slate-400">{c.reminders_sent} lembrete{c.reminders_sent > 1 ? "s" : ""} enviado{c.reminders_sent > 1 ? "s" : ""}</p>
+                  )}
+                  {c.auto_reminder && c.scheduled_reminder_at && !c.last_auto_reminder_at && (
+                    <p className="text-xs text-amber-600 font-medium mt-0.5">
+                      ⏰ Lembrete automático em {new Date(c.scheduled_reminder_at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                    </p>
+                  )}
+                  {c.auto_reminder && c.last_auto_reminder_at && (
+                    <p className="text-xs text-brand mt-0.5">✅ Lembrete automático enviado</p>
                   )}
                 </div>
                 <div className="flex flex-col items-end gap-1.5">
@@ -433,12 +449,36 @@ export default function CobrancasPage() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="col-span-2">
-                <label className="label">Nome do cliente</label>
-                <input className="input" value={fClientName} onChange={(e) => setFClientName(e.target.value)} placeholder="João Silva" />
+                <div className="flex items-center justify-between mb-1">
+                  <label className="label mb-0">Nome do cliente</label>
+                  <button
+                    type="button"
+                    className="text-xs text-brand underline"
+                    onClick={async () => {
+                      if (!("contacts" in navigator)) {
+                        alert("Seu navegador não suporta busca de contatos. No iOS, use os campos normalmente — o teclado sugere contatos automaticamente.");
+                        return;
+                      }
+                      try {
+                        // @ts-expect-error Contact Picker API
+                        const contacts = await navigator.contacts.select(["name", "tel"], { multiple: false });
+                        if (contacts.length > 0) {
+                          setFClientName(contacts[0].name?.[0] || "");
+                          setFClientPhone(contacts[0].tel?.[0] || "");
+                        }
+                      } catch {
+                        /* usuário cancelou */
+                      }
+                    }}
+                  >
+                    📞 Buscar contato
+                  </button>
+                </div>
+                <input className="input" value={fClientName} onChange={(e) => setFClientName(e.target.value)} placeholder="João Silva" autoComplete="name" />
               </div>
               <div className="col-span-2">
                 <label className="label">WhatsApp do cliente</label>
-                <input className="input" value={fClientPhone} onChange={(e) => setFClientPhone(e.target.value)} placeholder="(11) 99999-8888" inputMode="tel" />
+                <input className="input" value={fClientPhone} onChange={(e) => setFClientPhone(e.target.value)} placeholder="(11) 99999-8888" inputMode="tel" autoComplete="tel" />
               </div>
               <div className="col-span-2">
                 <label className="label">Descrição</label>
@@ -459,6 +499,33 @@ export default function CobrancasPage() {
                     <option key={v} value={v}>{l}</option>
                   ))}
                 </select>
+              </div>
+
+              {/* Lembrete automático */}
+              <div className="col-span-2 border-t border-slate-100 pt-3">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={fAutoReminder}
+                    onChange={(e) => setFAutoReminder(e.target.checked)}
+                    className="w-4 h-4 accent-brand"
+                  />
+                  <span className="text-sm font-medium text-slate-700">🔔 Agendar lembrete automático</span>
+                </label>
+                {fAutoReminder && (
+                  <div className="mt-3">
+                    <label className="label">Data e hora do envio automático</label>
+                    <input
+                      className="input"
+                      type="datetime-local"
+                      value={fScheduledAt}
+                      onChange={(e) => setFScheduledAt(e.target.value)}
+                    />
+                    <p className="text-xs text-slate-400 mt-1">
+                      O sistema enviará o lembrete via WhatsApp automaticamente nesse horário.
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
             <button className="btn-primary w-full" onClick={criarCobranca} disabled={fSaving || !fClientName || !fAmount}>

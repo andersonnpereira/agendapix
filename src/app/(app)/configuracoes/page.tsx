@@ -52,6 +52,11 @@ export default function ConfiguracoesPage() {
   const [waToken, setWaToken] = useState("");
   const [waInstanceId, setWaInstanceId] = useState("");
 
+  // Mensagens customizadas
+  const [msgConfirmacao, setMsgConfirmacao] = useState("");
+  const [msgPix, setMsgPix] = useState("");
+  const [msgLembrete, setMsgLembrete] = useState("");
+
   // QR Code WhatsApp
   const [qrStatus, setQrStatus] = useState<"idle" | "loading" | "connected" | "disconnected">("idle");
   const [qrBase64, setQrBase64] = useState("");
@@ -111,6 +116,9 @@ export default function ConfiguracoesPage() {
       setWaProvider(p.whatsapp_provider || "mock");
       setWaToken(p.whatsapp_token || "");
       setWaInstanceId(p.whatsapp_instance_id || "");
+      setMsgConfirmacao(p.msg_confirmacao || "");
+      setMsgPix(p.msg_pix || "");
+      setMsgLembrete(p.msg_lembrete || "");
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -166,6 +174,9 @@ export default function ConfiguracoesPage() {
         whatsapp_provider: waProvider,
         whatsapp_token: waToken || null,
         whatsapp_instance_id: waInstanceId || null,
+        msg_confirmacao: msgConfirmacao || null,
+        msg_pix: msgPix || null,
+        msg_lembrete: msgLembrete || null,
       })
       .eq("id", user.id);
 
@@ -318,6 +329,50 @@ export default function ConfiguracoesPage() {
             Modo teste: as mensagens serão apenas registradas no log do servidor. Nenhum WhatsApp será enviado.
           </p>
         )}
+      </section>
+
+      {/* Mensagens customizadas */}
+      <section className="card space-y-4">
+        <div>
+          <h2 className="font-semibold text-slate-900">Mensagens WhatsApp</h2>
+          <p className="text-xs text-slate-400 mt-1">Deixe em branco para usar o padrão. Variáveis disponíveis abaixo de cada campo.</p>
+        </div>
+
+        <div>
+          <label className="label">Confirmação de agendamento</label>
+          <textarea
+            className="input resize-none text-sm"
+            rows={4}
+            value={msgConfirmacao}
+            onChange={(e) => setMsgConfirmacao(e.target.value)}
+            placeholder={`Olá, {nome}! Seu agendamento foi confirmado!\n✅ {servico} em {data} às {horario}\n{negocio} te espera!`}
+          />
+          <p className="text-xs text-slate-400 mt-1">Variáveis: <code>{"{nome}"}</code> <code>{"{servico}"}</code> <code>{"{data}"}</code> <code>{"{horario}"}</code> <code>{"{negocio}"}</code></p>
+        </div>
+
+        <div>
+          <label className="label">Envio de cobrança Pix</label>
+          <textarea
+            className="input resize-none text-sm"
+            rows={4}
+            value={msgPix}
+            onChange={(e) => setMsgPix(e.target.value)}
+            placeholder={`Olá, {nome}! Aqui está o Pix de {valor} para {servico}.\n\n{pix}`}
+          />
+          <p className="text-xs text-slate-400 mt-1">Variáveis: <code>{"{nome}"}</code> <code>{"{servico}"}</code> <code>{"{valor}"}</code> <code>{"{pix}"}</code></p>
+        </div>
+
+        <div>
+          <label className="label">Lembrete de pagamento</label>
+          <textarea
+            className="input resize-none text-sm"
+            rows={4}
+            value={msgLembrete}
+            onChange={(e) => setMsgLembrete(e.target.value)}
+            placeholder={`Olá, {nome}! Lembrete: {servico} no valor de {valor} ainda está pendente.\n\n{pix}`}
+          />
+          <p className="text-xs text-slate-400 mt-1">Variáveis: <code>{"{nome}"}</code> <code>{"{servico}"}</code> <code>{"{valor}"}</code> <code>{"{pix}"}</code></p>
+        </div>
       </section>
 
       {/* Conexão WhatsApp — QR Code */}

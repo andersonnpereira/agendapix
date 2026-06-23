@@ -110,13 +110,21 @@ export async function sendWhatsApp(
   }
 }
 
+export function formatTemplate(template: string, vars: Record<string, string>): string {
+  return template.replace(/\{(\w+)\}/g, (_, key) => vars[key] ?? `{${key}}`);
+}
+
 export function msgConfirmacao(
   clientName: string,
   serviceName: string,
   date: string,
   time: string,
-  businessName: string
+  businessName: string,
+  customTemplate?: string | null
 ): string {
+  if (customTemplate) {
+    return formatTemplate(customTemplate, { nome: clientName, servico: serviceName, data: date, horario: time, negocio: businessName });
+  }
   return (
     `Olá, ${clientName}! 👋\n\n` +
     `Seu agendamento foi *confirmado*!\n\n` +
@@ -131,8 +139,12 @@ export function msgPix(
   clientName: string,
   serviceName: string,
   amount: string,
-  pixPayload: string
+  pixPayload: string,
+  customTemplate?: string | null
 ): string {
+  if (customTemplate) {
+    return formatTemplate(customTemplate, { nome: clientName, servico: serviceName, valor: amount, pix: pixPayload });
+  }
   return (
     `Olá, ${clientName}! 💳\n\n` +
     `Aqui está o Pix para o serviço *${serviceName}*:\n` +
@@ -146,8 +158,12 @@ export function msgLembrete(
   clientName: string,
   description: string,
   amount: string,
-  pixPayload: string
+  pixPayload: string,
+  customTemplate?: string | null
 ): string {
+  if (customTemplate) {
+    return formatTemplate(customTemplate, { nome: clientName, servico: description, valor: amount, pix: pixPayload });
+  }
   return (
     `Olá, ${clientName}! 👋\n\n` +
     `Lembrete de pagamento pendente:\n` +

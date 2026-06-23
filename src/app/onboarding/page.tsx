@@ -60,6 +60,8 @@ export default function OnboardingPage() {
 
     const finalSlug = slug || slugify(businessName) || `pro-${user.id.slice(0, 6)}`;
 
+    const trialExpires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
     // 1. atualiza profile
     const { error: pErr } = await supabase
       .from("profiles")
@@ -70,6 +72,9 @@ export default function OnboardingPage() {
         pix_key_type: pixType,
         pix_merchant_name: merchantName,
         pix_merchant_city: merchantCity,
+        plan_type: "trial",
+        plan_expires_at: trialExpires,
+        whatsapp_provider: "evolution",
       })
       .eq("id", user.id);
 

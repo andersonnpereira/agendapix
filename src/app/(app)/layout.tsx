@@ -24,6 +24,29 @@ export default async function AppLayout({
 
   if (!user) redirect("/login");
 
+  const isAdmin = user.email === process.env.ADMIN_EMAIL;
+
+  if (!isAdmin) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("plan_type, plan_expires_at, is_blocked")
+      .eq("id", user.id)
+      .single();
+
+    if (profile) {
+      const now = new Date();
+      const isBlocked = profile.is_blocked === true;
+      const isExpired =
+        profile.plan_type !== "lifetime" &&
+        profile.plan_expires_at !== null &&
+        new Date(profile.plan_expires_at) < now;
+
+      if (isBlocked || isExpired) {
+        redirect("/plano");
+      }
+    }
+  }
+
   return (
     <div className="min-h-screen pb-20">
       {/* Top bar */}

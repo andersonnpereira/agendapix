@@ -23,6 +23,14 @@ export default async function DashboardPage() {
     redirect("/onboarding");
   }
 
+  const trialDaysLeft =
+    profile.plan_type === "trial" && profile.plan_expires_at
+      ? Math.ceil(
+          (new Date(profile.plan_expires_at).getTime() - Date.now()) /
+            (1000 * 60 * 60 * 24)
+        )
+      : null;
+
   const today = new Date().toISOString().slice(0, 10);
   const monthStart = new Date();
   monthStart.setDate(1);
@@ -85,6 +93,22 @@ export default async function DashboardPage() {
           <ShareLinkButton url={publicLink} title="Agende comigo!" />
         </div>
       </div>
+
+      {/* Banner de trial */}
+      {trialDaysLeft !== null && trialDaysLeft > 0 && (
+        <Link
+          href="/plano"
+          className="card border-amber-300 bg-amber-50 py-3 px-4 flex items-center justify-between"
+        >
+          <div>
+            <p className="text-sm font-semibold text-amber-800">
+              ⏳ Teste gratuito: {trialDaysLeft} dia{trialDaysLeft !== 1 ? "s" : ""} restante{trialDaysLeft !== 1 ? "s" : ""}
+            </p>
+            <p className="text-xs text-amber-600 mt-0.5">Veja os planos para continuar usando →</p>
+          </div>
+          <span className="text-amber-400 text-sm">→</span>
+        </Link>
+      )}
 
       {/* Alerta de cobranças atrasadas */}
       {(overdueCount ?? 0) > 0 && (

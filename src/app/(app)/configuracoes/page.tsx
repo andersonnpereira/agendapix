@@ -49,12 +49,40 @@ export default function ConfiguracoesPage() {
   const [msgPix, setMsgPix] = useState("");
   const [msgLembrete, setMsgLembrete] = useState("");
 
+  // Identidade visual
+  const [brandColor, setBrandColor] = useState("#16A34A");
+  const [avatarUrl, setAvatarUrl] = useState("");
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+
   // QR Code WhatsApp
   const [qrStatus, setQrStatus] = useState<"idle" | "loading" | "connected" | "disconnected">("loading");
   const [qrBase64, setQrBase64] = useState("");
   const [qrError, setQrError] = useState("");
 
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "";
+
+  async function uploadLogo(file: File) {
+    setUploadingLogo(true);
+    setError("");
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { setUploadingLogo(false); return; }
+    const ext = file.name.split(".").pop() || "jpg";
+    const path = `${user.id}/logo.${ext}`;
+    const { error: uploadError } = await supabase.storage
+      .from("avatars")
+      .upload(path, file, { upsert: true, contentType: file.type });
+    if (uploadError) {
+      setError("Erro no upload: " + uploadError.message + ". Confirme que o bucket 'avatars' existe no Supabase Storage (público).");
+      setUploadingLogo(false);
+      return;
+    }
+    const { data: urlData } = supabase.storage.from("avatars").getPublicUrl(path);
+    await supabase.from("profiles").update({ avatar_url: urlData.publicUrl }).eq("id", user.id);
+    setAvatarUrl(urlData.publicUrl);
+    setUploadingLogo(false);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 3000);
+  }
 
   const fetchQrRef = useRef(fetchQr);
   useEffect(() => { fetchQrRef.current = fetchQr; });
@@ -114,6 +142,8 @@ export default function ConfiguracoesPage() {
       setMsgConfirmacao(p.msg_confirmacao || DEFAULT_MSG_CONFIRMACAO);
       setMsgPix(p.msg_pix || DEFAULT_MSG_PIX);
       setMsgLembrete(p.msg_lembrete || DEFAULT_MSG_LEMBRETE);
+      setBrandColor(p.brand_color || "#16A34A");
+      setAvatarUrl(p.avatar_url || "");
     })();
     fetchQr();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -153,6 +183,7 @@ export default function ConfiguracoesPage() {
         msg_confirmacao: msgConfirmacao || null,
         msg_pix: msgPix || null,
         msg_lembrete: msgLembrete || null,
+        brand_color: brandColor || null,
       })
       .eq("id", user.id);
 
@@ -224,6 +255,58 @@ export default function ConfiguracoesPage() {
         <Link href="/disponibilidade" className="btn-ghost text-sm inline-block text-center">
           ⏰ Gerenciar horários de atendimento →
         </Link>
+      </section>
+
+      {/* Identidade visual */}
+      <section className="card space-y-5">
+        <h2 className="font-semibold text-slate-900">Identidade visual</h2>
+
+        {/* Logo */}
+        <div>
+          <label className="label">Logo / Foto de perfil</label>
+          <div className="flex items-center gap-4">
+            {avatarUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={avatarUrl} alt="Logo" className="w-16 h-16 rounded-full object-cover border-2 border-white shadow shrink-0" />
+            ) : (
+              <div className="w-16 h-16 rounded-full bg-brand-light flex items-center justify-center text-2xl shrink-0">✂️</div>
+            )}
+            <div className="flex-1 space-y-1.5">
+              <label className={`btn text-sm border border-slate-200 cursor-pointer inline-flex items-center gap-1.5 ${uploadingLogo ? "opacity-50 pointer-events-none" : ""}`}>
+                {uploadingLogo ? "Enviando..." : "📷 Escolher imagem"}
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadLogo(f); }}
+                />
+              </label>
+              <p className="text-xs text-slate-400">Aparece no seu link de agendamento público. JPG/PNG.</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Cor principal */}
+        <div>
+          <label className="label">Cor principal</label>
+          <div className="flex items-center gap-3">
+            <input
+              type="color"
+              value={brandColor}
+              onChange={(e) => setBrandColor(e.target.value)}
+              className="w-12 h-10 rounded-lg border border-slate-200 cursor-pointer p-0.5"
+            />
+            <span className="text-sm font-mono text-slate-700">{brandColor.toUpperCase()}</span>
+            <button
+              type="button"
+              onClick={() => setBrandColor("#16A34A")}
+              className="text-xs text-brand underline"
+            >
+              Padrão
+            </button>
+          </div>
+          <p className="text-xs text-slate-400 mt-1">Cor de destaque no seu link de agendamento. Salve para aplicar.</p>
+        </div>
       </section>
 
       {/* Chave Pix */}

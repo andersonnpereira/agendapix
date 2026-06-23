@@ -8,6 +8,7 @@ const nav = [
   { href: "/agenda", label: "Agenda", icon: "📅" },
   { href: "/clientes", label: "Clientes", icon: "👥" },
   { href: "/cobrancas", label: "Cobranças", icon: "💰" },
+  { href: "/financeiro", label: "Financeiro", icon: "📊" },
   { href: "/configuracoes", label: "Config", icon: "⚙️" },
 ];
 
@@ -64,7 +65,7 @@ export default async function AppLayout({
 
       {/* Bottom nav (mobile-first) */}
       <nav className="fixed bottom-0 inset-x-0 bg-white border-t border-slate-100 z-10">
-        <div className="max-w-2xl mx-auto grid grid-cols-5">
+        <div className="max-w-2xl mx-auto grid grid-cols-6">
           {nav.map((item) => (
             <Link
               key={item.href}

@@ -77,7 +77,7 @@ export default function LoginPage() {
     <main className="min-h-screen flex items-center justify-center px-6">
       <div className="w-full max-w-sm">
         <Link href="/" className="block text-center text-xl font-bold text-brand mb-6">
-          AgendaPix
+          Agendou
         </Link>
         <div className="card">
           <h1 className="text-xl font-bold text-slate-900 mb-1">

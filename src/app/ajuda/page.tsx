@@ -109,7 +109,7 @@ export default function AjudaPage() {
         {/* Header */}
         <div className="text-center space-y-2">
           <p className="text-4xl">📖</p>
-          <h1 className="text-2xl font-bold text-slate-900">Como usar o AgendaPix</h1>
+          <h1 className="text-2xl font-bold text-slate-900">Como usar o Agendou</h1>
           <p className="text-slate-500 text-sm">
             Guia completo para configurar e usar o app no dia a dia.
           </p>

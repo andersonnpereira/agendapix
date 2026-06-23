@@ -45,19 +45,26 @@ export async function GET(req: NextRequest) {
       const amount = formatBRL(charge.amount_cents);
       let message: string;
 
+      const dueDateFormatted = charge.due_date
+        ? charge.due_date.slice(8, 10) + "/" + charge.due_date.slice(5, 7) + "/" + charge.due_date.slice(0, 4)
+        : "";
+
       if (profile.msg_lembrete) {
         message = formatTemplate(profile.msg_lembrete, {
           nome: charge.client_name || "Cliente",
           servico: charge.description || "Serviço",
           valor: amount,
           pix: charge.pix_payload,
+          data: dueDateFormatted,
         });
       } else {
         message = msgLembrete(
           charge.client_name || "Cliente",
           charge.description || "Serviço",
           amount,
-          charge.pix_payload
+          charge.pix_payload,
+          null,
+          dueDateFormatted
         );
       }
 

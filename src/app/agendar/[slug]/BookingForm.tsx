@@ -277,10 +277,8 @@ export default function BookingForm({ profileId, services, availability }: Props
           <p className="text-sm text-slate-700">📋 {selectedService?.name}</p>
           <p className="text-sm text-slate-700">📅 {formatDate(selectedDate)} às {selectedTime}</p>
         </div>
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
-          <p className="font-semibold mb-1">⏳ Aguarde a confirmação</p>
-          <p>Você receberá a confirmação pelo <strong>WhatsApp</strong> em breve.</p>
-          <p className="mt-1 text-xs text-amber-600">O pagamento só será necessário após a realização do serviço.</p>
+        <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-sm text-green-800 text-center">
+          <p>Você receberá a confirmação pelo <strong>WhatsApp</strong> em breve. 📲</p>
         </div>
       </div>
     );
@@ -427,9 +425,6 @@ export default function BookingForm({ profileId, services, availability }: Props
               <span className="text-sm text-slate-500">Valor do serviço</span>
               <span className="font-bold text-slate-900">{formatBRL(selectedService.price_cents)}</span>
             </div>
-          </div>
-          <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-700">
-            💬 O pagamento é feito <strong>após o serviço</strong>, diretamente com o profissional via Pix.
           </div>
           {error && <p className="text-sm text-red-500 text-center">{error}</p>}
           <button className="btn-primary w-full" onClick={submit} disabled={submitting}>

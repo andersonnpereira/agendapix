@@ -171,7 +171,7 @@ export default function AdminPage() {
 
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Gerenciador de Clientes</h1>
-        <p className="text-slate-500 text-sm">Gerencie licenças e planos dos assinantes AgendaPix.</p>
+        <p className="text-slate-500 text-sm">Gerencie licenças e planos dos assinantes Agendou.</p>
       </div>
 
       {error && (

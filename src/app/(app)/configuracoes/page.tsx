@@ -385,7 +385,7 @@ export default function ConfiguracoesPage() {
             onChange={(e) => setMsgLembrete(e.target.value)}
             placeholder={`Olá, {nome}! Lembrete: {servico} no valor de {valor} ainda está pendente.\n\n{pix}`}
           />
-          <p className="text-xs text-slate-400 mt-1">Variáveis: <code>{"{nome}"}</code> <code>{"{servico}"}</code> <code>{"{valor}"}</code> <code>{"{pix}"}</code></p>
+          <p className="text-xs text-slate-400 mt-1">Variáveis: <code>{"{nome}"}</code> <code>{"{servico}"}</code> <code>{"{valor}"}</code> <code>{"{pix}"}</code> <code>{"{data}"}</code></p>
         </div>
       </section>
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { sendEmail, htmlNovoAgendamento } from "@/lib/email";
+import { sendWhatsApp } from "@/lib/whatsapp";
 
 const supabaseAdmin = () =>
   createSupabaseClient(
@@ -44,7 +45,7 @@ export async function POST(req: NextRequest) {
       try {
         const { data: profile } = await supabase
           .from("profiles")
-          .select("notification_email, business_name")
+          .select("notification_email, business_name, phone, whatsapp_provider, whatsapp_instance_id")
           .eq("id", profile_id)
           .single();
 
@@ -59,16 +60,35 @@ export async function POST(req: NextRequest) {
         const email =
           profile?.notification_email;
 
-        if (email) {
-          const [year, month, day] = date.split("-");
-          const dateFormatted = `${day}/${month}/${year}`;
+        const [year, month, day] = date.split("-");
+        const dateFormatted = `${day}/${month}/${year}`;
+        const serviceName = service?.name || "Serviço";
 
+        // Notificação WhatsApp ao profissional (principal)
+        if (profile?.phone && profile.whatsapp_provider === "evolution" && profile.whatsapp_instance_id) {
+          const ownerMsg =
+            `📅 *Novo agendamento recebido!*\n\n` +
+            `👤 *Cliente:* ${client_name}\n` +
+            `✂️ *Serviço:* ${serviceName}\n` +
+            `📅 *Data:* ${dateFormatted} às ${time.slice(0, 5)}\n` +
+            `📱 *WhatsApp:* ${client_phone}`;
+
+          await sendWhatsApp({
+            to: profile.phone,
+            message: ownerMsg,
+            provider: "evolution",
+            instanceId: profile.whatsapp_instance_id,
+          });
+        }
+
+        // Notificação por e-mail (fallback)
+        if (email) {
           await sendEmail({
             to: email,
             subject: `Novo agendamento — ${client_name}`,
             html: htmlNovoAgendamento({
               clientName: client_name,
-              service: service?.name || "Serviço",
+              service: serviceName,
               date: dateFormatted,
               time: time.slice(0, 5),
               phone: client_phone,

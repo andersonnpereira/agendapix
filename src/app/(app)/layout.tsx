@@ -29,7 +29,7 @@ export default async function AppLayout({
       {/* Top bar */}
       <header className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-slate-100">
         <div className="max-w-2xl mx-auto px-5 h-14 flex items-center justify-between">
-          <span className="font-bold text-brand">AgendaPix</span>
+          <span className="font-bold text-brand">Agendou</span>
           <div className="flex items-center gap-3">
             <Link href="/ajuda" className="text-xs text-slate-500 hover:text-brand">Ajuda</Link>
             <SignOutButton />

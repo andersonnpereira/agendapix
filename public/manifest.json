@@ -1,6 +1,6 @@
 {
-  "name": "AgendaPix",
-  "short_name": "AgendaPix",
+  "name": "Agendou",
+  "short_name": "Agendou",
   "description": "Agendamento e cobrança Pix para autônomos",
   "start_url": "/dashboard",
   "display": "standalone",

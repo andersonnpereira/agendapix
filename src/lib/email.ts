@@ -15,7 +15,7 @@ export async function sendEmail(params: {
   }
 
   const from =
-    process.env.RESEND_FROM || "AgendaPix <noreply@agendapix.com.br>";
+    process.env.RESEND_FROM || "Agendou <noreply@agendapix.com.br>";
 
   try {
     const res = await fetch("https://api.resend.com/emails", {

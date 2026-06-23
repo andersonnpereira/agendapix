@@ -62,7 +62,7 @@ export default function Home() {
       {/* Header */}
       <header className="sticky top-0 z-10 bg-white/80 backdrop-blur border-b border-slate-100">
         <div className="flex items-center justify-between px-6 py-4 max-w-5xl mx-auto">
-          <span className="text-xl font-extrabold text-brand tracking-tight">AgendaPix</span>
+          <span className="text-xl font-extrabold text-brand tracking-tight">Agendou</span>
           <div className="flex items-center gap-3">
             <Link href="/login" className="btn-ghost text-sm">
               Entrar
@@ -212,7 +212,7 @@ export default function Home() {
 
       <footer className="border-t border-slate-200 bg-white">
         <div className="max-w-4xl mx-auto px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-slate-400">
-          <span className="font-bold text-brand text-base">AgendaPix</span>
+          <span className="font-bold text-brand text-base">Agendou</span>
           <span>Feito para autônomos brasileiros</span>
           <Link href="/login" className="text-brand hover:underline">
             Entrar na conta →

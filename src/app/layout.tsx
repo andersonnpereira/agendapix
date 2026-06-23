@@ -2,14 +2,14 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "AgendaPix — Agenda e cobrança para autônomos",
+  title: "Agendou — Agenda, cobrança e WhatsApp automático para autônomos",
   description:
-    "Receba agendamentos pela bio do Instagram e cobre no Pix automaticamente. Feito para profissionais autônomos.",
+    "Seus clientes agendam pelo link da bio e recebem o Pix pelo WhatsApp automático. Feito para profissionais autônomos brasileiros.",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "AgendaPix",
+    title: "Agendou",
   },
 };
 

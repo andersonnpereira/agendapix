@@ -160,10 +160,11 @@ export function msgLembrete(
   description: string,
   amount: string,
   pixPayload: string,
-  customTemplate?: string | null
+  customTemplate?: string | null,
+  dueDate?: string | null
 ): string {
   if (customTemplate) {
-    return formatTemplate(customTemplate, { nome: clientName, servico: description, valor: amount, pix: pixPayload });
+    return formatTemplate(customTemplate, { nome: clientName, servico: description, valor: amount, pix: pixPayload, data: dueDate || "" });
   }
   return (
     `Olá, ${clientName}! 👋\n\n` +

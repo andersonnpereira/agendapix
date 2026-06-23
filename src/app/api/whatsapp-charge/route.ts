@@ -10,7 +10,7 @@ import { formatBRL } from "@/lib/format";
  */
 export async function POST(req: NextRequest) {
   try {
-    const { charge_id, type = "pix" } = await req.json();
+    const { charge_id, type = "pix", message: customMessage } = await req.json();
     if (!charge_id) {
       return NextResponse.json({ error: "charge_id obrigatório." }, { status: 400 });
     }
@@ -63,22 +63,24 @@ export async function POST(req: NextRequest) {
     const [year, month, day] = (charge.due_date || "").split("-");
     const dueDateFormatted = charge.due_date ? `${day}/${month}/${year}` : "";
 
-    const message = type === "lembrete"
-      ? msgLembrete(
-          charge.client_name || "Cliente",
-          charge.description || "Serviço",
-          formatBRL(charge.amount_cents),
-          charge.pix_payload,
-          profile.msg_lembrete || null,
-          dueDateFormatted
-        )
-      : msgPix(
-          charge.client_name || "Cliente",
-          charge.description || "Serviço",
-          formatBRL(charge.amount_cents),
-          charge.pix_payload,
-          profile.msg_pix || null
-        );
+    const message = customMessage || (
+      type === "lembrete"
+        ? msgLembrete(
+            charge.client_name || "Cliente",
+            charge.description || "Serviço",
+            formatBRL(charge.amount_cents),
+            charge.pix_payload,
+            profile.msg_lembrete || null,
+            dueDateFormatted
+          )
+        : msgPix(
+            charge.client_name || "Cliente",
+            charge.description || "Serviço",
+            formatBRL(charge.amount_cents),
+            charge.pix_payload,
+            profile.msg_pix || null
+          )
+    );
 
     const result = await sendWhatsApp({
       to: charge.client_phone,

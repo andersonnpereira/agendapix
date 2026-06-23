@@ -43,6 +43,9 @@ export default function ConfiguracoesPage() {
   const [pixError, setPixError] = useState("");
 
 
+  // Link de pagamento externo
+  const [paymentLink, setPaymentLink] = useState("");
+
   // Mensagens customizadas
   const [msgConfirmacao, setMsgConfirmacao] = useState("");
   const [msgPix, setMsgPix] = useState("");
@@ -109,6 +112,7 @@ export default function ConfiguracoesPage() {
       setPixKeyType((p.pix_key_type as PixKeyType) || "celular");
       setPixMerchantName(p.pix_merchant_name || "");
       setPixMerchantCity(p.pix_merchant_city || "");
+      setPaymentLink(p.payment_link || "");
       setMsgConfirmacao(p.msg_confirmacao || DEFAULT_MSG_CONFIRMACAO);
       setMsgPix(p.msg_pix || DEFAULT_MSG_PIX);
       setMsgLembrete(p.msg_lembrete || DEFAULT_MSG_LEMBRETE);
@@ -166,6 +170,7 @@ export default function ConfiguracoesPage() {
         pix_merchant_name: pixMerchantName,
         pix_merchant_city: pixMerchantCity,
         whatsapp_provider: "evolution",
+        payment_link: paymentLink || null,
         msg_confirmacao: msgConfirmacao || null,
         msg_pix: msgPix || null,
         msg_lembrete: msgLembrete || null,
@@ -344,6 +349,27 @@ export default function ConfiguracoesPage() {
             </button>
           </div>
         )}
+      </section>
+
+      {/* Link de pagamento */}
+      <section className="card space-y-4">
+        <div>
+          <h2 className="font-semibold text-slate-900">Link de pagamento</h2>
+          <p className="text-xs text-slate-400 mt-1">Cole aqui um link externo (Mercado Pago, PicPay, etc.) para incluir nas cobranças pelo WhatsApp.</p>
+        </div>
+        <div>
+          <label className="label">Link</label>
+          <input
+            className="input"
+            type="url"
+            value={paymentLink}
+            onChange={(e) => setPaymentLink(e.target.value)}
+            placeholder="https://mpago.la/seu-link ou https://picpay.me/seunome"
+          />
+          {paymentLink && (
+            <p className="text-xs text-brand mt-1">✓ Link configurado — aparecerá como opção ao enviar cobranças</p>
+          )}
+        </div>
       </section>
 
       {/* Mensagens customizadas */}

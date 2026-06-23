@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase-browser";
 import { formatBRL, parseToCents } from "@/lib/format";
 import { generatePixBRCode, normalizePixKey, type PixKeyType } from "@/lib/pix";
 import { PixDisplay } from "@/components/PixDisplay";
+import { msgLembrete } from "@/lib/whatsapp";
 
 type Charge = {
   id: string;
@@ -31,6 +32,7 @@ type Profile = {
   pix_key_type: string | null;
   pix_merchant_name: string | null;
   pix_merchant_city: string | null;
+  payment_link: string | null;
 };
 
 const STATUS_BADGE: Record<string, string> = {
@@ -61,10 +63,19 @@ export default function CobrancasPage() {
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState<"todos" | "pendente" | "pago" | "atrasado">("todos");
   const [showModal, setShowModal] = useState(false);
-  const [openPix, setOpenPix] = useState<string | null>(null); // charge id
+  const [openPix, setOpenPix] = useState<string | null>(null);
   const [toast, setToast] = useState("");
   const [actionId, setActionId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+
+  // Modais de ação
+  const [reminderModal, setReminderModal] = useState<Charge | null>(null);
+  const [reminderText, setReminderText] = useState("");
+  const [pixModal, setPixModal] = useState<Charge | null>(null);
+  const [pixOptKey, setPixOptKey] = useState(true);
+  const [pixOptPayload, setPixOptPayload] = useState(false);
+  const [pixOptLink, setPixOptLink] = useState(false);
+  const [flashSent, setFlashSent] = useState<string | null>(null);
 
   // Form nova cobrança
   const [fClientName, setFClientName] = useState("");
@@ -88,7 +99,7 @@ export default function CobrancasPage() {
 
     const { data: p } = await supabase
       .from("profiles")
-      .select("id, pix_key, pix_key_type, pix_merchant_name, pix_merchant_city")
+      .select("id, pix_key, pix_key_type, pix_merchant_name, pix_merchant_city, payment_link")
       .eq("id", user.id)
       .single();
     setProfile(p);
@@ -108,17 +119,94 @@ export default function CobrancasPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Cobranças recorrentes que vencem hoje
   const today = new Date().toISOString().slice(0, 10);
   const dueToday = charges.filter(
     (c) => c.recurrence !== "none" && c.status === "pendente" && c.next_due_date && c.next_due_date <= today
   );
 
+  const formatDate = (d: string | null) => {
+    if (!d) return "";
+    const [y, m, day] = d.split("-");
+    return `${day}/${m}/${y}`;
+  };
+
+  // ─── Pix modal ────────────────────────────────────────────────────────────
+  function buildPixMessage(charge: Charge): string {
+    const lines: string[] = [
+      `Olá, ${charge.client_name || "Cliente"}! 💳`,
+      ``,
+      `Pagamento referente a: *${charge.description || "Serviço"}*`,
+      `💰 Valor: *${formatBRL(charge.amount_cents)}*`,
+    ];
+    if (charge.due_date) lines.push(`📅 Vencimento: ${formatDate(charge.due_date)}`);
+    if (pixOptKey && profile?.pix_key) {
+      lines.push(``, `🔑 Chave Pix:`, profile.pix_key);
+    }
+    if (pixOptPayload && charge.pix_payload) {
+      lines.push(``, `📋 Copia e cola:`, charge.pix_payload);
+    }
+    if (pixOptLink && profile?.payment_link) {
+      lines.push(``, `🔗 Link de pagamento:`, profile.payment_link);
+    }
+    lines.push(``, `Obrigado! 🙏`);
+    return lines.join("\n");
+  }
+
+  function openPixModal(charge: Charge) {
+    setPixModal(charge);
+    setPixOptKey(!!profile?.pix_key);
+    setPixOptPayload(false);
+    setPixOptLink(!!profile?.payment_link);
+  }
+
+  function openReminderModal(charge: Charge) {
+    const text = msgLembrete(
+      charge.client_name || "Cliente",
+      charge.description || "Serviço",
+      formatBRL(charge.amount_cents),
+      charge.pix_payload || "",
+      null,
+      formatDate(charge.due_date)
+    );
+    setReminderModal(charge);
+    setReminderText(text);
+  }
+
+  async function doSend(charge: Charge, message: string, type: "pix" | "lembrete") {
+    setActionId(charge.id + (type === "pix" ? "-wa" : "-lembrete"));
+    try {
+      const res = await fetch("/api/whatsapp-charge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ charge_id: charge.id, type, message }),
+      });
+      if (res.ok) {
+        setCharges((prev) =>
+          prev.map((c) =>
+            c.id === charge.id ? { ...c, reminders_sent: c.reminders_sent + 1 } : c
+          )
+        );
+        setFlashSent(charge.id);
+        setTimeout(() => setFlashSent(null), 5000);
+        showToast(type === "pix" ? "✅ Cobrança enviada pelo WhatsApp!" : "✅ Lembrete enviado!");
+        setPixModal(null);
+        setReminderModal(null);
+      } else {
+        const body = await res.json().catch(() => ({}));
+        showToast(`Erro: ${body.error || "Falha ao enviar"}`);
+      }
+    } catch {
+      showToast("Erro de conexão.");
+    } finally {
+      setActionId(null);
+    }
+  }
+
+  // ─── Pago ────────────────────────────────────────────────────────────────
   async function marcarPago(charge: Charge) {
     setActionId(charge.id + "-pago");
     await supabase.from("charges").update({ status: "pago", paid_at: new Date().toISOString() }).eq("id", charge.id);
 
-    // Se recorrente, cria próxima cobrança
     if (charge.recurrence !== "none" && profile?.pix_key) {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
@@ -150,38 +238,7 @@ export default function CobrancasPage() {
 
     setActionId(null);
     load();
-    showToast("Cobrança marcada como paga.");
-  }
-
-  async function sendViaAPI(charge: Charge, type: "pix" | "lembrete") {
-    if (!charge.client_phone) { showToast("Sem número de WhatsApp cadastrado."); return; }
-    if (!charge.pix_payload) { showToast("Sem código Pix gerado para essa cobrança."); return; }
-
-    const actionKey = type === "pix" ? "-wa" : "-lembrete";
-    setActionId(charge.id + actionKey);
-    try {
-      const res = await fetch("/api/whatsapp-charge", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ charge_id: charge.id, type }),
-      });
-
-      if (res.ok) {
-        setCharges((prev) =>
-          prev.map((c) =>
-            c.id === charge.id ? { ...c, reminders_sent: c.reminders_sent + 1 } : c
-          )
-        );
-        showToast(type === "pix" ? "✅ Pix enviado pelo WhatsApp!" : "✅ Lembrete enviado pelo WhatsApp!");
-      } else {
-        const body = await res.json().catch(() => ({}));
-        showToast(`Erro: ${body.error || "Falha ao enviar WhatsApp"}`);
-      }
-    } catch {
-      showToast("Erro de conexão ao enviar WhatsApp.");
-    } finally {
-      setActionId(null);
-    }
+    showToast("✅ Cobrança marcada como paga!");
   }
 
   async function excluirCobranca(id: string) {
@@ -191,10 +248,6 @@ export default function CobrancasPage() {
     setConfirmDelete(null);
     load();
     showToast("Cobrança excluída.");
-  }
-
-  async function sendLembrete(charge: Charge) {
-    await sendViaAPI(charge, "lembrete");
   }
 
   async function criarCobranca() {
@@ -240,12 +293,6 @@ export default function CobrancasPage() {
     showToast("Cobrança criada!");
   }
 
-  const formatDate = (d: string | null) => {
-    if (!d) return "";
-    const [y, m, day] = d.split("-");
-    return `${day}/${m}/${y}`;
-  };
-
   const filtered = filterStatus === "todos" ? charges : charges.filter((c) => c.status === filterStatus);
 
   return (
@@ -263,17 +310,15 @@ export default function CobrancasPage() {
         </button>
       </div>
 
-      {/* Alerta de recorrentes vencidas */}
       {dueToday.length > 0 && (
         <div className="card bg-amber-50 border-amber-200 py-3 px-4">
           <p className="text-sm font-semibold text-amber-700">
             🔁 {dueToday.length} cobrança{dueToday.length > 1 ? "s" : ""} recorrente{dueToday.length > 1 ? "s" : ""} vence{dueToday.length > 1 ? "m" : ""} hoje
           </p>
-          <p className="text-xs text-amber-600 mt-0.5">Envie o Pix pelo WhatsApp para seus clientes.</p>
+          <p className="text-xs text-amber-600 mt-0.5">Envie a cobrança pelo WhatsApp para seus clientes.</p>
         </div>
       )}
 
-      {/* Filtros */}
       <div className="flex gap-2 flex-wrap">
         {(["todos", "pendente", "atrasado", "pago"] as const).map((s) => (
           <button
@@ -299,9 +344,14 @@ export default function CobrancasPage() {
       ) : (
         <div className="space-y-3">
           {filtered.map((c) => (
-            <div key={c.id} className="card py-4 space-y-3">
-              <div className="flex items-start justify-between">
-                <div>
+            <div
+              key={c.id}
+              className={`card py-4 space-y-3 transition-all duration-300 ${
+                flashSent === c.id ? "ring-2 ring-green-400" : ""
+              }`}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex-1 min-w-0">
                   <p className="font-semibold text-slate-900">{c.client_name || "—"}</p>
                   <p className="text-sm text-slate-500">{c.description || "Serviço"}</p>
                   {c.due_date && (
@@ -310,9 +360,19 @@ export default function CobrancasPage() {
                       {c.recurrence !== "none" && ` · ${RECURRENCE_LABELS[c.recurrence]}`}
                     </p>
                   )}
-                  {c.reminders_sent > 0 && (
-                    <p className="text-xs text-slate-400">{c.reminders_sent} lembrete{c.reminders_sent > 1 ? "s" : ""} enviado{c.reminders_sent > 1 ? "s" : ""}</p>
-                  )}
+
+                  {/* Badge de envio */}
+                  {flashSent === c.id ? (
+                    <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-700 bg-green-100 px-2 py-0.5 rounded-full mt-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-ping inline-block" />
+                      Enviado agora!
+                    </span>
+                  ) : c.reminders_sent > 0 ? (
+                    <span className="inline-flex items-center gap-1 text-xs text-brand mt-1">
+                      ✓ {c.reminders_sent} envio{c.reminders_sent > 1 ? "s" : ""} realizado{c.reminders_sent > 1 ? "s" : ""}
+                    </span>
+                  ) : null}
+
                   {c.auto_reminder && c.scheduled_reminder_at && !c.last_auto_reminder_at && (
                     <p className="text-xs text-amber-600 font-medium mt-0.5">
                       ⏰ Lembrete automático em {new Date(c.scheduled_reminder_at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
@@ -322,7 +382,7 @@ export default function CobrancasPage() {
                     <p className="text-xs text-brand mt-0.5">✅ Lembrete automático enviado</p>
                   )}
                 </div>
-                <div className="flex flex-col items-end gap-1.5">
+                <div className="flex flex-col items-end gap-1.5 shrink-0">
                   <span className="text-lg font-bold text-slate-900">{formatBRL(c.amount_cents)}</span>
                   <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${STATUS_BADGE[c.status]}`}>
                     {c.status.charAt(0).toUpperCase() + c.status.slice(1)}
@@ -330,43 +390,37 @@ export default function CobrancasPage() {
                 </div>
               </div>
 
-              {/* Pix expandido */}
               {openPix === c.id && c.pix_payload && (
                 <div className="pt-2 border-t border-slate-100">
                   <PixDisplay payload={c.pix_payload} amountLabel={formatBRL(c.amount_cents)} />
                 </div>
               )}
 
-              {/* Ações */}
               <div className="flex flex-wrap gap-2 pt-1 border-t border-slate-100">
                 {c.pix_payload && (
                   <button
                     className="btn text-xs px-3 py-1.5 border border-slate-200 hover:bg-slate-50"
                     onClick={() => setOpenPix(openPix === c.id ? null : c.id)}
                   >
-                    {openPix === c.id ? "Fechar Pix" : "Ver QR / Pix"}
+                    {openPix === c.id ? "Fechar QR" : "Ver QR / Pix"}
                   </button>
                 )}
                 {c.status !== "pago" && (
                   <>
-                    {c.pix_payload && (
-                      <button
-                        className="btn-primary text-xs px-3 py-1.5"
-                        onClick={() => sendViaAPI(c, "pix")}
-                        disabled={actionId === c.id + "-wa"}
-                      >
-                        {actionId === c.id + "-wa" ? "Enviando..." : "📲 Enviar Pix (WA)"}
-                      </button>
-                    )}
-                    {c.pix_payload && (
-                      <button
-                        className="btn text-xs px-3 py-1.5 border border-slate-200 hover:bg-slate-50"
-                        onClick={() => sendViaAPI(c, "lembrete")}
-                        disabled={actionId === c.id + "-lembrete"}
-                      >
-                        {actionId === c.id + "-lembrete" ? "Enviando..." : "🔔 Lembrete"}
-                      </button>
-                    )}
+                    <button
+                      className="btn-primary text-xs px-3 py-1.5"
+                      onClick={() => openPixModal(c)}
+                      disabled={actionId === c.id + "-wa"}
+                    >
+                      {actionId === c.id + "-wa" ? "Enviando..." : "📲 Enviar cobrança"}
+                    </button>
+                    <button
+                      className="btn text-xs px-3 py-1.5 border border-slate-200 hover:bg-slate-50"
+                      onClick={() => openReminderModal(c)}
+                      disabled={actionId === c.id + "-lembrete"}
+                    >
+                      {actionId === c.id + "-lembrete" ? "Enviando..." : "🔔 Lembrete"}
+                    </button>
                     <button
                       className="btn text-xs px-3 py-1.5 border border-brand text-brand hover:bg-brand-light"
                       onClick={() => marcarPago(c)}
@@ -391,7 +445,7 @@ export default function CobrancasPage() {
         </div>
       )}
 
-      {/* Modal confirmar exclusão */}
+      {/* ── Modal: excluir ─────────────────────────────────────────── */}
       {confirmDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-2xl w-full max-w-sm p-5 space-y-4 text-center">
@@ -412,7 +466,152 @@ export default function CobrancasPage() {
         </div>
       )}
 
-      {/* Modal nova cobrança */}
+      {/* ── Modal: lembrete ────────────────────────────────────────── */}
+      {reminderModal && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md p-5 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-slate-900">🔔 Enviar lembrete</h3>
+              <button onClick={() => setReminderModal(null)} className="text-slate-400 hover:text-slate-600 text-xl leading-none">✕</button>
+            </div>
+            <div className="bg-slate-50 rounded-xl p-3 text-sm space-y-0.5">
+              <p className="font-medium text-slate-900">{reminderModal.client_name}</p>
+              <p className="text-slate-500">{reminderModal.description} · <strong>{formatBRL(reminderModal.amount_cents)}</strong></p>
+              {reminderModal.due_date && <p className="text-xs text-slate-400">Vence em {formatDate(reminderModal.due_date)}</p>}
+            </div>
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="label mb-0 text-sm">Mensagem</label>
+                <button
+                  type="button"
+                  className="text-xs text-brand underline"
+                  onClick={() =>
+                    setReminderText(msgLembrete(
+                      reminderModal.client_name || "Cliente",
+                      reminderModal.description || "Serviço",
+                      formatBRL(reminderModal.amount_cents),
+                      reminderModal.pix_payload || "",
+                      null,
+                      formatDate(reminderModal.due_date)
+                    ))
+                  }
+                >
+                  Restaurar padrão
+                </button>
+              </div>
+              <textarea
+                className="input resize-none text-sm font-mono leading-relaxed"
+                rows={9}
+                value={reminderText}
+                onChange={(e) => setReminderText(e.target.value)}
+              />
+              <p className="text-xs text-slate-400 mt-1">O que você vê aqui é exatamente o que o cliente receberá.</p>
+            </div>
+            <div className="flex gap-3">
+              <button className="flex-1 btn border border-slate-200" onClick={() => setReminderModal(null)}>Cancelar</button>
+              <button
+                className="flex-1 btn-primary"
+                disabled={!reminderText.trim() || actionId === reminderModal.id + "-lembrete"}
+                onClick={() => doSend(reminderModal, reminderText, "lembrete")}
+              >
+                {actionId === reminderModal.id + "-lembrete" ? "Enviando..." : "📲 Enviar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal: enviar cobrança ──────────────────────────────────── */}
+      {pixModal && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md p-5 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-slate-900">📲 Enviar cobrança</h3>
+              <button onClick={() => setPixModal(null)} className="text-slate-400 hover:text-slate-600 text-xl leading-none">✕</button>
+            </div>
+            <div className="bg-slate-50 rounded-xl p-3 text-sm space-y-0.5">
+              <p className="font-medium text-slate-900">{pixModal.client_name}</p>
+              <p className="text-slate-500">{pixModal.description} · <strong>{formatBRL(pixModal.amount_cents)}</strong></p>
+              {pixModal.due_date && <p className="text-xs text-slate-400">Vence em {formatDate(pixModal.due_date)}</p>}
+            </div>
+
+            <div className="space-y-3">
+              <p className="text-sm font-semibold text-slate-700">O que incluir na mensagem?</p>
+
+              <label className={`flex items-start gap-3 cursor-pointer rounded-xl border p-3 transition-colors ${pixOptKey ? "border-brand bg-brand-light/30" : "border-slate-200"} ${!profile?.pix_key ? "opacity-50 cursor-not-allowed" : ""}`}>
+                <input
+                  type="checkbox"
+                  checked={pixOptKey}
+                  onChange={(e) => setPixOptKey(e.target.checked)}
+                  className="w-4 h-4 mt-0.5 accent-brand"
+                  disabled={!profile?.pix_key}
+                />
+                <span className="text-sm flex-1">
+                  <span className="font-medium block">🔑 Chave Pix</span>
+                  {profile?.pix_key
+                    ? <span className="text-xs text-slate-500 font-mono mt-0.5 block break-all">{profile.pix_key}</span>
+                    : <span className="text-xs text-red-400 mt-0.5 block">Não cadastrada — configure nas Configurações</span>
+                  }
+                </span>
+              </label>
+
+              <label className={`flex items-start gap-3 cursor-pointer rounded-xl border p-3 transition-colors ${pixOptPayload ? "border-brand bg-brand-light/30" : "border-slate-200"} ${!pixModal.pix_payload ? "opacity-50 cursor-not-allowed" : ""}`}>
+                <input
+                  type="checkbox"
+                  checked={pixOptPayload}
+                  onChange={(e) => setPixOptPayload(e.target.checked)}
+                  className="w-4 h-4 mt-0.5 accent-brand"
+                  disabled={!pixModal.pix_payload}
+                />
+                <span className="text-sm flex-1">
+                  <span className="font-medium block">📋 Código copia e cola</span>
+                  <span className="text-xs text-slate-400 mt-0.5 block">
+                    {pixModal.pix_payload ? "String longa compatível com qualquer banco" : "Não gerado para esta cobrança"}
+                  </span>
+                </span>
+              </label>
+
+              <label className={`flex items-start gap-3 cursor-pointer rounded-xl border p-3 transition-colors ${pixOptLink ? "border-brand bg-brand-light/30" : "border-slate-200"} ${!profile?.payment_link ? "opacity-50 cursor-not-allowed" : ""}`}>
+                <input
+                  type="checkbox"
+                  checked={pixOptLink}
+                  onChange={(e) => setPixOptLink(e.target.checked)}
+                  className="w-4 h-4 mt-0.5 accent-brand"
+                  disabled={!profile?.payment_link}
+                />
+                <span className="text-sm flex-1">
+                  <span className="font-medium block">🔗 Link de pagamento</span>
+                  {profile?.payment_link
+                    ? <span className="text-xs text-slate-500 mt-0.5 block truncate">{profile.payment_link}</span>
+                    : <span className="text-xs text-slate-400 mt-0.5 block">Configure nas Configurações</span>
+                  }
+                </span>
+              </label>
+            </div>
+
+            {/* Prévia */}
+            <div>
+              <p className="text-xs font-semibold text-slate-500 mb-1.5">Prévia:</p>
+              <pre className="text-xs bg-green-50 border border-green-200 rounded-xl p-3 whitespace-pre-wrap font-sans leading-relaxed text-slate-700 max-h-44 overflow-y-auto">
+                {buildPixMessage(pixModal)}
+              </pre>
+            </div>
+
+            <div className="flex gap-3">
+              <button className="flex-1 btn border border-slate-200" onClick={() => setPixModal(null)}>Cancelar</button>
+              <button
+                className="flex-1 btn-primary"
+                disabled={(!pixOptKey && !pixOptPayload && !pixOptLink) || actionId === pixModal.id + "-wa"}
+                onClick={() => doSend(pixModal, buildPixMessage(pixModal), "pix")}
+              >
+                {actionId === pixModal.id + "-wa" ? "Enviando..." : "📲 Enviar pelo WhatsApp"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal: nova cobrança ──────────────────────────────────── */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-2xl w-full max-w-md p-5 space-y-4">
@@ -429,7 +628,7 @@ export default function CobrancasPage() {
                     className="text-xs text-brand underline"
                     onClick={async () => {
                       if (!("contacts" in navigator)) {
-                        alert("Seu navegador não suporta busca de contatos. No iOS, use os campos normalmente — o teclado sugere contatos automaticamente.");
+                        alert("Seu navegador não suporta busca de contatos. No iOS, use os campos normalmente.");
                         return;
                       }
                       try {
@@ -439,9 +638,7 @@ export default function CobrancasPage() {
                           setFClientName(contacts[0].name?.[0] || "");
                           setFClientPhone(contacts[0].tel?.[0] || "");
                         }
-                      } catch {
-                        /* usuário cancelou */
-                      }
+                      } catch { /* cancelado */ }
                     }}
                   >
                     📞 Buscar contato
@@ -473,30 +670,16 @@ export default function CobrancasPage() {
                   ))}
                 </select>
               </div>
-
-              {/* Lembrete automático */}
               <div className="col-span-2 border-t border-slate-100 pt-3">
                 <label className="flex items-center gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={fAutoReminder}
-                    onChange={(e) => setFAutoReminder(e.target.checked)}
-                    className="w-4 h-4 accent-brand"
-                  />
+                  <input type="checkbox" checked={fAutoReminder} onChange={(e) => setFAutoReminder(e.target.checked)} className="w-4 h-4 accent-brand" />
                   <span className="text-sm font-medium text-slate-700">🔔 Agendar lembrete automático</span>
                 </label>
                 {fAutoReminder && (
                   <div className="mt-3">
-                    <label className="label">Data e hora do envio automático</label>
-                    <input
-                      className="input"
-                      type="datetime-local"
-                      value={fScheduledAt}
-                      onChange={(e) => setFScheduledAt(e.target.value)}
-                    />
-                    <p className="text-xs text-slate-400 mt-1">
-                      O sistema enviará o lembrete via WhatsApp automaticamente nesse horário.
-                    </p>
+                    <label className="label">Data e hora do envio</label>
+                    <input className="input" type="datetime-local" value={fScheduledAt} onChange={(e) => setFScheduledAt(e.target.value)} />
+                    <p className="text-xs text-slate-400 mt-1">O sistema enviará o lembrete via WhatsApp automaticamente nesse horário.</p>
                   </div>
                 )}
               </div>

@@ -17,11 +17,13 @@ type AvailBlock = {
   end_time: string;
 };
 
+type BlockedPeriod = { start: string; end: string };
+
 type Props = {
   profileId: string;
   services: Service[];
   availability: AvailBlock[];
-  blockedDates?: string[];
+  blockedDates?: BlockedPeriod[];
 };
 
 function timeToMin(t: string) {
@@ -67,16 +69,16 @@ function calcSlots(
 }
 
 // Gera lista de datas disponíveis para os próximos 60 dias (inclui hoje no horário de Brasília)
-function getAvailableDates(blocks: AvailBlock[], blockedDates: string[] = []): string[] {
+function getAvailableDates(blocks: AvailBlock[], blockedPeriods: BlockedPeriod[] = []): string[] {
   const availableWeekdays = new Set(blocks.map((b) => b.weekday));
-  const blocked = new Set(blockedDates);
   const dates: string[] = [];
 
   for (let i = 0; i < 60; i++) {
     const base = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
     base.setDate(base.getDate() + i);
     const dateStr = `${base.getFullYear()}-${String(base.getMonth() + 1).padStart(2, "0")}-${String(base.getDate()).padStart(2, "0")}`;
-    if (availableWeekdays.has(base.getDay()) && !blocked.has(dateStr)) {
+    const isBlocked = blockedPeriods.some((p) => dateStr >= p.start && dateStr <= p.end);
+    if (availableWeekdays.has(base.getDay()) && !isBlocked) {
       dates.push(dateStr);
     }
   }

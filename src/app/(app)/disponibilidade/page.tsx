@@ -14,6 +14,7 @@ type Block = {
 type DateOverride = {
   id: string;
   date: string;
+  date_end: string | null;
   reason: string | null;
 };
 
@@ -26,8 +27,9 @@ export default function DisponibilidadePage() {
   const [start, setStart] = useState("09:00");
   const [end, setEnd] = useState("18:00");
 
-  // Dias indisponíveis
-  const [blockDate, setBlockDate] = useState("");
+  // Período indisponível
+  const [blockStart, setBlockStart] = useState("");
+  const [blockEnd, setBlockEnd] = useState("");
   const [blockReason, setBlockReason] = useState("");
   const [savingBlock, setSavingBlock] = useState(false);
 
@@ -76,32 +78,44 @@ export default function DisponibilidadePage() {
     load();
   }
 
-  async function addBlockedDate() {
-    if (!blockDate) return;
+  async function addBlockedPeriod() {
+    if (!blockStart) return;
+    const end = blockEnd || blockStart;
+    if (end < blockStart) {
+      alert("A data final não pode ser anterior à data inicial.");
+      return;
+    }
     setSavingBlock(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { setSavingBlock(false); return; }
 
-    await supabase.from("date_overrides").upsert({
+    await supabase.from("date_overrides").insert({
       profile_id: user.id,
-      date: blockDate,
+      date: blockStart,
+      date_end: end,
       reason: blockReason || null,
-    }, { onConflict: "profile_id,date" });
+    });
 
-    setBlockDate("");
+    setBlockStart("");
+    setBlockEnd("");
     setBlockReason("");
     setSavingBlock(false);
     load();
   }
 
-  async function removeBlockedDate(id: string) {
+  async function removeBlockedPeriod(id: string) {
     await supabase.from("date_overrides").delete().eq("id", id);
     load();
   }
 
-  const formatDate = (d: string) => {
+  const fmt = (d: string) => {
     const [y, m, day] = d.split("-");
     return `${day}/${m}/${y}`;
+  };
+
+  const periodLabel = (o: DateOverride) => {
+    const end = o.date_end || o.date;
+    return end === o.date ? fmt(o.date) : `${fmt(o.date)} até ${fmt(end)}`;
   };
 
   return (
@@ -122,30 +136,18 @@ export default function DisponibilidadePage() {
             onChange={(e) => setWeekday(parseInt(e.target.value))}
           >
             {WEEKDAYS.map((d, i) => (
-              <option key={i} value={i}>
-                {d}
-              </option>
+              <option key={i} value={i}>{d}</option>
             ))}
           </select>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="label">Início</label>
-            <input
-              type="time"
-              className="input"
-              value={start}
-              onChange={(e) => setStart(e.target.value)}
-            />
+            <input type="time" className="input" value={start} onChange={(e) => setStart(e.target.value)} />
           </div>
           <div>
             <label className="label">Fim</label>
-            <input
-              type="time"
-              className="input"
-              value={end}
-              onChange={(e) => setEnd(e.target.value)}
-            />
+            <input type="time" className="input" value={end} onChange={(e) => setEnd(e.target.value)} />
           </div>
         </div>
         <button className="btn-primary w-full" onClick={add}>
@@ -170,12 +172,7 @@ export default function DisponibilidadePage() {
                       className="inline-flex items-center gap-2 bg-brand-light text-brand-dark text-sm px-3 py-1 rounded-full"
                     >
                       {b.start_time.slice(0, 5)}–{b.end_time.slice(0, 5)}
-                      <button
-                        onClick={() => remove(b.id)}
-                        className="text-brand-dark/60 hover:text-red-600"
-                      >
-                        ✕
-                      </button>
+                      <button onClick={() => remove(b.id)} className="text-brand-dark/60 hover:text-red-600">✕</button>
                     </span>
                   ))}
                 </div>
@@ -185,25 +182,40 @@ export default function DisponibilidadePage() {
         </div>
       )}
 
-      {/* Dias indisponíveis */}
+      {/* Períodos indisponíveis */}
       <div className="space-y-3">
         <div>
-          <h2 className="font-semibold text-slate-900">Dias indisponíveis</h2>
+          <h2 className="font-semibold text-slate-900">Períodos indisponíveis</h2>
           <p className="text-xs text-slate-400 mt-1">
-            Bloqueie datas específicas (férias, feriados, folgas). Os clientes não conseguirão agendar nesses dias.
+            Bloqueie um dia ou período (férias, feriados, folgas). Para um único dia, deixe o final igual ao início.
           </p>
         </div>
 
         <div className="card space-y-3">
-          <div>
-            <label className="label">Data</label>
-            <input
-              type="date"
-              className="input"
-              value={blockDate}
-              onChange={(e) => setBlockDate(e.target.value)}
-              min={new Date().toISOString().slice(0, 10)}
-            />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">De</label>
+              <input
+                type="date"
+                className="input"
+                value={blockStart}
+                onChange={(e) => {
+                  setBlockStart(e.target.value);
+                  if (!blockEnd || blockEnd < e.target.value) setBlockEnd(e.target.value);
+                }}
+                min={new Date().toISOString().slice(0, 10)}
+              />
+            </div>
+            <div>
+              <label className="label">Até</label>
+              <input
+                type="date"
+                className="input"
+                value={blockEnd}
+                onChange={(e) => setBlockEnd(e.target.value)}
+                min={blockStart || new Date().toISOString().slice(0, 10)}
+              />
+            </div>
           </div>
           <div>
             <label className="label">Motivo (opcional)</label>
@@ -211,35 +223,28 @@ export default function DisponibilidadePage() {
               className="input"
               value={blockReason}
               onChange={(e) => setBlockReason(e.target.value)}
-              placeholder="Ex: Feriado, Férias, Folga..."
+              placeholder="Ex: Férias, Feriado, Folga..."
             />
           </div>
           <button
             className="btn-primary w-full"
-            onClick={addBlockedDate}
-            disabled={!blockDate || savingBlock}
+            onClick={addBlockedPeriod}
+            disabled={!blockStart || savingBlock}
           >
-            {savingBlock ? "Salvando..." : "Bloquear data"}
+            {savingBlock ? "Salvando..." : "Bloquear período"}
           </button>
         </div>
 
         {!loading && dateOverrides.length > 0 && (
           <div className="space-y-2">
             {dateOverrides.map((o) => (
-              <div
-                key={o.id}
-                className="card py-3 flex items-center justify-between"
-              >
+              <div key={o.id} className="card py-3 flex items-center justify-between">
                 <div>
-                  <p className="font-medium text-slate-900 text-sm">
-                    🚫 {formatDate(o.date)}
-                  </p>
-                  {o.reason && (
-                    <p className="text-xs text-slate-500 mt-0.5">{o.reason}</p>
-                  )}
+                  <p className="font-medium text-slate-900 text-sm">🚫 {periodLabel(o)}</p>
+                  {o.reason && <p className="text-xs text-slate-500 mt-0.5">{o.reason}</p>}
                 </div>
                 <button
-                  onClick={() => removeBlockedDate(o.id)}
+                  onClick={() => removeBlockedPeriod(o.id)}
                   className="text-sm text-red-500 hover:text-red-700 font-medium px-2"
                 >
                   Remover
@@ -250,9 +255,7 @@ export default function DisponibilidadePage() {
         )}
 
         {!loading && dateOverrides.length === 0 && (
-          <p className="text-sm text-slate-400 text-center py-4">
-            Nenhuma data bloqueada.
-          </p>
+          <p className="text-sm text-slate-400 text-center py-4">Nenhum período bloqueado.</p>
         )}
       </div>
     </div>

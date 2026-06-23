@@ -33,10 +33,15 @@ export default async function AgendarPage({ params }: Props) {
 
   const { data: dateOverrides } = await supabase
     .from("date_overrides")
-    .select("date")
+    .select("date, date_end")
     .eq("profile_id", profile.id);
 
-  const blockedDates = (dateOverrides || []).map((o: { date: string }) => o.date);
+  const blockedDates = (dateOverrides || []).map(
+    (o: { date: string; date_end: string | null }) => ({
+      start: o.date,
+      end: o.date_end || o.date,
+    })
+  );
 
   return (
     <div className="min-h-screen bg-slate-50">

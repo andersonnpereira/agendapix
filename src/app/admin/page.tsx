@@ -36,6 +36,8 @@ export default function AdminPage() {
   const [filterPlan, setFilterPlan] = useState("todos");
   const [editClient, setEditClient] = useState<Client | null>(null);
   const [saving, setSaving] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<Client | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [toast, setToast] = useState("");
 
   // Edit form state
@@ -76,6 +78,28 @@ export default function AdminPage() {
     setEPrice(c.plan_price_cents ? String(c.plan_price_cents / 100).replace(".", ",") : "");
     setEBlocked(c.is_blocked || false);
     setENotes(c.plan_notes || "");
+  }
+
+  async function deleteClient() {
+    if (!confirmDelete) return;
+    setDeleting(true);
+    const { data: { session } } = await supabase.auth.getSession();
+    const res = await fetch("/api/admin/clients", {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session?.access_token}`,
+      },
+      body: JSON.stringify({ id: confirmDelete.id }),
+    });
+    setDeleting(false);
+    setConfirmDelete(null);
+    if (res.ok) {
+      load();
+      showToast("Cliente excluído com sucesso.");
+    } else {
+      showToast("Erro ao excluir cliente.");
+    }
   }
 
   async function saveEdit() {
@@ -255,15 +279,60 @@ export default function AdminPage() {
                     <span>Cadastro: {formatDate(c.registered_at)}</span>
                   </div>
                 </div>
-                <button
-                  onClick={() => openEdit(c)}
-                  className="btn text-sm px-3 py-1.5 border border-slate-200 hover:bg-slate-50 shrink-0"
-                >
-                  Editar plano
-                </button>
+                <div className="flex gap-2 shrink-0">
+                  <button
+                    onClick={() => openEdit(c)}
+                    className="btn text-sm px-3 py-1.5 border border-slate-200 hover:bg-slate-50"
+                  >
+                    Editar plano
+                  </button>
+                  <button
+                    onClick={() => setConfirmDelete(c)}
+                    className="btn text-sm px-3 py-1.5 border border-red-200 text-red-500 hover:bg-red-50"
+                  >
+                    🗑
+                  </button>
+                </div>
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Modal confirmação de exclusão */}
+      {confirmDelete && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center text-xl shrink-0">
+                🗑
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-900 text-lg">Excluir cliente</h3>
+                <p className="text-sm text-slate-500">Esta ação não pode ser desfeita.</p>
+              </div>
+            </div>
+            <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-sm text-red-700">
+              Todos os dados de <strong>{confirmDelete.business_name || confirmDelete.name || confirmDelete.email}</strong> serão
+              excluídos permanentemente: agendamentos, cobranças, serviços, disponibilidade e conta de acesso.
+            </div>
+            <div className="flex gap-3 pt-1">
+              <button
+                className="flex-1 btn border border-slate-200"
+                onClick={() => setConfirmDelete(null)}
+                disabled={deleting}
+              >
+                Cancelar
+              </button>
+              <button
+                className="flex-1 btn bg-red-600 text-white hover:bg-red-700 font-semibold"
+                onClick={deleteClient}
+                disabled={deleting}
+              >
+                {deleting ? "Excluindo..." : "Excluir permanentemente"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

@@ -98,7 +98,8 @@ export default function AdminPage() {
       load();
       showToast("Cliente excluído com sucesso.");
     } else {
-      showToast("Erro ao excluir cliente.");
+      const data = await res.json().catch(() => ({}));
+      showToast(data.error ? `Erro: ${data.error}` : "Erro ao excluir cliente.");
     }
   }
 

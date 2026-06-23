@@ -40,6 +40,45 @@ export async function GET(req: NextRequest) {
   }
 }
 
+export async function DELETE(req: NextRequest) {
+  const user = await verifyAdmin(req);
+  if (!user) return NextResponse.json({ error: "Não autorizado" }, { status: 403 });
+
+  try {
+    const { id } = await req.json();
+    if (!id) return NextResponse.json({ error: "id obrigatório" }, { status: 400 });
+
+    const admin = createAdminClient();
+
+    const steps = [
+      () => admin.from("charges").delete().eq("profile_id", id),
+      () => admin.from("bookings").delete().eq("profile_id", id),
+      () => admin.from("availability").delete().eq("profile_id", id),
+      () => admin.from("services").delete().eq("profile_id", id),
+      () => admin.from("profiles").delete().eq("id", id),
+    ];
+
+    for (const step of steps) {
+      const { error } = await step();
+      if (error) {
+        console.error("DELETE cliente erro:", error);
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+    }
+
+    const { error: authError } = await admin.auth.admin.deleteUser(id);
+    if (authError) {
+      console.error("DELETE auth user erro:", authError);
+      return NextResponse.json({ error: authError.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    console.error("DELETE cliente catch:", e);
+    return NextResponse.json({ error: String(e) }, { status: 500 });
+  }
+}
+
 export async function PATCH(req: NextRequest) {
   const user = await verifyAdmin(req);
   if (!user) return NextResponse.json({ error: "Não autorizado" }, { status: 403 });

@@ -30,6 +30,14 @@ function timeToMin(t: string) {
 function minToTime(m: number) {
   return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 }
+function getTodayBrasilia(): string {
+  const d = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function getCurrentMinutesBrasilia(): number {
+  const d = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+  return d.getHours() * 60 + d.getMinutes();
+}
 
 // Gera os slots disponíveis para um dia, excluindo os já agendados
 function calcSlots(
@@ -57,28 +65,115 @@ function calcSlots(
   return slots;
 }
 
-// Gera lista de datas disponíveis para os próximos 60 dias
+// Gera lista de datas disponíveis para os próximos 60 dias (inclui hoje no horário de Brasília)
 function getAvailableDates(blocks: AvailBlock[]): string[] {
   const availableWeekdays = new Set(blocks.map((b) => b.weekday));
   const dates: string[] = [];
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  // começa amanhã
-  const start = new Date(today);
-  start.setDate(start.getDate() + 1);
 
   for (let i = 0; i < 60; i++) {
-    const d = new Date(start);
-    d.setDate(d.getDate() + i);
-    const wd = d.getDay(); // 0=domingo
-    if (availableWeekdays.has(wd)) {
-      dates.push(d.toISOString().slice(0, 10));
+    const base = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+    base.setDate(base.getDate() + i);
+    const dateStr = `${base.getFullYear()}-${String(base.getMonth() + 1).padStart(2, "0")}-${String(base.getDate()).padStart(2, "0")}`;
+    if (availableWeekdays.has(base.getDay())) {
+      dates.push(dateStr);
     }
   }
-  return dates.slice(0, 30); // máx 30 datas
+  return dates.slice(0, 30);
 }
 
 type Step = "service" | "datetime" | "contact" | "confirm" | "success";
+
+function CalendarPicker({
+  availableDates,
+  selectedDate,
+  onSelect,
+}: {
+  availableDates: string[];
+  selectedDate: string;
+  onSelect: (date: string) => void;
+}) {
+  const availableSet = new Set(availableDates);
+  const today = getTodayBrasilia();
+  const initStr = availableDates[0] || today;
+  const [viewYear, setViewYear] = useState(() => parseInt(initStr.slice(0, 4)));
+  const [viewMonth, setViewMonth] = useState(() => parseInt(initStr.slice(5, 7)) - 1);
+
+  const firstWeekday = new Date(viewYear, viewMonth, 1).getDay();
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+
+  const cells: (string | null)[] = [];
+  for (let i = 0; i < firstWeekday; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) {
+    cells.push(`${viewYear}-${String(viewMonth + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`);
+  }
+
+  const prevMonth = () => {
+    if (viewMonth === 0) { setViewYear((y) => y - 1); setViewMonth(11); }
+    else setViewMonth((m) => m - 1);
+  };
+  const nextMonth = () => {
+    if (viewMonth === 11) { setViewYear((y) => y + 1); setViewMonth(0); }
+    else setViewMonth((m) => m + 1);
+  };
+
+  const monthLabel = new Date(viewYear, viewMonth).toLocaleDateString("pt-BR", {
+    month: "long", year: "numeric",
+  });
+
+  return (
+    <div className="border border-slate-200 rounded-2xl p-4 bg-white shadow-sm select-none">
+      <div className="flex items-center justify-between mb-4">
+        <button type="button" onClick={prevMonth}
+          className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-slate-100 text-slate-500 text-xl font-light">
+          ‹
+        </button>
+        <span className="font-semibold text-slate-900 capitalize text-sm">{monthLabel}</span>
+        <button type="button" onClick={nextMonth}
+          className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-slate-100 text-slate-500 text-xl font-light">
+          ›
+        </button>
+      </div>
+
+      <div className="grid grid-cols-7 mb-2">
+        {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((d) => (
+          <div key={d} className="text-center text-xs text-slate-400 font-medium py-1">{d}</div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-7 gap-1">
+        {cells.map((dateStr, i) => {
+          if (!dateStr) return <div key={i} />;
+          const isAvailable = availableSet.has(dateStr);
+          const isSelected = dateStr === selectedDate;
+          const isToday = dateStr === today;
+          const isPast = dateStr < today;
+
+          return (
+            <button
+              key={dateStr}
+              type="button"
+              disabled={!isAvailable}
+              onClick={() => onSelect(dateStr)}
+              className={[
+                "h-9 w-full rounded-xl text-sm font-medium transition-all",
+                isSelected
+                  ? "bg-brand text-white shadow-md scale-105"
+                  : isAvailable
+                  ? "bg-brand-light text-brand-dark hover:bg-brand hover:text-white"
+                  : isPast
+                  ? "text-slate-200 cursor-default"
+                  : "text-slate-300 cursor-default",
+                isToday && !isSelected ? "ring-2 ring-brand ring-offset-1" : "",
+              ].filter(Boolean).join(" ")}
+            >
+              {parseInt(dateStr.slice(8))}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 export default function BookingForm({ profileId, services, availability }: Props) {
   const supabase = createClient();
@@ -118,7 +213,13 @@ export default function BookingForm({ profileId, services, availability }: Props
       return { time: b.time as string, duration_minutes: dur || selectedService.duration_minutes };
     });
 
-    const slots = calcSlots(availability, weekday, selectedService.duration_minutes, bookedForCalc);
+    let slots = calcSlots(availability, weekday, selectedService.duration_minutes, bookedForCalc);
+    // filtra horários passados se for hoje (horário de Brasília)
+    const todayBrasilia = getTodayBrasilia();
+    if (date === todayBrasilia) {
+      const currentMin = getCurrentMinutesBrasilia();
+      slots = slots.filter((s) => timeToMin(s) > currentMin + 30);
+    }
     setAvailableSlots(slots);
     setLoadingSlots(false);
   }
@@ -235,22 +336,11 @@ export default function BookingForm({ profileId, services, availability }: Props
           </div>
           <div>
             <label className="label">Data</label>
-            <select
-              className="input"
-              value={selectedDate}
-              onChange={(e) => onDateChange(e.target.value)}
-            >
-              <option value="">Selecione uma data</option>
-              {availableDates.map((d) => {
-                const [y, m, day] = d.split("-");
-                const weekday = new Date(d + "T00:00:00").toLocaleDateString("pt-BR", { weekday: "short" });
-                return (
-                  <option key={d} value={d}>
-                    {weekday.charAt(0).toUpperCase() + weekday.slice(1, -1)}. {day}/{m}/{y}
-                  </option>
-                );
-              })}
-            </select>
+            <CalendarPicker
+              availableDates={availableDates}
+              selectedDate={selectedDate}
+              onSelect={(d) => onDateChange(d)}
+            />
           </div>
           {selectedDate && (
             <div>

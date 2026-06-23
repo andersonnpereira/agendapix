@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase-browser";
 import {
@@ -52,7 +52,42 @@ export default function ConfiguracoesPage() {
   const [waToken, setWaToken] = useState("");
   const [waInstanceId, setWaInstanceId] = useState("");
 
+  // QR Code WhatsApp
+  const [qrStatus, setQrStatus] = useState<"idle" | "loading" | "connected" | "disconnected">("idle");
+  const [qrBase64, setQrBase64] = useState("");
+
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "";
+
+  const fetchQrRef = useRef(fetchQr);
+  useEffect(() => { fetchQrRef.current = fetchQr; });
+  useEffect(() => {
+    if (qrStatus !== "disconnected") return;
+    const interval = setInterval(() => fetchQrRef.current(), 5000);
+    return () => clearInterval(interval);
+  }, [qrStatus]);
+
+  async function fetchQr() {
+    setQrStatus("loading");
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) { setQrStatus("idle"); return; }
+    try {
+      const res = await fetch("/api/whatsapp-qr", {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      const data = await res.json();
+      if (data.status === "connected") {
+        setQrStatus("connected");
+        setQrBase64("");
+      } else if (data.status === "disconnected") {
+        setQrStatus("disconnected");
+        setQrBase64(data.qr || "");
+      } else {
+        setQrStatus("idle");
+      }
+    } catch {
+      setQrStatus("idle");
+    }
+  }
 
   useEffect(() => {
     (async () => {
@@ -284,6 +319,65 @@ export default function ConfiguracoesPage() {
           </p>
         )}
       </section>
+
+      {/* Conexão WhatsApp — QR Code */}
+      {waProvider === "evolution" && waInstanceId && waToken && (
+        <section className="card space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="font-semibold text-slate-900">Conexão WhatsApp</h2>
+            {qrStatus === "connected" && (
+              <span className="text-xs bg-green-100 text-green-700 font-semibold px-2.5 py-1 rounded-full">● Conectado</span>
+            )}
+            {qrStatus === "disconnected" && (
+              <span className="text-xs bg-red-100 text-red-600 font-semibold px-2.5 py-1 rounded-full">● Desconectado</span>
+            )}
+          </div>
+
+          {qrStatus === "idle" && (
+            <button className="btn-primary w-full" onClick={fetchQr}>
+              Verificar conexão
+            </button>
+          )}
+
+          {qrStatus === "loading" && (
+            <p className="text-sm text-slate-400 text-center py-2">Verificando...</p>
+          )}
+
+          {qrStatus === "connected" && (
+            <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-sm text-green-800 text-center space-y-2">
+              <p className="text-2xl">✅</p>
+              <p className="font-semibold">WhatsApp conectado!</p>
+              <p>As mensagens serão enviadas automaticamente.</p>
+              <button className="text-xs text-green-600 underline mt-1" onClick={fetchQr}>
+                Verificar novamente
+              </button>
+            </div>
+          )}
+
+          {qrStatus === "disconnected" && (
+            <div className="space-y-3">
+              <p className="text-sm text-slate-600 text-center">
+                Abra o <strong>WhatsApp Business</strong> → <strong>Aparelhos conectados</strong> → escaneie o QR code:
+              </p>
+              {qrBase64 ? (
+                <div className="flex justify-center">
+                  <img
+                    src={qrBase64}
+                    alt="QR Code WhatsApp"
+                    className="w-56 h-56 rounded-2xl border-2 border-brand/20 shadow-md"
+                  />
+                </div>
+              ) : (
+                <p className="text-sm text-red-500 text-center">Erro ao gerar QR code. Tente novamente.</p>
+              )}
+              <p className="text-xs text-slate-400 text-center">Atualiza automaticamente a cada 5 segundos.</p>
+              <button className="btn text-sm w-full border border-slate-200" onClick={fetchQr}>
+                ↺ Atualizar agora
+              </button>
+            </div>
+          )}
+        </section>
+      )}
 
       {error && <p className="text-sm text-red-600 text-center">{error}</p>}
 

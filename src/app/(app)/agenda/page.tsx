@@ -44,6 +44,7 @@ export default function AgendaPage() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [toast, setToast] = useState("");
   const [chargeModal, setChargeModal] = useState<Booking | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -139,6 +140,15 @@ export default function AgendaPage() {
     await supabase.from("bookings").update({ status: "concluido" }).eq("id", id);
     setActionLoading(null);
     load();
+  }
+
+  async function excluirAgendamento(id: string) {
+    setActionLoading(id + "-excluir");
+    await supabase.from("bookings").delete().eq("id", id);
+    setActionLoading(null);
+    setConfirmDeleteId(null);
+    load();
+    showToast("Agendamento excluído.");
   }
 
   async function criarCobranca(booking: Booking) {
@@ -315,10 +325,45 @@ export default function AgendaPage() {
                       {isLoading("cobrar") ? "Criando..." : "💰 Gerar cobrança Pix"}
                     </button>
                   )}
+                  {b.status === "cancelado" && (
+                    <button
+                      className="btn text-sm px-3 py-1.5 text-red-500 border border-red-200 hover:bg-red-50"
+                      onClick={() => setConfirmDeleteId(b.id)}
+                      disabled={!!isLoading("excluir")}
+                    >
+                      🗑 Excluir da agenda
+                    </button>
+                  )}
                 </div>
               </div>
             );
           })}
+        </div>
+      )}
+      {/* Modal confirmação de exclusão */}
+      {confirmDeleteId && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-sm p-6 space-y-4">
+            <h3 className="font-bold text-slate-900 text-lg">Excluir agendamento?</h3>
+            <p className="text-sm text-slate-500">
+              Esta ação não pode ser desfeita. O horário ficará livre na agenda.
+            </p>
+            <div className="flex gap-3">
+              <button
+                className="btn flex-1 border border-slate-200"
+                onClick={() => setConfirmDeleteId(null)}
+              >
+                Cancelar
+              </button>
+              <button
+                className="flex-1 bg-red-500 hover:bg-red-600 text-white font-semibold py-2.5 px-4 rounded-xl transition-colors"
+                onClick={() => excluirAgendamento(confirmDeleteId)}
+                disabled={!!actionLoading?.endsWith("-excluir")}
+              >
+                {actionLoading?.endsWith("-excluir") ? "Excluindo..." : "Excluir"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -359,8 +359,17 @@ export default function CobrancasPage() {
   }
 
   async function criarCobranca() {
-    if (!fClientName.trim() || !fAmount.trim()) return;
     setFError("");
+
+    if (!fClientName.trim()) {
+      setFError("Informe o nome do cliente.");
+      return;
+    }
+    if (!fAmount.trim()) {
+      setFError("Informe o valor da cobrança.");
+      return;
+    }
+
     setFSaving(true);
 
     try {
@@ -944,7 +953,7 @@ export default function CobrancasPage() {
                   ❌ {fError}
                 </div>
               )}
-              <button className="btn-primary w-full" onClick={criarCobranca} disabled={fSaving || !fClientName.trim() || !fAmount.trim()}>
+              <button className="btn-primary w-full" onClick={criarCobranca} disabled={fSaving}>
                 {fSaving ? "Criando..." : "Criar cobrança"}
               </button>
             </div>

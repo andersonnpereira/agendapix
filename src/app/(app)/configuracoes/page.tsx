@@ -86,10 +86,10 @@ export default function ConfiguracoesPage() {
 
   const fetchQrRef = useRef(fetchQr);
   useEffect(() => { fetchQrRef.current = fetchQr; });
-  // Auto-refresh a cada 5s enquanto desconectado
+  // Auto-refresh a cada 30s enquanto desconectado
   useEffect(() => {
     if (qrStatus !== "disconnected") return;
-    const interval = setInterval(() => fetchQrRef.current(), 5000);
+    const interval = setInterval(() => fetchQrRef.current(), 30000);
     return () => clearInterval(interval);
   }, [qrStatus]);
 

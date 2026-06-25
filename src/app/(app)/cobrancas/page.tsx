@@ -37,6 +37,12 @@ type Profile = {
   msg_pix: string | null;
 };
 
+type ClientOption = {
+  id: string;
+  name: string;
+  phone: string | null;
+};
+
 const STATUS_BADGE: Record<string, string> = {
   pendente: "bg-amber-100 text-amber-700",
   pago:     "bg-brand-light text-brand-dark",
@@ -90,6 +96,8 @@ export default function CobrancasPage() {
   const supabase = createClient();
   const [charges, setCharges] = useState<Charge[]>([]);
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [clientOptions, setClientOptions] = useState<ClientOption[]>([]);
+  const [showClientSuggestions, setShowClientSuggestions] = useState(false);
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState<"todos" | "pendente" | "pago" | "atrasado">("todos");
   const [showModal, setShowModal] = useState(false);
@@ -128,12 +136,12 @@ export default function CobrancasPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const { data: p } = await supabase
-      .from("profiles")
-      .select("id, pix_key, pix_key_type, pix_merchant_name, pix_merchant_city, payment_link, msg_lembrete, msg_pix")
-      .eq("id", user.id)
-      .single();
+    const [{ data: p }, { data: cls }] = await Promise.all([
+      supabase.from("profiles").select("id, pix_key, pix_key_type, pix_merchant_name, pix_merchant_city, payment_link, msg_lembrete, msg_pix").eq("id", user.id).single(),
+      supabase.from("clients").select("id, name, phone").eq("profile_id", user.id).eq("status", "ativo").order("name"),
+    ]);
     setProfile(p);
+    setClientOptions((cls as ClientOption[]) || []);
 
     let q = supabase
       .from("charges")
@@ -353,6 +361,13 @@ export default function CobrancasPage() {
   }
 
   const filtered = filterStatus === "todos" ? charges : charges.filter((c) => c.status === filterStatus);
+
+  const clientSuggestions = fClientName.trim().length > 0
+    ? clientOptions.filter((c) =>
+        c.name.toLowerCase().includes(fClientName.toLowerCase()) ||
+        (c.phone || "").includes(fClientName)
+      ).slice(0, 6)
+    : [];
 
   return (
     <div className="space-y-5 pb-4">
@@ -715,7 +730,7 @@ export default function CobrancasPage() {
               <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600 text-xl">✕</button>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <div className="col-span-2">
+              <div className="col-span-2 relative">
                 <div className="flex items-center justify-between mb-1">
                   <label className="label mb-0">Nome do cliente</label>
                   <button
@@ -739,7 +754,35 @@ export default function CobrancasPage() {
                     📞 Buscar contato
                   </button>
                 </div>
-                <input className="input" value={fClientName} onChange={(e) => setFClientName(e.target.value)} placeholder="João Silva" autoComplete="name" />
+                <input
+                  className="input"
+                  value={fClientName}
+                  onChange={(e) => { setFClientName(e.target.value); setShowClientSuggestions(true); }}
+                  onFocus={() => setShowClientSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowClientSuggestions(false), 150)}
+                  placeholder="Digite o nome ou busque um cliente cadastrado"
+                  autoComplete="off"
+                />
+                {showClientSuggestions && clientSuggestions.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 z-20 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden">
+                    {clientSuggestions.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        className="w-full text-left px-3 py-2.5 hover:bg-slate-50 flex items-center justify-between gap-3 border-b border-slate-100 last:border-0"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          setFClientName(c.name);
+                          setFClientPhone(c.phone || "");
+                          setShowClientSuggestions(false);
+                        }}
+                      >
+                        <span className="text-sm font-medium text-slate-900">{c.name}</span>
+                        {c.phone && <span className="text-xs text-slate-400 shrink-0">{c.phone}</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
               <div className="col-span-2">
                 <label className="label">WhatsApp do cliente</label>

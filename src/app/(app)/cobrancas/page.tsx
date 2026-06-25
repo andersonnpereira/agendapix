@@ -724,11 +724,14 @@ export default function CobrancasPage() {
       {/* ── Modal: nova cobrança ──────────────────────────────────── */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md p-5 space-y-4">
-            <div className="flex items-center justify-between">
+          <div className="bg-white rounded-2xl w-full max-w-md flex flex-col max-h-[92vh]">
+            {/* Header fixo */}
+            <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-slate-100 shrink-0">
               <h3 className="font-bold text-slate-900 text-lg">Nova cobrança</h3>
               <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600 text-xl">✕</button>
             </div>
+            {/* Conteúdo rolável */}
+            <div className="overflow-y-auto px-5 py-4 flex-1">
             <div className="grid grid-cols-2 gap-3">
               <div className="col-span-2 relative">
                 <div className="flex items-center justify-between mb-1">
@@ -841,10 +844,14 @@ export default function CobrancasPage() {
                   </div>
                 )}
               </div>
+            </div>{/* fim grid */}
+            </div>{/* fim scroll */}
+            {/* Rodapé fixo com botão */}
+            <div className="px-5 pb-5 pt-3 border-t border-slate-100 shrink-0">
+              <button className="btn-primary w-full" onClick={criarCobranca} disabled={fSaving || !fClientName || !fAmount}>
+                {fSaving ? "Criando..." : "Criar cobrança"}
+              </button>
             </div>
-            <button className="btn-primary w-full" onClick={criarCobranca} disabled={fSaving || !fClientName || !fAmount}>
-              {fSaving ? "Criando..." : "Criar cobrança"}
-            </button>
           </div>
         </div>
       )}

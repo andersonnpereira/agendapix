@@ -6,7 +6,10 @@ import { sendWhatsApp } from "@/lib/whatsapp";
 const supabaseAdmin = () =>
   createSupabaseClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY
+      ? { auth: { autoRefreshToken: false, persistSession: false } }
+      : undefined
   );
 
 // --- Rate limiting em memória ---

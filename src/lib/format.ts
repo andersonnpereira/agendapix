@@ -23,6 +23,22 @@ export const WEEKDAYS = [
   "Sábado",
 ];
 
+/** Retorna a data de hoje no fuso horário de Brasília (YYYY-MM-DD). */
+export function getTodayBR(): string {
+  return new Date()
+    .toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })
+    .split("/")
+    .reverse()
+    .join("-");
+}
+
+/** Retorna a data de hoje + N dias, no fuso horário de Brasília. N pode ser negativo. */
+export function addDaysBR(days: number): string {
+  const d = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+  d.setDate(d.getDate() + days);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 /** Gera slug a partir de um texto: "Studio da Ana" => "studio-da-ana" */
 export function slugify(text: string): string {
   return text

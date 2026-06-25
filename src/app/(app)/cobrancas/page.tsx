@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase-browser";
-import { formatBRL, parseToCents } from "@/lib/format";
+import { formatBRL, parseToCents, getTodayBR } from "@/lib/format";
 import { generatePixBRCode, normalizePixKey, type PixKeyType } from "@/lib/pix";
 import { PixDisplay } from "@/components/PixDisplay";
 import { msgLembrete } from "@/lib/whatsapp";
@@ -134,7 +134,7 @@ export default function CobrancasPage() {
   const [fClientPhone, setFClientPhone] = useState("");
   const [fDescription, setFDescription] = useState("");
   const [fAmount, setFAmount] = useState("");
-  const [fDueDate, setFDueDate] = useState(new Date().toISOString().slice(0, 10));
+  const [fDueDate, setFDueDate] = useState(getTodayBR);
   const [fRecurrence, setFRecurrence] = useState("none");
   const [fAutoReminder, setFAutoReminder] = useState(false);
   const [fScheduledAt, setFScheduledAt] = useState("");
@@ -172,7 +172,7 @@ export default function CobrancasPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getTodayBR();
   const dueToday = charges.filter(
     (c) => c.recurrence !== "none" && c.status === "pendente" && c.next_due_date && c.next_due_date <= today
   );
@@ -499,7 +499,7 @@ export default function CobrancasPage() {
       }
 
       setFClientName(""); setFClientPhone(""); setFDescription(""); setFAmount("");
-      setFDueDate(new Date().toISOString().slice(0, 10)); setFRecurrence("none");
+      setFDueDate(getTodayBR()); setFRecurrence("none");
       setFAutoReminder(false); setFScheduledAt(""); setFError("");
       setShowModal(false);
       load();

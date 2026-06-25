@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { createClient } from "@/lib/supabase-browser";
 import { formatBRL } from "@/lib/format";
 
@@ -194,6 +194,7 @@ export default function BookingForm({ profileId, services, availability, blocked
   const [error, setError] = useState("");
 
   const availableDates = getAvailableDates(availability, blockedDates);
+  const slotRequestRef = useRef(0);
 
   async function onDateChange(date: string) {
     setSelectedDate(date);
@@ -201,6 +202,7 @@ export default function BookingForm({ profileId, services, availability, blocked
     if (!date || !selectedService) return;
 
     setLoadingSlots(true);
+    const requestId = ++slotRequestRef.current;
     const weekday = new Date(date + "T00:00:00").getDay();
 
     const { data: booked } = await supabase
@@ -209,6 +211,9 @@ export default function BookingForm({ profileId, services, availability, blocked
       .eq("profile_id", profileId)
       .eq("date", date)
       .in("status", ["pendente", "confirmado"]);
+
+    // Descarta resultado se o usuário já selecionou outra data
+    if (requestId !== slotRequestRef.current) return;
 
     const bookedForCalc = (booked || []).map((b) => {
       const svc = b.services as unknown;

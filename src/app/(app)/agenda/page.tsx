@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase-browser";
-import { formatBRL } from "@/lib/format";
+import { formatBRL, getTodayBR, addDaysBR } from "@/lib/format";
 import { generatePixBRCode, normalizePixKey, type PixKeyType } from "@/lib/pix";
 
 type Booking = {
@@ -76,7 +76,7 @@ export default function AgendaPage() {
       .single();
     setProfile(p);
 
-    const today = new Date().toISOString().slice(0, 10);
+    const today = getTodayBR();
     let query = supabase
       .from("bookings")
       .select("*, services(name, price_cents, duration_minutes)")
@@ -85,7 +85,7 @@ export default function AgendaPage() {
       .order("time", { ascending: true });
 
     if (filter === "hoje") query = query.eq("date", today);
-    else if (filter === "proximos") query = query.gt("date", today).lte("date", new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10));
+    else if (filter === "proximos") query = query.gt("date", today).lte("date", addDaysBR(7));
 
     const { data } = await query;
     setBookings((data as Booking[]) ?? []);
@@ -265,7 +265,7 @@ export default function AgendaPage() {
     : bookings;
 
   // Contagem por filtro para badges
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getTodayBR();
   const countHoje = bookings.filter((b) => b.date === today).length;
 
   const filterLabel = (f: Filter) => {

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase-server";
-import { formatBRL } from "@/lib/format";
+import { formatBRL, getTodayBR, addDaysBR } from "@/lib/format";
 import { CopyLinkButton } from "@/components/CopyLinkButton";
 import { ShareLinkButton } from "@/components/ShareLinkButton";
 
@@ -31,10 +31,8 @@ export default async function DashboardPage() {
         )
       : null;
 
-  const today = new Date().toISOString().slice(0, 10);
-  const monthStart = new Date();
-  monthStart.setDate(1);
-  const monthStartStr = monthStart.toISOString().slice(0, 10);
+  const today = getTodayBR();
+  const monthStartStr = today.slice(0, 7) + "-01";
 
   const { data: todayBookings } = await supabase
     .from("bookings")
@@ -67,9 +65,11 @@ export default async function DashboardPage() {
     paidCharges?.reduce((sum, c) => sum + (c.amount_cents || 0), 0) || 0;
 
   // Analytics extras
-  const weekStart = new Date();
-  weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-  const weekStartStr = weekStart.toISOString().slice(0, 10);
+  const weekStartStr = (() => {
+    const d = new Date(today + "T12:00:00");
+    d.setDate(d.getDate() - d.getDay());
+    return d.toISOString().slice(0, 10);
+  })();
 
   const [{ count: clientCount }, { data: monthBookings }, { data: upcomingBookings }] =
     await Promise.all([
@@ -89,7 +89,7 @@ export default async function DashboardPage() {
         .select("client_name, date, time, services(name)")
         .eq("profile_id", user.id)
         .gt("date", today)
-        .lte("date", new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10))
+        .lte("date", addDaysBR(3))
         .neq("status", "cancelado")
         .order("date")
         .order("time")
@@ -108,7 +108,7 @@ export default async function DashboardPage() {
   const topService = Object.values(svcCount).sort((a, b) => b.count - a.count)[0] || null;
 
   // Aniversariantes + clientes inativos
-  const thirtyDaysAgoStr = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+  const thirtyDaysAgoStr = addDaysBR(-30);
   const [{ data: allClients }, { data: recentClientBookings }] = await Promise.all([
     supabase.from("clients").select("id, name, birthdate").eq("profile_id", user.id).eq("status", "ativo"),
     supabase.from("bookings").select("client_id").eq("profile_id", user.id).gte("date", thirtyDaysAgoStr).neq("status", "cancelado").not("client_id", "is", null),

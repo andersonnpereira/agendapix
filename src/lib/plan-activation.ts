@@ -1,12 +1,13 @@
 import { createAdminClient } from "./supabase-admin";
 
-export type PlanType = "monthly" | "annual";
+export type PlanType = "monthly" | "annual" | "lifetime";
 
-export function calcExpiry(planType: PlanType): Date {
+export function calcExpiry(planType: PlanType): string | null {
+  if (planType === "lifetime") return null;
   const d = new Date();
   if (planType === "monthly") d.setDate(d.getDate() + 31);
   else d.setDate(d.getDate() + 366);
-  return d;
+  return d.toISOString();
 }
 
 /**
@@ -35,7 +36,7 @@ export async function activatePlanByEmail(
       .from("profiles")
       .update({
         plan_type: planType,
-        plan_expires_at: expiresAt.toISOString(),
+        plan_expires_at: expiresAt, // null para lifetime
         is_blocked: false,
       })
       .eq("id", user.id);
@@ -48,7 +49,7 @@ export async function activatePlanByEmail(
     {
       email: normalizedEmail,
       plan_type: planType,
-      plan_expires_at: expiresAt.toISOString(),
+      plan_expires_at: expiresAt,
       source,
       raw_payload: rawPayload ?? null,
     },

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { activatePlanByEmail, detectPlanType, type PlanType } from "@/lib/plan-activation";
+import { activatePlanByEmail, type PlanType } from "@/lib/plan-activation";
 
 export async function POST(req: NextRequest) {
   // ── Validação do token ─────────────────────────────────────────────
@@ -46,26 +46,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "E-mail do comprador não encontrado" }, { status: 422 });
   }
 
-  // ── Determina o tipo de plano ──────────────────────────────────────
-  // Prioridade: env vars com offer code → nome do produto/plano
-  let planType: PlanType | null = null;
-
-  const offerCode = offer.code || "";
-  const monthlyOffer = process.env.HOTMART_OFFER_MONTHLY;
-  const annualOffer = process.env.HOTMART_OFFER_ANNUAL;
-
-  if (monthlyOffer && offerCode === monthlyOffer) planType = "monthly";
-  else if (annualOffer && offerCode === annualOffer) planType = "annual";
-  else {
-    planType = detectPlanType(
-      offerCode,
-      product.name,
-      plan.name,
-      (data.subscription as Record<string, unknown> | null)?.toString()
-    );
-  }
-
-  if (!planType) planType = "monthly"; // fallback seguro
+  // Toda venda via Hotmart = acesso vitalício (sem suporte)
+  const planType: PlanType = "lifetime";
 
   // ── Ativa o plano ─────────────────────────────────────────────────
   const result = await activatePlanByEmail(email, planType, "hotmart", body);

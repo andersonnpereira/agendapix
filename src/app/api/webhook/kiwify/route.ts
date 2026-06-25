@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { activatePlanByEmail, detectPlanType, type PlanType } from "@/lib/plan-activation";
+import { activatePlanByEmail, type PlanType } from "@/lib/plan-activation";
 
 export async function POST(req: NextRequest) {
   // ── Validação do token ─────────────────────────────────────────────
@@ -52,21 +52,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "E-mail do comprador não encontrado" }, { status: 422 });
   }
 
-  // ── Determina o tipo de plano ──────────────────────────────────────
-  let planType: PlanType | null = null;
-
-  const planId = subscriptionData.PlanId || subscriptionData.plan_id || "";
-  const planName = subscriptionData.PlanName || subscriptionData.plan_name || "";
-  const productName = productData.ProductName || productData.name || "";
-
-  const monthlyPlan = process.env.KIWIFY_PLAN_MONTHLY;
-  const annualPlan = process.env.KIWIFY_PLAN_ANNUAL;
-
-  if (monthlyPlan && (planId === monthlyPlan || planName === monthlyPlan)) planType = "monthly";
-  else if (annualPlan && (planId === annualPlan || planName === annualPlan)) planType = "annual";
-  else planType = detectPlanType(planId, planName, productName);
-
-  if (!planType) planType = "monthly";
+  // Toda venda via Kiwify = acesso vitalício (sem suporte)
+  const planType: PlanType = "lifetime";
 
   // ── Ativa o plano ─────────────────────────────────────────────────
   const result = await activatePlanByEmail(email, planType, "kiwify", body);

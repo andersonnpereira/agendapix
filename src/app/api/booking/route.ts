@@ -167,32 +167,8 @@ export async function POST(req: NextRequest) {
     const dateFormatted = `${day}/${month}/${year}`;
     const serviceName = (service as { name: string } | null)?.name || "Serviço";
 
-    let ownerMsg =
-      `📅 *Novo agendamento recebido!*\n\n` +
-      `👤 *Cliente:* ${client_name}\n` +
-      `✂️ *Serviço:* ${serviceName}\n` +
-      `📅 *Data:* ${dateFormatted} às ${time.slice(0, 5)}\n` +
-      `📱 *WhatsApp:* ${client_phone}`;
-
-    if (client_notes) {
-      ownerMsg += `\n📝 *Observação:* ${client_notes}`;
-    }
-
-    const ownerPhone = profile?.phone;
     const instanceId = profile?.whatsapp_instance_id;
     const evolutionKey = process.env.EVOLUTION_API_KEY;
-
-    if (ownerPhone && instanceId && evolutionKey) {
-      const result = await sendWhatsApp({
-        to: ownerPhone,
-        message: ownerMsg,
-        provider: "evolution",
-        instanceId,
-      });
-      if (!result.ok) {
-        console.error("[booking notify WA]", result.error);
-      }
-    }
 
     const email = profile?.notification_email || authUser?.user?.email;
     if (email) {

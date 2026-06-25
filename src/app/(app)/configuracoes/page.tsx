@@ -261,9 +261,14 @@ export default function ConfiguracoesPage() {
           <input className="input" type="email" value={notificationEmail} onChange={(e) => setNotificationEmail(e.target.value)} placeholder="seu@email.com" />
           <p className="text-xs text-slate-400 mt-1">Você receberá um e-mail quando um cliente agendar.</p>
         </div>
-        <Link href="/disponibilidade" className="btn-ghost text-sm inline-block text-center">
-          ⏰ Gerenciar horários de atendimento →
-        </Link>
+        <div className="flex flex-col gap-2">
+          <Link href="/servicos" className="btn-ghost text-sm inline-block text-center">
+            ✂️ Gerenciar serviços →
+          </Link>
+          <Link href="/disponibilidade" className="btn-ghost text-sm inline-block text-center">
+            ⏰ Gerenciar horários de atendimento →
+          </Link>
+        </div>
       </section>
 
       {/* Identidade visual */}

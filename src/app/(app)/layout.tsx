@@ -2,15 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase-server";
 import { SignOutButton } from "@/components/SignOutButton";
-
-const nav = [
-  { href: "/dashboard",    label: "Início",     icon: "🏠" },
-  { href: "/agenda",       label: "Agenda",     icon: "📅" },
-  { href: "/clientes",     label: "Clientes",   icon: "👥" },
-  { href: "/cobrancas",    label: "Cobranças",  icon: "💰" },
-  { href: "/financeiro",   label: "Financeiro", icon: "📊" },
-  { href: "/configuracoes",label: "Config",     icon: "⚙️" },
-];
+import { BottomNav } from "@/components/BottomNav";
 
 
 export default async function AppLayout({
@@ -64,20 +56,7 @@ export default async function AppLayout({
       <main className="max-w-2xl mx-auto px-5 py-6">{children}</main>
 
       {/* Bottom nav (mobile-first) */}
-      <nav className="fixed bottom-0 inset-x-0 bg-white border-t border-slate-100 z-10">
-        <div className="max-w-2xl mx-auto grid grid-cols-6">
-          {nav.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="flex flex-col items-center py-2.5 text-xs text-slate-500 hover:text-brand"
-            >
-              <span className="text-lg leading-none">{item.icon}</span>
-              <span className="mt-0.5">{item.label}</span>
-            </Link>
-          ))}
-        </div>
-      </nav>
+      <BottomNav />
     </div>
   );
 }

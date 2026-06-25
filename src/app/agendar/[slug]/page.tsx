@@ -1,7 +1,39 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase-server";
 import BookingForm from "./BookingForm";
 import { AvatarImg } from "./AvatarImg";
+
+export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
+  const supabase = createClient();
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("name, business_name, avatar_url")
+    .eq("slug", params.slug)
+    .single();
+
+  if (!profile) return { title: "Agendamento" };
+
+  const name = profile.business_name || profile.name || "Profissional";
+  const title = `Agendar com ${name}`;
+  const description = `Agende seu horário com ${name} de forma rápida e fácil.`;
+
+  return {
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      ...(profile.avatar_url ? { images: [{ url: profile.avatar_url }] } : {}),
+      type: "website",
+    },
+    twitter: {
+      card: "summary",
+      title,
+      description,
+    },
+  };
+}
 
 function hexToRgb(hex: string) {
   const r = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);

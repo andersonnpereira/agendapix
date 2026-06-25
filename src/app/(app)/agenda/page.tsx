@@ -35,6 +35,14 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
 
 type Filter = "hoje" | "proximos" | "todos";
 
+function calcEndTime(time: string, durationMinutes: number): string {
+  const [hStr, mStr] = time.slice(0, 5).split(":");
+  const totalMinutes = parseInt(hStr, 10) * 60 + parseInt(mStr, 10) + durationMinutes;
+  const endH = Math.floor(totalMinutes / 60) % 24;
+  const endM = totalMinutes % 60;
+  return `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
+}
+
 export default function AgendaPage() {
   const supabase = createClient();
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -46,6 +54,11 @@ export default function AgendaPage() {
   const [toast, setToast] = useState("");
   const [chargeModal, setChargeModal] = useState<Booking | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  // Reagendamento
+  const [rescheduleModal, setRescheduleModal] = useState<Booking | null>(null);
+  const [rescheduleDate, setRescheduleDate] = useState("");
+  const [rescheduleTime, setRescheduleTime] = useState("");
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -82,18 +95,18 @@ export default function AgendaPage() {
   useEffect(() => { load(); }, [load]);
 
   // Realtime: nova reserva = toast de notificação
+  // Bug fix: salva referência do canal e usa channel.unsubscribe() no cleanup
+  // para não remover canais de outros componentes.
   useEffect(() => {
-    let profileId: string;
+    let channel: ReturnType<typeof supabase.channel>;
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-      profileId = user.id;
-
-      supabase
-        .channel("agenda-realtime")
+      channel = supabase
+        .channel("agenda-realtime-" + user.id)
         .on(
           "postgres_changes",
-          { event: "INSERT", schema: "public", table: "bookings", filter: `profile_id=eq.${profileId}` },
+          { event: "INSERT", schema: "public", table: "bookings", filter: `profile_id=eq.${user.id}` },
           (payload) => {
             const b = payload.new as Booking;
             showToast(`🔔 Novo agendamento de ${b.client_name}!`);
@@ -103,14 +116,13 @@ export default function AgendaPage() {
         .subscribe();
     })();
 
-    return () => { supabase.removeAllChannels(); };
+    return () => { channel?.unsubscribe(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function confirmar(booking: Booking) {
     setActionLoading(booking.id + "-confirmar");
     try {
-      // 1. Atualiza status no DB usando o cliente do browser (tem auth → RLS passa)
       const { error: dbErr } = await supabase
         .from("bookings")
         .update({ status: "confirmado" })
@@ -121,14 +133,12 @@ export default function AgendaPage() {
         return;
       }
 
-      // 2. Atualiza estado local imediatamente
       setBookings((prev) =>
         prev.map((b) =>
           b.id === booking.id ? { ...b, status: "confirmado" } : b
         )
       );
 
-      // 3. Envia WhatsApp via API (best-effort)
       fetch("/api/whatsapp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -219,6 +229,29 @@ export default function AgendaPage() {
     setChargeModal(null);
   }
 
+  async function reagendar() {
+    if (!rescheduleModal) return;
+    setActionLoading(rescheduleModal.id + "-reagendar");
+    const { error } = await supabase
+      .from("bookings")
+      .update({ date: rescheduleDate, time: rescheduleTime })
+      .eq("id", rescheduleModal.id);
+    setActionLoading(null);
+    if (error) {
+      showToast("Erro ao reagendar. Tente novamente.");
+      return;
+    }
+    setRescheduleModal(null);
+    load();
+    showToast("Agendamento reagendado!");
+  }
+
+  function openReschedule(b: Booking) {
+    setRescheduleDate(b.date);
+    setRescheduleTime(b.time?.slice(0, 5) ?? "");
+    setRescheduleModal(b);
+  }
+
   const formatDate = (d: string) => {
     const [y, m, day] = d.split("-");
     return `${day}/${m}/${y}`;
@@ -230,6 +263,16 @@ export default function AgendaPage() {
         b.client_phone.includes(search)
       )
     : bookings;
+
+  // Contagem por filtro para badges
+  const today = new Date().toISOString().slice(0, 10);
+  const countHoje = bookings.filter((b) => b.date === today).length;
+
+  const filterLabel = (f: Filter) => {
+    if (f === "hoje") return countHoje > 0 ? `Hoje (${countHoje})` : "Hoje";
+    if (f === "proximos") return "Próximos 7 dias";
+    return "Todos";
+  };
 
   return (
     <div className="space-y-5">
@@ -250,7 +293,7 @@ export default function AgendaPage() {
         onChange={(e) => setSearch(e.target.value)}
       />
 
-      {/* Filtros */}
+      {/* Filtros com badge de contagem */}
       <div className="flex gap-2">
         {(["hoje", "proximos", "todos"] as Filter[]).map((f) => (
           <button
@@ -262,7 +305,7 @@ export default function AgendaPage() {
                 : "bg-slate-100 text-slate-600 hover:bg-slate-200"
             }`}
           >
-            {f === "hoje" ? "Hoje" : f === "proximos" ? "Próximos 7 dias" : "Todos"}
+            {filterLabel(f)}
           </button>
         ))}
       </div>
@@ -284,13 +327,19 @@ export default function AgendaPage() {
           {filtered.map((b) => {
             const st = STATUS_LABELS[b.status];
             const isLoading = (suf: string) => actionLoading === `${b.id}-${suf}`;
+            const startTime = b.time?.slice(0, 5) ?? "";
+            const timeDisplay =
+              b.services?.duration_minutes && startTime
+                ? `${startTime} – ${calcEndTime(startTime, b.services.duration_minutes)}`
+                : startTime;
+
             return (
               <div key={b.id} className="card py-4 space-y-3">
                 <div className="flex items-start justify-between">
                   <div>
                     <p className="font-semibold text-slate-900">{b.client_name}</p>
                     <p className="text-sm text-slate-500">
-                      {b.services?.name || "Serviço"} · {formatDate(b.date)} às {b.time?.slice(0, 5)}
+                      {b.services?.name || "Serviço"} · {formatDate(b.date)} às {timeDisplay}
                     </p>
                     <p className="text-xs text-slate-400 mt-0.5">{b.client_phone}</p>
                     {b.notes && (
@@ -322,6 +371,12 @@ export default function AgendaPage() {
                         {isLoading("confirmar") ? "Enviando..." : "✓ Confirmar + WhatsApp"}
                       </button>
                       <button
+                        className="btn text-sm px-3 py-1.5 border border-slate-200 hover:bg-slate-50"
+                        onClick={() => openReschedule(b)}
+                      >
+                        Reagendar
+                      </button>
+                      <button
                         className="btn text-sm px-3 py-1.5 text-red-500 border border-red-200 hover:bg-red-50"
                         onClick={() => cancelar(b.id)}
                         disabled={!!isLoading("cancelar")}
@@ -338,6 +393,12 @@ export default function AgendaPage() {
                         disabled={!!isLoading("concluir")}
                       >
                         ✓ Marcar concluído
+                      </button>
+                      <button
+                        className="btn text-sm px-3 py-1.5 border border-slate-200 hover:bg-slate-50"
+                        onClick={() => openReschedule(b)}
+                      >
+                        Reagendar
                       </button>
                       <button
                         className="btn text-sm px-3 py-1.5 text-red-500 border border-red-200 hover:bg-red-50"
@@ -381,6 +442,7 @@ export default function AgendaPage() {
           })}
         </div>
       )}
+
       {/* Modal confirmação de exclusão */}
       {confirmDeleteId && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end justify-center p-4">
@@ -402,6 +464,53 @@ export default function AgendaPage() {
                 disabled={!!actionLoading?.endsWith("-excluir")}
               >
                 {actionLoading?.endsWith("-excluir") ? "Excluindo..." : "Excluir"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de reagendamento */}
+      {rescheduleModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-sm p-6 space-y-4">
+            <h3 className="font-bold text-slate-900 text-lg">Reagendar</h3>
+            <p className="text-sm text-slate-500">
+              {rescheduleModal.client_name} · {rescheduleModal.services?.name || "Serviço"}
+            </p>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Data</label>
+                <input
+                  type="date"
+                  className="input text-sm w-full"
+                  value={rescheduleDate}
+                  onChange={(e) => setRescheduleDate(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Horário</label>
+                <input
+                  type="time"
+                  className="input text-sm w-full"
+                  value={rescheduleTime}
+                  onChange={(e) => setRescheduleTime(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="flex gap-3 pt-1">
+              <button
+                className="btn flex-1 border border-slate-200"
+                onClick={() => setRescheduleModal(null)}
+              >
+                Voltar
+              </button>
+              <button
+                className="flex-1 btn-primary py-2.5"
+                onClick={reagendar}
+                disabled={!rescheduleDate || !rescheduleTime || !!actionLoading?.endsWith("-reagendar")}
+              >
+                {actionLoading?.endsWith("-reagendar") ? "Salvando..." : "Confirmar reagendamento"}
               </button>
             </div>
           </div>

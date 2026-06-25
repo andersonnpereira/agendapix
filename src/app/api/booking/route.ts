@@ -9,6 +9,30 @@ const supabaseAdmin = () =>
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
+// --- Rate limiting em memória ---
+// Chave: "profile_id-date" → { count, resetAt }
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+const RATE_LIMIT_MAX = 50;
+const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hora
+
+function checkRateLimit(profile_id: string, date: string): boolean {
+  const key = `${profile_id}-${date}`;
+  const now = Date.now();
+  const entry = rateLimitMap.get(key);
+
+  if (!entry || now >= entry.resetAt) {
+    rateLimitMap.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    return true; // permitido
+  }
+
+  if (entry.count >= RATE_LIMIT_MAX) {
+    return false; // bloqueado
+  }
+
+  entry.count += 1;
+  return true; // permitido
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -18,7 +42,46 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Dados incompletos." }, { status: 400 });
     }
 
+    // Valida que date não é no passado (timezone Brasil)
+    const todayBR = new Date()
+      .toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })
+      .split("/")
+      .reverse()
+      .join("-");
+
+    if (date < todayBR) {
+      return NextResponse.json(
+        { error: "Não é possível agendar para datas passadas." },
+        { status: 400 }
+      );
+    }
+
+    // Rate limiting: máximo 50 agendamentos por profile por dia
+    if (!checkRateLimit(profile_id, date)) {
+      return NextResponse.json(
+        { error: "Limite de agendamentos para este dia atingido. Tente novamente mais tarde." },
+        { status: 429 }
+      );
+    }
+
     const supabase = supabaseAdmin();
+
+    // Verifica conflito de horário antes do insert
+    const { data: conflito } = await supabase
+      .from("bookings")
+      .select("id")
+      .eq("profile_id", profile_id)
+      .eq("date", date)
+      .eq("time", time)
+      .in("status", ["pendente", "confirmado"])
+      .maybeSingle();
+
+    if (conflito) {
+      return NextResponse.json(
+        { error: "Este horário já foi reservado. Por favor, escolha outro." },
+        { status: 409 }
+      );
+    }
 
     // Cria o agendamento
     const { data: booking, error } = await supabase

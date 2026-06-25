@@ -7,6 +7,8 @@ import { generatePixBRCode, normalizePixKey, type PixKeyType } from "@/lib/pix";
 import { PixDisplay } from "@/components/PixDisplay";
 import { msgLembrete } from "@/lib/whatsapp";
 
+// -- ALTER TABLE public.charges ADD COLUMN IF NOT EXISTS send_history text[];
+
 type Charge = {
   id: string;
   client_name: string | null;
@@ -24,6 +26,7 @@ type Charge = {
   scheduled_reminder_at: string | null;
   auto_reminder: boolean;
   last_auto_reminder_at: string | null;
+  send_history: string[] | null;
 };
 
 type Profile = {
@@ -92,6 +95,15 @@ function nextDate(from: string, rec: string): string {
   return d.toISOString().slice(0, 10);
 }
 
+function formatSendDate(isoStr: string): string {
+  const d = new Date(isoStr);
+  const day = String(d.getDate()).padStart(2, "0");
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const hour = String(d.getHours()).padStart(2, "0");
+  const min = String(d.getMinutes()).padStart(2, "0");
+  return `${day}/${month} às ${hour}:${min}`;
+}
+
 export default function CobrancasPage() {
   const supabase = createClient();
   const [charges, setCharges] = useState<Charge[]>([]);
@@ -105,6 +117,7 @@ export default function CobrancasPage() {
   const [toast, setToast] = useState("");
   const [actionId, setActionId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [expandedHistory, setExpandedHistory] = useState<string | null>(null);
 
   // Modais de ação
   const [reminderModal, setReminderModal] = useState<Charge | null>(null);
@@ -274,9 +287,25 @@ export default function CobrancasPage() {
         body: JSON.stringify({ charge_id: charge.id, type, message }),
       });
       if (res.ok) {
+        const nowIso = new Date().toISOString();
+        // Atualiza send_history e reminders_sent
+        await supabase
+          .from("charges")
+          .update({
+            reminders_sent: charge.reminders_sent + 1,
+            send_history: [...(charge.send_history || []), nowIso],
+          })
+          .eq("id", charge.id);
+
         setCharges((prev) =>
           prev.map((c) =>
-            c.id === charge.id ? { ...c, reminders_sent: c.reminders_sent + 1 } : c
+            c.id === charge.id
+              ? {
+                  ...c,
+                  reminders_sent: c.reminders_sent + 1,
+                  send_history: [...(c.send_history || []), nowIso],
+                }
+              : c
           )
         );
         setFlashSent(charge.id);
@@ -290,6 +319,57 @@ export default function CobrancasPage() {
       }
     } catch {
       showToast("Erro de conexão.");
+    } finally {
+      setActionId(null);
+    }
+  }
+
+  // ─── Duplicar cobrança ────────────────────────────────────────────────────
+  async function duplicarCobranca(charge: Charge) {
+    setActionId(charge.id + "-dup");
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        showToast("Sessão expirada.");
+        return;
+      }
+
+      let pix_payload: string | null = null;
+      if (profile?.pix_key) {
+        try {
+          pix_payload = generatePixBRCode({
+            pixKey: normalizePixKey(profile.pix_key, (profile.pix_key_type as PixKeyType) || "celular"),
+            amount: charge.amount_cents / 100,
+            merchantName: profile.pix_merchant_name || "PROFISSIONAL",
+            merchantCity: profile.pix_merchant_city || "BR",
+            txid: ("DUP" + Date.now()).slice(0, 25),
+          });
+        } catch { /* segue sem QR */ }
+      }
+
+      const { error } = await supabase.from("charges").insert({
+        profile_id: user.id,
+        client_name: charge.client_name,
+        client_phone: charge.client_phone,
+        description: charge.description,
+        amount_cents: charge.amount_cents,
+        pix_payload,
+        due_date: today,
+        status: "pendente",
+        recurrence: "none",
+        auto_reminder: false,
+        next_due_date: null,
+        scheduled_reminder_at: null,
+        last_auto_reminder_at: null,
+        send_history: null,
+      });
+
+      if (!error) {
+        showToast("📋 Cobrança duplicada!");
+        load();
+      } else {
+        showToast("Erro ao duplicar: " + error.message);
+      }
     } finally {
       setActionId(null);
     }
@@ -514,9 +594,45 @@ export default function CobrancasPage() {
                       Enviado agora!
                     </span>
                   ) : c.reminders_sent > 0 ? (
-                    <span className="inline-flex items-center gap-1 text-xs text-brand mt-1">
-                      ✓ {c.reminders_sent} envio{c.reminders_sent > 1 ? "s" : ""} realizado{c.reminders_sent > 1 ? "s" : ""}
-                    </span>
+                    <div className="mt-1 space-y-1">
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1 text-xs text-brand hover:underline"
+                        onClick={() => setExpandedHistory(expandedHistory === c.id ? null : c.id)}
+                      >
+                        ✓ {c.reminders_sent} envio{c.reminders_sent > 1 ? "s" : ""} realizado{c.reminders_sent > 1 ? "s" : ""}
+                        <span className="text-slate-400">{expandedHistory === c.id ? "▲" : "▼"}</span>
+                      </button>
+
+                      {/* Último envio automático */}
+                      {c.last_auto_reminder_at && (
+                        <p className="text-xs text-slate-400">
+                          Último envio automático: {formatSendDate(c.last_auto_reminder_at)}
+                        </p>
+                      )}
+
+                      {/* Histórico expandido */}
+                      {expandedHistory === c.id && (
+                        <div className="mt-1.5 bg-slate-50 border border-slate-100 rounded-xl px-3 py-2 space-y-1">
+                          <p className="text-xs font-semibold text-slate-500 mb-1">Histórico de envios</p>
+                          {c.send_history && c.send_history.length > 0 ? (
+                            [...c.send_history].reverse().slice(0, 3).map((ts, i) => (
+                              <div key={i} className="flex items-center gap-2 text-xs text-slate-600">
+                                <span className="w-1.5 h-1.5 rounded-full bg-brand shrink-0" />
+                                {formatSendDate(ts)}
+                              </div>
+                            ))
+                          ) : (
+                            <p className="text-xs text-slate-400">Nenhum envio registrado ainda.</p>
+                          )}
+                          {c.send_history && c.send_history.length > 3 && (
+                            <p className="text-xs text-slate-400 pt-0.5">
+                              + {c.send_history.length - 3} envio{c.send_history.length - 3 > 1 ? "s" : ""} anterior{c.send_history.length - 3 > 1 ? "es" : ""}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   ) : null}
 
                   {c.auto_reminder && c.scheduled_reminder_at && !c.last_auto_reminder_at && (
@@ -592,6 +708,14 @@ export default function CobrancasPage() {
                 {c.status === "pago" && c.paid_at && (
                   <p className="text-xs text-slate-400">Pago em {formatDate(c.paid_at.slice(0, 10))}</p>
                 )}
+                {/* Botão Duplicar */}
+                <button
+                  className="btn text-xs px-3 py-1.5 border border-slate-200 hover:bg-slate-50"
+                  onClick={() => duplicarCobranca(c)}
+                  disabled={actionId === c.id + "-dup"}
+                >
+                  {actionId === c.id + "-dup" ? "..." : "📋 Duplicar"}
+                </button>
                 <button
                   className="btn text-xs px-3 py-1.5 border border-red-200 text-red-500 hover:bg-red-50 ml-auto"
                   onClick={() => setConfirmDelete(c.id)}

@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Campos obrigatórios ausentes." }, { status: 400 });
     }
 
-    const supportEmail = process.env.SUPPORT_EMAIL || "anderson.pereira@grupojcn.com.br";
+    const supportEmail = process.env.SUPPORT_EMAIL || "andersonnpereira@gmail.com";
 
     await sendEmail({
       to: supportEmail,

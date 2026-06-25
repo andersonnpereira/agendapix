@@ -10,12 +10,13 @@ export async function sendEmail(params: {
 }): Promise<boolean> {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
-    console.log("[Email Mock] Para:", params.to, "|", params.subject);
-    return true;
+    console.warn("[Email] RESEND_API_KEY não definida — e-mail NÃO enviado para:", params.to);
+    return false;
   }
 
-  const from =
-    process.env.RESEND_FROM || "Agendou <noreply@agendapix.com.br>";
+  // onboarding@resend.dev funciona sem verificar domínio próprio.
+  // Para usar domínio próprio, configure RESEND_FROM e verifique o domínio no painel Resend.
+  const from = process.env.RESEND_FROM || "Agendou <onboarding@resend.dev>";
 
   try {
     const res = await fetch("https://api.resend.com/emails", {
@@ -31,8 +32,17 @@ export async function sendEmail(params: {
         html: params.html,
       }),
     });
-    return res.ok;
-  } catch {
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      console.error("[Email] Resend erro", res.status, JSON.stringify(body), "| para:", params.to, "| de:", from);
+      return false;
+    }
+
+    console.log("[Email] Enviado para:", params.to, "| assunto:", params.subject);
+    return true;
+  } catch (err) {
+    console.error("[Email] Exceção ao enviar:", err);
     return false;
   }
 }

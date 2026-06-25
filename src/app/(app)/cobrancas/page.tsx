@@ -194,15 +194,40 @@ export default function CobrancasPage() {
     setPixOptLink(!!profile?.payment_link);
   }
 
-  function openReminderModal(charge: Charge) {
-    const text = msgLembrete(
-      charge.client_name || "Cliente",
-      charge.description || "Serviço",
-      formatBRL(charge.amount_cents),
-      profile?.pix_key || "",
-      profile?.msg_lembrete || null,
-      formatDate(charge.due_date)
-    );
+  function isOverdue(charge: Charge): boolean {
+    return charge.status === "atrasado" || (charge.status === "pendente" && !!charge.due_date && charge.due_date < today);
+  }
+
+  function buildRecoveryMessage(charge: Charge): string {
+    const lines = [
+      `Olá, ${charge.client_name || "Cliente"}! 😊`,
+      ``,
+      `Passando para lembrar que temos uma cobrança em aberto no seu nome:`,
+      ``,
+      `📋 ${charge.description || "Serviço"}`,
+      `💰 Valor: *${formatBRL(charge.amount_cents)}*`,
+      charge.due_date ? `📅 Vencimento: *${formatDate(charge.due_date)}*` : null,
+      profile?.pix_key ? `\n🔑 Chave Pix para pagamento:\n${profile.pix_key}` : null,
+      ``,
+      `Caso já tenha efetuado o pagamento, desconsidere esta mensagem. 🙏`,
+      ``,
+      `Qualquer dúvida estou à disposição!`,
+    ].filter((l) => l !== null) as string[];
+    return lines.join("\n");
+  }
+
+  function openReminderModal(charge: Charge, forceRecovery = false) {
+    const overdue = forceRecovery || isOverdue(charge);
+    const text = overdue
+      ? buildRecoveryMessage(charge)
+      : msgLembrete(
+          charge.client_name || "Cliente",
+          charge.description || "Serviço",
+          formatBRL(charge.amount_cents),
+          profile?.pix_key || "",
+          profile?.msg_lembrete || null,
+          formatDate(charge.due_date)
+        );
     setReminderModal(charge);
     setReminderText(text);
     setReminderSendMode("now");
@@ -289,6 +314,18 @@ export default function CobrancasPage() {
           });
         } catch { /* gera sem payload */ }
 
+        // Propaga lembrete automático: recalcula a data do lembrete com base nos dias de antecedência originais
+        let new_scheduled_reminder_at: string | null = null;
+        if (charge.auto_reminder && charge.scheduled_reminder_at && charge.due_date) {
+          const origDue = new Date(charge.due_date + "T00:00:00").getTime();
+          const origReminder = new Date(charge.scheduled_reminder_at).getTime();
+          const advanceMs = origDue - origReminder;
+          if (advanceMs > 0) {
+            const newDueMs = new Date(nextDue + "T00:00:00").getTime();
+            new_scheduled_reminder_at = new Date(newDueMs - advanceMs).toISOString();
+          }
+        }
+
         await supabase.from("charges").insert({
           profile_id: user.id,
           client_name: charge.client_name,
@@ -299,6 +336,9 @@ export default function CobrancasPage() {
           due_date: nextDue,
           recurrence: charge.recurrence,
           next_due_date: nextDate(nextDue, charge.recurrence),
+          auto_reminder: charge.auto_reminder,
+          scheduled_reminder_at: new_scheduled_reminder_at,
+          last_auto_reminder_at: null,
         });
       }
     }
@@ -481,20 +521,33 @@ export default function CobrancasPage() {
                 )}
                 {c.status !== "pago" && (
                   <>
-                    <button
-                      className="btn-primary text-xs px-3 py-1.5"
-                      onClick={() => openPixModal(c)}
-                      disabled={actionId === c.id + "-wa"}
-                    >
-                      {actionId === c.id + "-wa" ? "Enviando..." : "📲 Enviar cobrança"}
-                    </button>
-                    <button
-                      className="btn text-xs px-3 py-1.5 border border-slate-200 hover:bg-slate-50"
-                      onClick={() => openReminderModal(c)}
-                      disabled={actionId === c.id + "-lembrete"}
-                    >
-                      {actionId === c.id + "-lembrete" ? "Enviando..." : "🔔 Lembrete"}
-                    </button>
+                    {isOverdue(c) ? (
+                      /* ── Vencido: botão de recuperação em destaque ── */
+                      <button
+                        className="btn text-xs px-3 py-1.5 bg-red-500 text-white hover:bg-red-600 font-semibold"
+                        onClick={() => openReminderModal(c, true)}
+                        disabled={actionId === c.id + "-lembrete"}
+                      >
+                        {actionId === c.id + "-lembrete" ? "Enviando..." : "💸 Cobrar vencido"}
+                      </button>
+                    ) : (
+                      <>
+                        <button
+                          className="btn-primary text-xs px-3 py-1.5"
+                          onClick={() => openPixModal(c)}
+                          disabled={actionId === c.id + "-wa"}
+                        >
+                          {actionId === c.id + "-wa" ? "Enviando..." : "📲 Enviar cobrança"}
+                        </button>
+                        <button
+                          className="btn text-xs px-3 py-1.5 border border-slate-200 hover:bg-slate-50"
+                          onClick={() => openReminderModal(c)}
+                          disabled={actionId === c.id + "-lembrete"}
+                        >
+                          {actionId === c.id + "-lembrete" ? "Enviando..." : "🔔 Lembrete"}
+                        </button>
+                      </>
+                    )}
                     <button
                       className="btn text-xs px-3 py-1.5 border border-brand text-brand hover:bg-brand-light"
                       onClick={() => marcarPago(c)}
@@ -545,13 +598,24 @@ export default function CobrancasPage() {
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-2xl w-full max-w-md p-5 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between">
-              <h3 className="font-bold text-slate-900">🔔 Enviar lembrete</h3>
+              <h3 className="font-bold text-slate-900">
+                {isOverdue(reminderModal) ? "💸 Cobrar vencido" : "🔔 Enviar lembrete"}
+              </h3>
               <button onClick={() => setReminderModal(null)} className="text-slate-400 hover:text-slate-600 text-xl leading-none">✕</button>
             </div>
+            {isOverdue(reminderModal) && (
+              <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2 text-xs text-red-700 font-medium">
+                ⚠️ Esta cobrança está vencida. A mensagem foi adaptada para recuperação do pagamento.
+              </div>
+            )}
             <div className="bg-slate-50 rounded-xl p-3 text-sm space-y-0.5">
               <p className="font-medium text-slate-900">{reminderModal.client_name}</p>
               <p className="text-slate-500">{reminderModal.description} · <strong>{formatBRL(reminderModal.amount_cents)}</strong></p>
-              {reminderModal.due_date && <p className="text-xs text-slate-400">Vence em {formatDate(reminderModal.due_date)}</p>}
+              {reminderModal.due_date && (
+                <p className={`text-xs ${isOverdue(reminderModal) ? "text-red-500 font-medium" : "text-slate-400"}`}>
+                  {isOverdue(reminderModal) ? "⚠️ Venceu em" : "Vence em"} {formatDate(reminderModal.due_date)}
+                </p>
+              )}
             </div>
             {/* Quando enviar */}
             <div className="flex gap-2">
@@ -602,14 +666,18 @@ export default function CobrancasPage() {
                   type="button"
                   className="text-xs text-brand underline"
                   onClick={() =>
-                    setReminderText(msgLembrete(
-                      reminderModal.client_name || "Cliente",
-                      reminderModal.description || "Serviço",
-                      formatBRL(reminderModal.amount_cents),
-                      profile?.pix_key || "",
-                      profile?.msg_lembrete || null,
-                      formatDate(reminderModal.due_date)
-                    ))
+                    setReminderText(
+                      isOverdue(reminderModal)
+                        ? buildRecoveryMessage(reminderModal)
+                        : msgLembrete(
+                            reminderModal.client_name || "Cliente",
+                            reminderModal.description || "Serviço",
+                            formatBRL(reminderModal.amount_cents),
+                            profile?.pix_key || "",
+                            profile?.msg_lembrete || null,
+                            formatDate(reminderModal.due_date)
+                          )
+                    )
                   }
                 >
                   Restaurar padrão

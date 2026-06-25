@@ -16,9 +16,19 @@ export async function GET(req: NextRequest) {
   try {
     const admin = createAdminClient();
     const now = new Date().toISOString();
+    const todayDate = now.slice(0, 10); // "YYYY-MM-DD"
+    const todayStart = todayDate + "T00:00:00.000Z";
 
-    // Busca cobranças com lembrete agendado que ainda não foi enviado
-    const { data: charges, error } = await admin
+    type ProfileJoin = {
+      whatsapp_provider: string;
+      whatsapp_token: string | null;
+      whatsapp_instance_id: string | null;
+      msg_lembrete: string | null;
+      pix_key: string | null;
+    };
+
+    // ── 1. Lembretes antecipados agendados ─────────────────────────────────
+    const { data: advanceCharges, error } = await admin
       .from("charges")
       .select("*, profiles!inner(whatsapp_provider, whatsapp_token, whatsapp_instance_id, msg_lembrete, pix_key)")
       .eq("auto_reminder", true)
@@ -27,46 +37,83 @@ export async function GET(req: NextRequest) {
       .is("last_auto_reminder_at", null);
 
     if (error) throw error;
-    if (!charges || charges.length === 0) {
+
+    // ── 2. Lembretes de vencimento no dia ──────────────────────────────────
+    // Envia para charges com due_date = hoje que ainda não receberam lembrete hoje
+    const { data: dueTodayCharges } = await admin
+      .from("charges")
+      .select("*, profiles!inner(whatsapp_provider, whatsapp_token, whatsapp_instance_id, msg_lembrete, pix_key)")
+      .eq("auto_reminder", true)
+      .eq("status", "pendente")
+      .eq("due_date", todayDate)
+      .or(`last_auto_reminder_at.is.null,last_auto_reminder_at.lt.${todayStart}`);
+
+    // Mescla listas removendo duplicatas (um charge pode aparecer nos dois grupos)
+    const advanceIds = new Set((advanceCharges || []).map((c) => c.id));
+    const allToProcess = [
+      ...(advanceCharges || []).map((c) => ({ charge: c, type: "advance" as const })),
+      ...(dueTodayCharges || [])
+        .filter((c) => !advanceIds.has(c.id)) // evita enviar duas vezes no mesmo cron
+        .map((c) => ({ charge: c, type: "due_today" as const })),
+    ];
+
+    if (allToProcess.length === 0) {
       return NextResponse.json({ ok: true, sent: 0 });
     }
 
     let sent = 0;
-    for (const charge of charges) {
-      const profile = charge.profiles as {
-        whatsapp_provider: string;
-        whatsapp_token: string | null;
-        whatsapp_instance_id: string | null;
-        msg_lembrete: string | null;
-        pix_key: string | null;
-      };
-
+    for (const { charge, type } of allToProcess) {
+      const profile = charge.profiles as ProfileJoin;
       if (!charge.client_phone) continue;
 
       const amount = formatBRL(charge.amount_cents);
-      let message: string;
-
       const dueDateFormatted = charge.due_date
         ? charge.due_date.slice(8, 10) + "/" + charge.due_date.slice(5, 7) + "/" + charge.due_date.slice(0, 4)
         : "";
 
-      if (profile.msg_lembrete) {
-        message = formatTemplate(profile.msg_lembrete, {
-          nome: charge.client_name || "Cliente",
-          servico: charge.description || "Serviço",
-          valor: amount,
-          pix: profile.pix_key || "",
-          data: dueDateFormatted,
-        });
+      let message: string;
+
+      if (type === "due_today") {
+        // Mensagem específica para o dia do vencimento
+        message = profile.msg_lembrete
+          ? formatTemplate(profile.msg_lembrete, {
+              nome: charge.client_name || "Cliente",
+              servico: charge.description || "Serviço",
+              valor: amount,
+              pix: profile.pix_key || "",
+              data: dueDateFormatted,
+            })
+          : [
+              `Olá, ${charge.client_name || "Cliente"}! ⏰`,
+              ``,
+              `Lembrete: sua cobrança vence *HOJE*!`,
+              ``,
+              `📋 ${charge.description || "Serviço"}`,
+              `💰 Valor: *${amount}*`,
+              `📅 Vencimento: *${dueDateFormatted}*`,
+              profile.pix_key ? `\n🔑 Chave Pix:\n${profile.pix_key}` : "",
+              ``,
+              `Contamos com você! 🙏`,
+            ].filter((l) => l !== undefined).join("\n");
       } else {
-        message = msgLembrete(
-          charge.client_name || "Cliente",
-          charge.description || "Serviço",
-          amount,
-          profile.pix_key || "",
-          null,
-          dueDateFormatted
-        );
+        if (profile.msg_lembrete) {
+          message = formatTemplate(profile.msg_lembrete, {
+            nome: charge.client_name || "Cliente",
+            servico: charge.description || "Serviço",
+            valor: amount,
+            pix: profile.pix_key || "",
+            data: dueDateFormatted,
+          });
+        } else {
+          message = msgLembrete(
+            charge.client_name || "Cliente",
+            charge.description || "Serviço",
+            amount,
+            profile.pix_key || "",
+            null,
+            dueDateFormatted
+          );
+        }
       }
 
       const result = await sendWhatsApp({

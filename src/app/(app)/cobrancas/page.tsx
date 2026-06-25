@@ -141,6 +141,16 @@ export default function CobrancasPage() {
   const [fSaving, setFSaving] = useState(false);
   const [fError, setFError] = useState("");
 
+  // Form editar cobrança
+  const [editModal, setEditModal] = useState<Charge | null>(null);
+  const [eClientName, setEClientName] = useState("");
+  const [eClientPhone, setEClientPhone] = useState("");
+  const [eDescription, setEDescription] = useState("");
+  const [eAmount, setEAmount] = useState("");
+  const [eDueDate, setEDueDate] = useState("");
+  const [eSaving, setESaving] = useState(false);
+  const [eError, setEError] = useState("");
+
   const showToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(""), 3500);
@@ -427,6 +437,63 @@ export default function CobrancasPage() {
     setActionId(null);
     load();
     showToast("✅ Cobrança marcada como paga!");
+  }
+
+  function openEditModal(charge: Charge) {
+    setEClientName(charge.client_name || "");
+    setEClientPhone(charge.client_phone || "");
+    setEDescription(charge.description || "");
+    setEAmount((charge.amount_cents / 100).toFixed(2).replace(".", ","));
+    setEDueDate(charge.due_date || "");
+    setEError("");
+    setEditModal(charge);
+  }
+
+  async function salvarEdicao() {
+    if (!editModal) return;
+    setEError("");
+    if (!eClientName.trim()) { setEError("Informe o nome do cliente."); return; }
+    const amount_cents = parseToCents(eAmount);
+    if (amount_cents <= 0) { setEError("Informe um valor maior que R$ 0,00."); return; }
+
+    setESaving(true);
+    try {
+      // Regenera Pix payload se o valor mudou
+      let pix_payload = editModal.pix_payload;
+      if (amount_cents !== editModal.amount_cents && profile?.pix_key) {
+        try {
+          pix_payload = generatePixBRCode({
+            pixKey: normalizePixKey(profile.pix_key, (profile.pix_key_type as PixKeyType) || "celular"),
+            amount: amount_cents / 100,
+            merchantName: profile.pix_merchant_name || "PROFISSIONAL",
+            merchantCity: profile.pix_merchant_city || "BR",
+            txid: ("EDT" + Date.now()).slice(0, 25),
+          });
+        } catch { /* mantém o anterior */ }
+      }
+
+      const { error } = await supabase
+        .from("charges")
+        .update({
+          client_name: eClientName.trim(),
+          client_phone: eClientPhone.trim() || null,
+          description: eDescription.trim() || "Serviço",
+          amount_cents,
+          pix_payload,
+          due_date: eDueDate || null,
+        })
+        .eq("id", editModal.id);
+
+      if (error) {
+        setEError("Erro ao salvar: " + error.message);
+      } else {
+        setEditModal(null);
+        load();
+        showToast("✅ Cobrança atualizada!");
+      }
+    } finally {
+      setESaving(false);
+    }
   }
 
   async function excluirCobranca(id: string) {
@@ -717,6 +784,12 @@ export default function CobrancasPage() {
                   {actionId === c.id + "-dup" ? "..." : "📋 Duplicar"}
                 </button>
                 <button
+                  className="btn text-xs px-3 py-1.5 border border-slate-200 hover:bg-slate-50"
+                  onClick={() => openEditModal(c)}
+                >
+                  ✏️ Editar
+                </button>
+                <button
                   className="btn text-xs px-3 py-1.5 border border-red-200 text-red-500 hover:bg-red-50 ml-auto"
                   onClick={() => setConfirmDelete(c.id)}
                 >
@@ -725,6 +798,51 @@ export default function CobrancasPage() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* ── Modal: editar cobrança ─────────────────────────────────── */}
+      {editModal && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md p-5 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-slate-900">✏️ Editar cobrança</h3>
+              <button onClick={() => setEditModal(null)} className="text-slate-400 hover:text-slate-600 text-xl leading-none">✕</button>
+            </div>
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label">Nome do cliente</label>
+                  <input className="input" value={eClientName} onChange={(e) => setEClientName(e.target.value)} placeholder="Ana Souza" />
+                </div>
+                <div>
+                  <label className="label">WhatsApp</label>
+                  <input className="input" type="tel" value={eClientPhone} onChange={(e) => setEClientPhone(e.target.value)} placeholder="(11) 99999-9999" />
+                </div>
+              </div>
+              <div>
+                <label className="label">Descrição</label>
+                <input className="input" value={eDescription} onChange={(e) => setEDescription(e.target.value)} placeholder="Serviço realizado" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label">Valor (R$)</label>
+                  <input className="input" value={eAmount} onChange={(e) => setEAmount(e.target.value)} placeholder="0,00" inputMode="decimal" />
+                </div>
+                <div>
+                  <label className="label">Vencimento</label>
+                  <input className="input" type="date" value={eDueDate} onChange={(e) => setEDueDate(e.target.value)} />
+                </div>
+              </div>
+            </div>
+            {eError && <p className="text-sm text-red-500">{eError}</p>}
+            <div className="flex gap-3 pt-1">
+              <button className="flex-1 btn border border-slate-200" onClick={() => setEditModal(null)}>Cancelar</button>
+              <button className="flex-1 btn-primary" onClick={salvarEdicao} disabled={eSaving}>
+                {eSaving ? "Salvando..." : "Salvar alterações"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

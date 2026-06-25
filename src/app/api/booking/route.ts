@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { sendEmail, htmlNovoAgendamento } from "@/lib/email";
-import { sendWhatsApp } from "@/lib/whatsapp";
+import { sendWhatsApp, msgConfirmacao } from "@/lib/whatsapp";
 
 const supabaseAdmin = () =>
   createSupabaseClient(
@@ -149,7 +149,7 @@ export async function POST(req: NextRequest) {
     const [{ data: profile }, { data: service }] = await Promise.all([
       supabase
         .from("profiles")
-        .select("notification_email, business_name, phone, whatsapp_instance_id")
+        .select("notification_email, business_name, name, phone, whatsapp_instance_id")
         .eq("id", profile_id)
         .single(),
       service_id
@@ -202,6 +202,25 @@ export async function POST(req: NextRequest) {
           siteUrl: process.env.NEXT_PUBLIC_SITE_URL || "",
         }),
       }).catch((e) => console.error("[booking notify email]", e));
+    }
+
+    // Notifica o cliente com confirmação
+    if (client_phone && instanceId && evolutionKey) {
+      const [y2, m2, d2] = date.split("-");
+      const clientMsg = msgConfirmacao(
+        client_name,
+        serviceName,
+        `${d2}/${m2}/${y2}`,
+        time.slice(0, 5),
+        profile?.business_name || profile?.name || "seu profissional",
+        null
+      );
+      sendWhatsApp({
+        to: client_phone.replace(/\D/g, ""),
+        message: clientMsg,
+        provider: "evolution",
+        instanceId,
+      }).catch((e) => console.error("[booking client-notify WA]", e));
     }
 
     return NextResponse.json({ booking }, { status: 201 });

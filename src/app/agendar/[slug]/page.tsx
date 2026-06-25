@@ -58,7 +58,7 @@ export default async function AgendarPage({ params }: Props) {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("id, name, business_name, avatar_url, brand_color, pix_key, pix_merchant_name, pix_merchant_city")
+    .select("id, name, business_name, avatar_url, brand_color, pix_key, pix_merchant_name, pix_merchant_city, bio, review_link, cover_url")
     .eq("slug", params.slug)
     .single();
 
@@ -116,6 +116,16 @@ export default async function AgendarPage({ params }: Props) {
       <div className="max-w-lg mx-auto px-4 py-8 space-y-6">
         {/* Header do profissional */}
         <div className="text-center space-y-2">
+          {(profile as { cover_url?: string | null }).cover_url && (
+            <div className="w-full h-36 overflow-hidden rounded-2xl mb-2">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={(profile as { cover_url?: string | null }).cover_url!}
+                alt="Capa"
+                className="w-full h-full object-cover"
+              />
+            </div>
+          )}
           {profile.avatar_url ? (
             <AvatarImg src={profile.avatar_url} alt={profile.business_name || ""} />
           ) : (
@@ -128,6 +138,21 @@ export default async function AgendarPage({ params }: Props) {
           </h1>
           {profile.name && profile.business_name && (
             <p className="text-sm text-slate-500">{profile.name}</p>
+          )}
+          {(profile as { bio?: string | null }).bio && (
+            <p className="text-sm text-slate-600 text-center leading-relaxed mt-1 px-2">
+              {(profile as { bio?: string | null }).bio}
+            </p>
+          )}
+          {(profile as { review_link?: string | null }).review_link && (
+            <a
+              href={(profile as { review_link?: string | null }).review_link!}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-xs text-amber-600 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-full hover:bg-amber-100 transition-colors mt-2"
+            >
+              ⭐ Deixar avaliação
+            </a>
           )}
         </div>
 

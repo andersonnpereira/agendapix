@@ -71,30 +71,60 @@ export default async function DashboardPage() {
     return d.toISOString().slice(0, 10);
   })();
 
-  const [{ count: clientCount }, { data: monthBookings }, { data: upcomingBookings }] =
-    await Promise.all([
-      supabase
-        .from("clients")
-        .select("*", { count: "exact", head: true })
-        .eq("profile_id", user.id)
-        .eq("status", "ativo"),
-      supabase
-        .from("bookings")
-        .select("service_id, services(name)")
-        .eq("profile_id", user.id)
-        .gte("date", monthStartStr)
-        .neq("status", "cancelado"),
-      supabase
-        .from("bookings")
-        .select("client_name, date, time, services(name)")
-        .eq("profile_id", user.id)
-        .gt("date", today)
-        .lte("date", addDaysBR(3))
-        .neq("status", "cancelado")
-        .order("date")
-        .order("time")
-        .limit(3),
-    ]);
+  const [
+    { count: clientCount },
+    { data: monthBookings },
+    { data: upcomingBookings },
+    { count: cancelledCount },
+    { count: totalMonthCount },
+    { data: topClientsRaw },
+    { data: peakHoursRaw },
+  ] = await Promise.all([
+    supabase
+      .from("clients")
+      .select("*", { count: "exact", head: true })
+      .eq("profile_id", user.id)
+      .eq("status", "ativo"),
+    supabase
+      .from("bookings")
+      .select("service_id, services(name)")
+      .eq("profile_id", user.id)
+      .gte("date", monthStartStr)
+      .neq("status", "cancelado"),
+    supabase
+      .from("bookings")
+      .select("client_name, date, time, services(name)")
+      .eq("profile_id", user.id)
+      .gt("date", today)
+      .lte("date", addDaysBR(3))
+      .neq("status", "cancelado")
+      .order("date")
+      .order("time")
+      .limit(3),
+    supabase
+      .from("bookings")
+      .select("*", { count: "exact", head: true })
+      .eq("profile_id", user.id)
+      .gte("date", monthStartStr)
+      .eq("status", "cancelado"),
+    supabase
+      .from("bookings")
+      .select("*", { count: "exact", head: true })
+      .eq("profile_id", user.id)
+      .gte("date", monthStartStr),
+    supabase
+      .from("bookings")
+      .select("client_name")
+      .eq("profile_id", user.id)
+      .gte("date", monthStartStr)
+      .in("status", ["confirmado", "concluido"]),
+    supabase
+      .from("bookings")
+      .select("time")
+      .eq("profile_id", user.id)
+      .gte("date", monthStartStr)
+      .in("status", ["confirmado", "concluido"]),
+  ]);
 
   // Serviço mais agendado no mês
   const svcCount: Record<string, { name: string; count: number }> = {};
@@ -106,6 +136,34 @@ export default async function DashboardPage() {
     }
   }
   const topService = Object.values(svcCount).sort((a, b) => b.count - a.count)[0] || null;
+
+  // Taxa de cancelamento
+  const cancelRate =
+    totalMonthCount && totalMonthCount > 0
+      ? Math.round(((cancelledCount || 0) / totalMonthCount) * 100)
+      : 0;
+
+  // Top 3 clientes do mês
+  const clientNameCount: Record<string, number> = {};
+  for (const b of topClientsRaw || []) {
+    if (b.client_name)
+      clientNameCount[b.client_name] = (clientNameCount[b.client_name] || 0) + 1;
+  }
+  const topClients = Object.entries(clientNameCount)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([name, count]) => ({ name, count }));
+
+  // Horário de pico
+  const hourCount: Record<number, number> = {};
+  for (const b of peakHoursRaw || []) {
+    const hour = parseInt((b.time as string)?.slice(0, 2) || "0");
+    hourCount[hour] = (hourCount[hour] || 0) + 1;
+  }
+  const peakHour = Object.entries(hourCount).sort((a, b) => Number(b[1]) - Number(a[1]))[0];
+  const peakHourLabel = peakHour
+    ? `${peakHour[0]}h–${parseInt(peakHour[0]) + 1}h`
+    : null;
 
   // Aniversariantes + clientes inativos
   const thirtyDaysAgoStr = addDaysBR(-30);
@@ -244,6 +302,46 @@ export default async function DashboardPage() {
           <p className="text-xs text-slate-500 mt-1">Clientes ativos</p>
         </div>
       </div>
+
+      {/* Métricas avançadas */}
+      {(cancelRate > 0 || topClients.length > 0 || peakHourLabel) && (
+        <div className="card space-y-3 py-4">
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Análise do mês</p>
+          {cancelRate > 0 && (
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-slate-500">Taxa de cancelamento</span>
+              <span
+                className={`font-semibold ${
+                  cancelRate >= 20
+                    ? "text-red-600"
+                    : cancelRate >= 10
+                    ? "text-amber-600"
+                    : "text-brand"
+                }`}
+              >
+                {cancelRate}%
+              </span>
+            </div>
+          )}
+          {peakHourLabel && (
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-slate-500">Horário de pico</span>
+              <span className="font-semibold text-slate-900">🕐 {peakHourLabel}</span>
+            </div>
+          )}
+          {topClients.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-xs text-slate-500">🏆 Clientes do mês</p>
+              {topClients.map((c, i) => (
+                <div key={i} className="flex items-center justify-between text-sm">
+                  <span className="text-slate-700 truncate">{c.name}</span>
+                  <span className="text-xs font-semibold text-brand ml-2 shrink-0">{c.count}×</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Top serviço + próximos */}
       {(topService || (upcomingBookings && upcomingBookings.length > 0)) && (

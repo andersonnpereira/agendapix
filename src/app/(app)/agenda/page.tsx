@@ -24,6 +24,7 @@ type Profile = {
   pix_merchant_name: string | null;
   pix_merchant_city: string | null;
   whatsapp_provider: string;
+  review_link: string | null;
 };
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
@@ -71,7 +72,7 @@ export default function AgendaPage() {
 
     const { data: p } = await supabase
       .from("profiles")
-      .select("id, pix_key, pix_key_type, pix_merchant_name, pix_merchant_city, whatsapp_provider")
+      .select("id, pix_key, pix_key_type, pix_merchant_name, pix_merchant_city, whatsapp_provider, review_link")
       .eq("id", user.id)
       .single();
     setProfile(p);
@@ -231,6 +232,11 @@ export default function AgendaPage() {
 
   async function reagendar() {
     if (!rescheduleModal) return;
+    if (rescheduleDate < getTodayBR()) {
+      showToast("Não é possível reagendar para uma data passada.");
+      setActionLoading(null);
+      return;
+    }
     setActionLoading(rescheduleModal.id + "-reagendar");
     const { error } = await supabase
       .from("bookings")
@@ -418,6 +424,18 @@ export default function AgendaPage() {
                       >
                         {isLoading("cobrar") ? "Criando..." : "💰 Gerar cobrança Pix"}
                       </button>
+                      {profile?.review_link && (
+                        <a
+                          href={`https://wa.me/${b.client_phone.replace(/\D/g, "")}?text=${encodeURIComponent(
+                            "Olá " + b.client_name + "! Obrigado pelo atendimento 😊\nSe puder, deixe uma avaliação: " + profile.review_link
+                          )}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="btn text-sm px-3 py-1.5 border border-amber-200 text-amber-600 hover:bg-amber-50"
+                        >
+                          ⭐ Pedir avaliação
+                        </a>
+                      )}
                       <button
                         className="btn text-sm px-3 py-1.5 text-red-500 border border-red-200 hover:bg-red-50"
                         onClick={() => setConfirmDeleteId(b.id)}

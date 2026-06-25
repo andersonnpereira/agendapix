@@ -52,6 +52,9 @@ export default function ConfiguracoesPage() {
   // Identidade visual
   const [brandColor, setBrandColor] = useState("#16A34A");
   const [avatarUrl, setAvatarUrl] = useState("");
+  const [bio, setBio] = useState("");
+  const [reviewLink, setReviewLink] = useState("");
+  const [coverUrl, setCoverUrl] = useState("");
   const [uploadingLogo, setUploadingLogo] = useState(false);
 
   // QR Code WhatsApp
@@ -153,6 +156,9 @@ export default function ConfiguracoesPage() {
       setMsgLembrete(p.msg_lembrete || DEFAULT_MSG_LEMBRETE);
       setBrandColor(p.brand_color || "#16A34A");
       setAvatarUrl(p.avatar_url || "");
+      setBio(p.bio || "");
+      setReviewLink(p.review_link || "");
+      setCoverUrl(p.cover_url || "");
     })();
     fetchQr();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -193,6 +199,9 @@ export default function ConfiguracoesPage() {
         msg_pix: msgPix || null,
         msg_lembrete: msgLembrete || null,
         brand_color: brandColor || null,
+        bio: bio.trim() || null,
+        review_link: reviewLink.trim() || null,
+        cover_url: coverUrl.trim() || null,
       })
       .eq("id", user.id);
 
@@ -260,6 +269,17 @@ export default function ConfiguracoesPage() {
           <label className="label">E-mail para alertas de agendamento</label>
           <input className="input" type="email" value={notificationEmail} onChange={(e) => setNotificationEmail(e.target.value)} placeholder="seu@email.com" />
           <p className="text-xs text-slate-400 mt-1">Você receberá um e-mail quando um cliente agendar.</p>
+        </div>
+        <div>
+          <label className="label">Bio / Descrição do negócio</label>
+          <textarea
+            className="input resize-none text-sm"
+            rows={3}
+            value={bio}
+            onChange={(e) => setBio(e.target.value)}
+            placeholder="Ex: Especialista em coloração, 10 anos de experiência. Atendo com hora marcada em espaço exclusivo."
+          />
+          <p className="text-xs text-slate-400 mt-1">Exibida no seu link público de agendamento.</p>
         </div>
         <div className="flex flex-col gap-2">
           <Link href="/servicos" className="btn-ghost text-sm inline-block text-center">
@@ -331,6 +351,18 @@ export default function ConfiguracoesPage() {
             </button>
           </div>
           <p className="text-xs text-slate-400 mt-1">Cor de destaque no seu link de agendamento. Salve para aplicar.</p>
+        </div>
+
+        <div>
+          <label className="label">URL da imagem de capa</label>
+          <input
+            className="input"
+            type="url"
+            value={coverUrl}
+            onChange={(e) => setCoverUrl(e.target.value)}
+            placeholder="https://... (link direto de uma imagem para o banner)"
+          />
+          <p className="text-xs text-slate-400 mt-1">Banner exibido no topo da sua página pública.</p>
         </div>
       </section>
 
@@ -449,6 +481,27 @@ export default function ConfiguracoesPage() {
           />
           {paymentLink && (
             <p className="text-xs text-brand mt-1">✓ Link configurado — aparecerá como opção ao enviar cobranças</p>
+          )}
+        </div>
+      </section>
+
+      {/* Link de avaliação */}
+      <section className="card space-y-4">
+        <div>
+          <h2 className="font-semibold text-slate-900">Link de avaliação</h2>
+          <p className="text-xs text-slate-400 mt-1">Cole o link do Google Meu Negócio, Reclame Aqui, Instagram ou onde preferir receber avaliações dos clientes.</p>
+        </div>
+        <div>
+          <label className="label">Link</label>
+          <input
+            className="input"
+            type="url"
+            value={reviewLink}
+            onChange={(e) => setReviewLink(e.target.value)}
+            placeholder="https://g.page/r/seu-negocio/review"
+          />
+          {reviewLink && (
+            <p className="text-xs text-brand mt-1">✓ Configurado — botão "⭐ Pedir avaliação" aparece na Agenda e página pública</p>
           )}
         </div>
       </section>

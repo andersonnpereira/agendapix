@@ -126,6 +126,7 @@ export default function CobrancasPage() {
   const [fAutoReminder, setFAutoReminder] = useState(false);
   const [fScheduledAt, setFScheduledAt] = useState("");
   const [fSaving, setFSaving] = useState(false);
+  const [fError, setFError] = useState("");
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -358,57 +359,68 @@ export default function CobrancasPage() {
   }
 
   async function criarCobranca() {
-    if (!fClientName || !fAmount) return;
+    if (!fClientName.trim() || !fAmount.trim()) return;
+    setFError("");
     setFSaving(true);
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setFError("Sessão expirada. Recarregue a página e faça login novamente.");
+        return;
+      }
+
+      const amount_cents = parseToCents(fAmount);
+      if (amount_cents <= 0) {
+        setFError("Informe um valor maior que R$ 0,00.");
+        return;
+      }
+
+      let pix_payload: string | null = null;
+      if (profile?.pix_key) {
+        try {
+          pix_payload = generatePixBRCode({
+            pixKey: normalizePixKey(profile.pix_key, (profile.pix_key_type as PixKeyType) || "celular"),
+            amount: amount_cents / 100,
+            merchantName: profile.pix_merchant_name || "PROFISSIONAL",
+            merchantCity: profile.pix_merchant_city || "BR",
+            txid: ("MAN" + Date.now()).slice(0, 25),
+          });
+        } catch { /* segue sem QR */ }
+      }
+
+      const { error: insertError } = await supabase.from("charges").insert({
+        profile_id: user.id,
+        client_name: fClientName.trim(),
+        client_phone: fClientPhone.trim(),
+        description: fDescription.trim() || "Serviço",
+        amount_cents,
+        pix_payload,
+        due_date: fDueDate,
+        recurrence: fRecurrence,
+        next_due_date: fRecurrence !== "none" ? nextDate(fDueDate, fRecurrence) : null,
+        auto_reminder: fAutoReminder,
+        scheduled_reminder_at: fAutoReminder && fScheduledAt ? new Date(fScheduledAt).toISOString() : null,
+      });
+
+      if (insertError) {
+        console.error("[criarCobranca] insert error:", insertError);
+        setFError("Erro ao salvar: " + insertError.message);
+        return;
+      }
+
+      setFClientName(""); setFClientPhone(""); setFDescription(""); setFAmount("");
+      setFDueDate(new Date().toISOString().slice(0, 10)); setFRecurrence("none");
+      setFAutoReminder(false); setFScheduledAt(""); setFError("");
+      setShowModal(false);
+      load();
+      showToast("✅ Cobrança criada!");
+    } catch (err) {
+      console.error("[criarCobranca] unexpected error:", err);
+      setFError("Erro inesperado: " + String(err));
+    } finally {
       setFSaving(false);
-      showToast("Sessão expirada. Faça login novamente.");
-      return;
     }
-
-    const amount_cents = parseToCents(fAmount);
-    let pix_payload: string | null = null;
-    if (profile?.pix_key) {
-      try {
-        pix_payload = generatePixBRCode({
-          pixKey: normalizePixKey(profile.pix_key, (profile.pix_key_type as PixKeyType) || "celular"),
-          amount: amount_cents / 100,
-          merchantName: profile.pix_merchant_name || "PROFISSIONAL",
-          merchantCity: profile.pix_merchant_city || "BR",
-          txid: ("MAN" + Date.now()).slice(0, 25),
-        });
-      } catch { /* continua sem payload */ }
-    }
-
-    const { error: insertError } = await supabase.from("charges").insert({
-      profile_id: user.id,
-      client_name: fClientName,
-      client_phone: fClientPhone,
-      description: fDescription || "Serviço",
-      amount_cents,
-      pix_payload,
-      due_date: fDueDate,
-      recurrence: fRecurrence,
-      next_due_date: fRecurrence !== "none" ? nextDate(fDueDate, fRecurrence) : null,
-      auto_reminder: fAutoReminder,
-      scheduled_reminder_at: fAutoReminder && fScheduledAt ? new Date(fScheduledAt).toISOString() : null,
-    });
-
-    setFSaving(false);
-
-    if (insertError) {
-      showToast("Erro: " + insertError.message);
-      return;
-    }
-
-    setFClientName(""); setFClientPhone(""); setFDescription(""); setFAmount("");
-    setFDueDate(new Date().toISOString().slice(0, 10)); setFRecurrence("none");
-    setFAutoReminder(false); setFScheduledAt("");
-    setShowModal(false);
-    load();
-    showToast("Cobrança criada!");
   }
 
   const filtered = filterStatus === "todos" ? charges : charges.filter((c) => c.status === filterStatus);
@@ -926,8 +938,13 @@ export default function CobrancasPage() {
             </div>{/* fim grid */}
             </div>{/* fim scroll */}
             {/* Rodapé fixo com botão */}
-            <div className="px-5 pb-5 pt-3 border-t border-slate-100 shrink-0">
-              <button className="btn-primary w-full" onClick={criarCobranca} disabled={fSaving || !fClientName || !fAmount}>
+            <div className="px-5 pb-5 pt-3 border-t border-slate-100 shrink-0 space-y-3">
+              {fError && (
+                <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2 text-xs text-red-700 font-medium">
+                  ❌ {fError}
+                </div>
+              )}
+              <button className="btn-primary w-full" onClick={criarCobranca} disabled={fSaving || !fClientName.trim() || !fAmount.trim()}>
                 {fSaving ? "Criando..." : "Criar cobrança"}
               </button>
             </div>

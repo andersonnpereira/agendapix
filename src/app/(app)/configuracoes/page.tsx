@@ -84,6 +84,15 @@ export default function ConfiguracoesPage() {
     setTimeout(() => setSaved(false), 3000);
   }
 
+  async function removeLogo() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    await supabase.from("profiles").update({ avatar_url: null }).eq("id", user.id);
+    setAvatarUrl("");
+    setSaved(true);
+    setTimeout(() => setSaved(false), 3000);
+  }
+
   const fetchQrRef = useRef(fetchQr);
   useEffect(() => { fetchQrRef.current = fetchQr; });
   // Auto-refresh a cada 30s enquanto desconectado
@@ -272,15 +281,26 @@ export default function ConfiguracoesPage() {
               <div className="w-16 h-16 rounded-full bg-brand-light flex items-center justify-center text-2xl shrink-0">✂️</div>
             )}
             <div className="flex-1 space-y-1.5">
-              <label className={`btn text-sm border border-slate-200 cursor-pointer inline-flex items-center gap-1.5 ${uploadingLogo ? "opacity-50 pointer-events-none" : ""}`}>
-                {uploadingLogo ? "Enviando..." : "📷 Escolher imagem"}
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadLogo(f); }}
-                />
-              </label>
+              <div className="flex items-center gap-2 flex-wrap">
+                <label className={`btn text-sm border border-slate-200 cursor-pointer inline-flex items-center gap-1.5 ${uploadingLogo ? "opacity-50 pointer-events-none" : ""}`}>
+                  {uploadingLogo ? "Enviando..." : "📷 Escolher imagem"}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadLogo(f); }}
+                  />
+                </label>
+                {avatarUrl && (
+                  <button
+                    type="button"
+                    onClick={removeLogo}
+                    className="text-xs text-red-500 hover:text-red-700 underline"
+                  >
+                    Remover
+                  </button>
+                )}
+              </div>
               <p className="text-xs text-slate-400">Aparece no seu link de agendamento público. JPG/PNG.</p>
             </div>
           </div>

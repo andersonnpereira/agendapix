@@ -366,15 +366,17 @@ export default function CobrancasPage() {
 
     const amount_cents = parseToCents(fAmount);
     let pix_payload: string | null = null;
-    try {
-      pix_payload = generatePixBRCode({
-        pixKey: normalizePixKey(profile.pix_key, (profile.pix_key_type as PixKeyType) || "celular"),
-        amount: amount_cents / 100,
-        merchantName: profile.pix_merchant_name || "PROFISSIONAL",
-        merchantCity: profile.pix_merchant_city || "BR",
-        txid: ("MAN" + Date.now()).slice(0, 25),
-      });
-    } catch { /* continua sem payload */ }
+    if (profile?.pix_key) {
+      try {
+        pix_payload = generatePixBRCode({
+          pixKey: normalizePixKey(profile.pix_key, (profile.pix_key_type as PixKeyType) || "celular"),
+          amount: amount_cents / 100,
+          merchantName: profile.pix_merchant_name || "PROFISSIONAL",
+          merchantCity: profile.pix_merchant_city || "BR",
+          txid: ("MAN" + Date.now()).slice(0, 25),
+        });
+      } catch { /* continua sem payload */ }
+    }
 
     const { error: insertError } = await supabase.from("charges").insert({
       profile_id: user.id,

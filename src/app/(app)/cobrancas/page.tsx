@@ -362,7 +362,11 @@ export default function CobrancasPage() {
     setFSaving(true);
 
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user) {
+      setFSaving(false);
+      showToast("Sessão expirada. Faça login novamente.");
+      return;
+    }
 
     const amount_cents = parseToCents(fAmount);
     let pix_payload: string | null = null;

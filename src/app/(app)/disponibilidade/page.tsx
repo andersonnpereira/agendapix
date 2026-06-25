@@ -64,6 +64,10 @@ export default function DisponibilidadePage() {
   async function add() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
+    const alreadyExists = blocks.some(
+      (b) => b.weekday === weekday && b.start_time.slice(0, 5) === start && b.end_time.slice(0, 5) === end
+    );
+    if (alreadyExists) return;
     await supabase.from("availability").insert({
       profile_id: user.id,
       weekday,

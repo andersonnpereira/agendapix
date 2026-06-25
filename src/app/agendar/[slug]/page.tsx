@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase-server";
 import BookingForm from "./BookingForm";
+import { AvatarImg } from "./AvatarImg";
 
 function hexToRgb(hex: string) {
   const r = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
@@ -73,6 +74,7 @@ export default async function AgendarPage({ params }: Props) {
       .bp .border-brand\\/20 { border-color: ${brandBorder} !important; }
       .bp .hover\\:bg-brand:hover { background-color: ${brandColor} !important; }
       .bp .hover\\:text-brand:hover { color: ${brandColor} !important; }
+      .bp .hover\\:border-brand:hover { border-color: ${brandColor} !important; }
       .bp .btn-primary { background-color: ${brandColor} !important; border-color: ${brandColor} !important; }
       .bp .btn-primary:hover { background-color: ${brandDark} !important; }
       .bp .ring-brand { --tw-ring-color: ${brandColor} !important; }
@@ -83,12 +85,7 @@ export default async function AgendarPage({ params }: Props) {
         {/* Header do profissional */}
         <div className="text-center space-y-2">
           {profile.avatar_url ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={profile.avatar_url}
-              alt={profile.business_name || ""}
-              className="w-20 h-20 rounded-full object-cover mx-auto border-2 border-white shadow"
-            />
+            <AvatarImg src={profile.avatar_url} alt={profile.business_name || ""} />
           ) : (
             <div className="w-20 h-20 rounded-full bg-brand-light flex items-center justify-center mx-auto text-3xl">
               ✂️

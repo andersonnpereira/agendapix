@@ -65,7 +65,7 @@ function calcSlots(
       if (!conflict) slots.push(minToTime(t));
     }
   }
-  return slots;
+  return [...new Set(slots)].sort();
 }
 
 // Gera lista de datas disponíveis para os próximos 60 dias (inclui hoje no horário de Brasília)

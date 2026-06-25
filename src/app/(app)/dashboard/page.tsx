@@ -66,6 +66,47 @@ export default async function DashboardPage() {
   const totalReceived =
     paidCharges?.reduce((sum, c) => sum + (c.amount_cents || 0), 0) || 0;
 
+  // Analytics extras
+  const weekStart = new Date();
+  weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+  const weekStartStr = weekStart.toISOString().slice(0, 10);
+
+  const [{ count: clientCount }, { data: monthBookings }, { data: upcomingBookings }] =
+    await Promise.all([
+      supabase
+        .from("clients")
+        .select("*", { count: "exact", head: true })
+        .eq("profile_id", user.id)
+        .eq("status", "ativo"),
+      supabase
+        .from("bookings")
+        .select("service_id, services(name)")
+        .eq("profile_id", user.id)
+        .gte("date", monthStartStr)
+        .neq("status", "cancelado"),
+      supabase
+        .from("bookings")
+        .select("client_name, date, time, services(name)")
+        .eq("profile_id", user.id)
+        .gt("date", today)
+        .lte("date", new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10))
+        .neq("status", "cancelado")
+        .order("date")
+        .order("time")
+        .limit(3),
+    ]);
+
+  // Serviço mais agendado no mês
+  const svcCount: Record<string, { name: string; count: number }> = {};
+  for (const b of monthBookings || []) {
+    const svc = b.services as unknown as { name: string } | null;
+    if (svc && b.service_id) {
+      if (!svcCount[b.service_id]) svcCount[b.service_id] = { name: svc.name, count: 0 };
+      svcCount[b.service_id].count++;
+    }
+  }
+  const topService = Object.values(svcCount).sort((a, b) => b.count - a.count)[0] || null;
+
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "";
   const publicLink = `${siteUrl}/agendar/${profile.slug}`;
 
@@ -124,26 +165,60 @@ export default async function DashboardPage() {
       )}
 
       {/* Métricas */}
-      <div className="grid grid-cols-3 gap-3">
-        <div className="card text-center">
-          <p className="text-2xl font-bold text-slate-900">
-            {todayBookings?.length || 0}
-          </p>
-          <p className="text-xs text-slate-500 mt-1">Hoje</p>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="card text-center py-4">
+          <p className="text-3xl font-bold text-slate-900">{todayBookings?.length || 0}</p>
+          <p className="text-xs text-slate-500 mt-1">Agendamentos hoje</p>
         </div>
-        <div className="card text-center">
-          <p className="text-2xl font-bold text-amber-600">
-            {pendingCount || 0}
-          </p>
-          <p className="text-xs text-slate-500 mt-1">A receber</p>
+        <div className="card text-center py-4">
+          <p className="text-3xl font-bold text-amber-600">{pendingCount || 0}</p>
+          <p className="text-xs text-slate-500 mt-1">Cobranças abertas</p>
         </div>
-        <div className="card text-center">
-          <p className="text-lg font-bold text-brand">
-            {formatBRL(totalReceived)}
-          </p>
-          <p className="text-xs text-slate-500 mt-1">No mês</p>
+        <div className="card text-center py-4">
+          <p className="text-lg font-bold text-brand">{formatBRL(totalReceived)}</p>
+          <p className="text-xs text-slate-500 mt-1">Recebido no mês</p>
+        </div>
+        <div className="card text-center py-4">
+          <p className="text-3xl font-bold text-slate-900">{clientCount || 0}</p>
+          <p className="text-xs text-slate-500 mt-1">Clientes ativos</p>
         </div>
       </div>
+
+      {/* Top serviço + próximos */}
+      {(topService || (upcomingBookings && upcomingBookings.length > 0)) && (
+        <div className="grid grid-cols-1 gap-3">
+          {topService && (
+            <div className="card py-3 flex items-center justify-between">
+              <div>
+                <p className="text-xs text-slate-500">🏆 Serviço mais agendado este mês</p>
+                <p className="font-semibold text-slate-900 mt-0.5">{topService.name}</p>
+              </div>
+              <span className="text-2xl font-bold text-brand">{topService.count}×</span>
+            </div>
+          )}
+          {upcomingBookings && upcomingBookings.length > 0 && (
+            <div className="card space-y-2 py-3">
+              <p className="text-xs text-slate-500 font-medium">📆 Próximos 3 dias</p>
+              {upcomingBookings.map((b, i) => {
+                const [y, m, d] = b.date.split("-");
+                const svc = b.services as unknown as { name: string } | null;
+                return (
+                  <div key={i} className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-slate-900">{b.client_name}</p>
+                      <p className="text-xs text-slate-400">{svc?.name || "Serviço"}</p>
+                    </div>
+                    <p className="text-xs text-slate-500 text-right">
+                      {d}/{m}<br />
+                      <span className="font-semibold text-brand">{b.time?.slice(0, 5)}</span>
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Agendamentos de hoje */}
       <div>

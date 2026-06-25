@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ContactForm } from "@/components/ContactForm";
 
 const steps = [
   {
@@ -160,13 +161,18 @@ export default function AjudaPage() {
           </div>
         </section>
 
-        {/* Suporte */}
-        <div className="bg-brand-light rounded-xl p-4 text-center space-y-2">
-          <p className="font-semibold text-brand-dark">Ainda com dúvidas?</p>
-          <p className="text-sm text-slate-600">
-            Fale com o suporte pelo WhatsApp ou envie um e-mail.
-          </p>
-        </div>
+        {/* Contato */}
+        <section className="space-y-4">
+          <div>
+            <h2 className="font-bold text-slate-900 text-lg">Fale com a gente</h2>
+            <p className="text-sm text-slate-500 mt-0.5">
+              Ficou com alguma dúvida ou sugestão? Mande uma mensagem — respondemos em breve.
+            </p>
+          </div>
+          <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
+            <ContactForm />
+          </div>
+        </section>
       </div>
     </div>
   );

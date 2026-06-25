@@ -145,8 +145,13 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Busca perfil + serviço em paralelo para notificação
-    const [{ data: profile }, { data: service }] = await Promise.all([
+    // Busca perfil + serviço + auth email em paralelo para notificação
+    const adminClient = createSupabaseClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    );
+    const [{ data: profile }, { data: service }, { data: authUser }] = await Promise.all([
       supabase
         .from("profiles")
         .select("notification_email, business_name, name, phone, whatsapp_instance_id")
@@ -155,6 +160,7 @@ export async function POST(req: NextRequest) {
       service_id
         ? supabase.from("services").select("name").eq("id", service_id).single()
         : Promise.resolve({ data: null }),
+      adminClient.auth.admin.getUserById(profile_id),
     ]);
 
     const [year, month, day] = date.split("-");
@@ -188,7 +194,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const email = profile?.notification_email;
+    const email = profile?.notification_email || authUser?.user?.email;
     if (email) {
       sendEmail({
         to: email,

@@ -412,7 +412,7 @@ export default function CobrancasPage() {
   return (
     <div className="space-y-5 pb-4">
       {toast && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-slate-800 text-white text-sm px-4 py-2.5 rounded-xl shadow-lg">
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] bg-slate-800 text-white text-sm px-4 py-2.5 rounded-xl shadow-lg">
           {toast}
         </div>
       )}
@@ -915,8 +915,13 @@ export default function CobrancasPage() {
             </div>{/* fim grid */}
             </div>{/* fim scroll */}
             {/* Rodapé fixo com botão */}
-            <div className="px-5 pb-5 pt-3 border-t border-slate-100 shrink-0">
-              <button className="btn-primary w-full" onClick={criarCobranca} disabled={fSaving || !fClientName || !fAmount}>
+            <div className="px-5 pb-5 pt-3 border-t border-slate-100 shrink-0 space-y-3">
+              {!profile?.pix_key && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-xs text-amber-700 font-medium">
+                  ⚠️ Cadastre sua chave Pix nas <a href="/configuracoes" className="underline font-semibold">Configurações</a> antes de criar cobranças.
+                </div>
+              )}
+              <button className="btn-primary w-full" onClick={criarCobranca} disabled={fSaving || !fClientName || !fAmount || !profile?.pix_key}>
                 {fSaving ? "Criando..." : "Criar cobrança"}
               </button>
             </div>

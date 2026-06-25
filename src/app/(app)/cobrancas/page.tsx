@@ -377,7 +377,7 @@ export default function CobrancasPage() {
       });
     } catch { /* continua sem payload */ }
 
-    await supabase.from("charges").insert({
+    const { error: insertError } = await supabase.from("charges").insert({
       profile_id: user.id,
       client_name: fClientName,
       client_phone: fClientPhone,
@@ -391,10 +391,16 @@ export default function CobrancasPage() {
       scheduled_reminder_at: fAutoReminder && fScheduledAt ? new Date(fScheduledAt).toISOString() : null,
     });
 
+    setFSaving(false);
+
+    if (insertError) {
+      showToast("Erro: " + insertError.message);
+      return;
+    }
+
     setFClientName(""); setFClientPhone(""); setFDescription(""); setFAmount("");
     setFDueDate(new Date().toISOString().slice(0, 10)); setFRecurrence("none");
     setFAutoReminder(false); setFScheduledAt("");
-    setFSaving(false);
     setShowModal(false);
     load();
     showToast("Cobrança criada!");

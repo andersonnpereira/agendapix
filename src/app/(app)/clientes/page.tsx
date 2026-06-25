@@ -72,9 +72,10 @@ function Avatar({ name }: { name: string }) {
 export default function ClientesPage() {
   const supabase = createClient();
   const [clients, setClients] = useState<Client[]>([]);
+  const [recentClientIds, setRecentClientIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [filterStatus, setFilterStatus] = useState<"todos" | "ativo" | "inativo">("todos");
+  const [filterStatus, setFilterStatus] = useState<"todos" | "ativo" | "inativo" | "sem_agenda">("todos");
   const [toast, setToast] = useState("");
 
   // Detail view
@@ -109,12 +110,13 @@ export default function ClientesPage() {
   const load = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-    const { data } = await supabase
-      .from("clients")
-      .select("*")
-      .eq("profile_id", user.id)
-      .order("name");
+    const thirtyDaysAgoStr = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+    const [{ data }, { data: recentBookings }] = await Promise.all([
+      supabase.from("clients").select("*").eq("profile_id", user.id).order("name"),
+      supabase.from("bookings").select("client_id").eq("profile_id", user.id).gte("date", thirtyDaysAgoStr).neq("status", "cancelado").not("client_id", "is", null),
+    ]);
     setClients((data as Client[]) || []);
+    setRecentClientIds(new Set((recentBookings || []).map((b) => b.client_id as string)));
     setLoading(false);
   }, [supabase]);
 
@@ -206,13 +208,10 @@ export default function ClientesPage() {
   }
 
   const filtered = clients.filter((c) => {
-    const matchStatus = filterStatus === "todos" || c.status === filterStatus;
     const s = search.toLowerCase();
-    const matchSearch =
-      !s ||
-      c.name.toLowerCase().includes(s) ||
-      (c.phone || "").includes(s) ||
-      (c.email || "").toLowerCase().includes(s);
+    const matchSearch = !s || c.name.toLowerCase().includes(s) || (c.phone || "").includes(s) || (c.email || "").toLowerCase().includes(s);
+    if (filterStatus === "sem_agenda") return c.status === "ativo" && !recentClientIds.has(c.id) && matchSearch;
+    const matchStatus = filterStatus === "todos" || c.status === filterStatus;
     return matchStatus && matchSearch;
   });
 
@@ -475,20 +474,27 @@ export default function ClientesPage() {
         onChange={(e) => setSearch(e.target.value)}
       />
 
-      <div className="flex gap-2">
-        {(["todos", "ativo", "inativo"] as const).map((s) => (
+      <div className="flex flex-wrap gap-2">
+        {([
+          { key: "todos", label: "Todos" },
+          { key: "ativo", label: "Ativos" },
+          { key: "inativo", label: "Inativos" },
+          { key: "sem_agenda", label: "💤 Sem agenda 30d" },
+        ] as const).map((f) => (
           <button
-            key={s}
-            onClick={() => setFilterStatus(s)}
-            className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors capitalize ${
-              filterStatus === s ? "bg-brand text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+            key={f.key}
+            onClick={() => setFilterStatus(f.key)}
+            className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+              filterStatus === f.key
+                ? f.key === "sem_agenda" ? "bg-amber-500 text-white" : "bg-brand text-white"
+                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
             }`}
           >
-            {s.charAt(0).toUpperCase() + s.slice(1)}
+            {f.label}
           </button>
         ))}
         {clients.length > 0 && (
-          <span className="ml-auto text-xs text-slate-400 self-center">{clients.length} cliente{clients.length !== 1 ? "s" : ""}</span>
+          <span className="ml-auto text-xs text-slate-400 self-center">{filtered.length}/{clients.length}</span>
         )}
       </div>
 
@@ -520,6 +526,9 @@ export default function ClientesPage() {
                 <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${c.status === "ativo" ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-500"}`}>
                   {c.status === "ativo" ? "Ativo" : "Inativo"}
                 </span>
+                {c.status === "ativo" && !recentClientIds.has(c.id) && (
+                  <span className="text-[10px] text-amber-500 font-medium">💤 30d</span>
+                )}
                 <span className="text-xs text-slate-300">›</span>
               </div>
             </button>

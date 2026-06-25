@@ -107,6 +107,34 @@ export default async function DashboardPage() {
   }
   const topService = Object.values(svcCount).sort((a, b) => b.count - a.count)[0] || null;
 
+  // Aniversariantes + clientes inativos
+  const thirtyDaysAgoStr = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+  const [{ data: allClients }, { data: recentClientBookings }] = await Promise.all([
+    supabase.from("clients").select("id, name, birthdate").eq("profile_id", user.id).eq("status", "ativo"),
+    supabase.from("bookings").select("client_id").eq("profile_id", user.id).gte("date", thirtyDaysAgoStr).neq("status", "cancelado").not("client_id", "is", null),
+  ]);
+
+  const recentIds = new Set((recentClientBookings || []).map((b) => b.client_id as string));
+  const inactiveCount = (allClients || []).filter((c) => !recentIds.has(c.id)).length;
+
+  const nowDate = new Date();
+  const birthdayClients = (allClients || []).filter((c) => {
+    if (!c.birthdate) return false;
+    const [, bm, bd] = c.birthdate.split("-");
+    for (let i = 0; i <= 6; i++) {
+      const d = new Date(nowDate);
+      d.setDate(d.getDate() + i);
+      if (bm === String(d.getMonth() + 1).padStart(2, "0") && bd === String(d.getDate()).padStart(2, "0")) return true;
+    }
+    return false;
+  });
+  const todayMM = String(nowDate.getMonth() + 1).padStart(2, "0");
+  const todayDD = String(nowDate.getDate()).padStart(2, "0");
+  const todayBirthdays = birthdayClients.filter((c) => {
+    const [, bm, bd] = (c.birthdate || "").split("-");
+    return bm === todayMM && bd === todayDD;
+  });
+
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "";
   const publicLink = `${siteUrl}/agendar/${profile.slug}`;
 
@@ -161,6 +189,39 @@ export default async function DashboardPage() {
             <p className="text-xs text-red-500 mt-0.5">Envie um lembrete agora</p>
           </div>
           <span className="text-red-400 text-sm">→</span>
+        </Link>
+      )}
+
+      {/* Aniversariantes */}
+      {birthdayClients.length > 0 && (
+        <Link href="/clientes" className="card bg-pink-50 border-pink-200 py-3 px-4 flex items-center justify-between">
+          <div>
+            <p className="text-sm font-semibold text-pink-700">
+              🎂 {todayBirthdays.length > 0
+                ? `${todayBirthdays.length} aniversariante${todayBirthdays.length > 1 ? "s" : ""} hoje!`
+                : `${birthdayClients.length} aniversariante${birthdayClients.length > 1 ? "s" : ""} esta semana`}
+            </p>
+            <p className="text-xs text-pink-500 mt-0.5">
+              {(todayBirthdays.length > 0 ? todayBirthdays : birthdayClients)
+                .slice(0, 3)
+                .map((c) => c.name.split(" ")[0])
+                .join(", ")}
+            </p>
+          </div>
+          <span className="text-pink-300 text-sm">→</span>
+        </Link>
+      )}
+
+      {/* Clientes inativos */}
+      {inactiveCount > 0 && (
+        <Link href="/clientes" className="card bg-amber-50 border-amber-200 py-3 px-4 flex items-center justify-between">
+          <div>
+            <p className="text-sm font-semibold text-amber-700">
+              💤 {inactiveCount} cliente{inactiveCount > 1 ? "s" : ""} sem agendamento há 30+ dias
+            </p>
+            <p className="text-xs text-amber-500 mt-0.5">Reconquiste com uma mensagem ou promoção</p>
+          </div>
+          <span className="text-amber-300 text-sm">→</span>
         </Link>
       )}
 

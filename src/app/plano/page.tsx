@@ -9,6 +9,10 @@ const ECONOMIA_ANUAL = "R$ 167";
 const WHATSAPP_CONTATO = process.env.NEXT_PUBLIC_CONTACT_WHATSAPP || "5567999999999";
 const NOME_PRODUTO = "Agendou";
 
+// Links diretos de checkout (Hotmart ou Kiwify) — configure no Vercel
+const CHECKOUT_MONTHLY = process.env.NEXT_PUBLIC_CHECKOUT_MONTHLY || "";
+const CHECKOUT_ANNUAL  = process.env.NEXT_PUBLIC_CHECKOUT_ANNUAL  || "";
+
 function waLink(msg: string) {
   return `https://wa.me/${WHATSAPP_CONTATO}?text=${encodeURIComponent(msg)}`;
 }
@@ -106,7 +110,7 @@ export default async function PlanoPage() {
 
             {/* Card Mensal */}
             <a
-              href={waMensal}
+              href={CHECKOUT_MONTHLY || waMensal}
               target="_blank"
               rel="noopener noreferrer"
               className="group block bg-white border-2 border-slate-200 hover:border-brand rounded-2xl p-5 transition-all hover:shadow-md"
@@ -139,7 +143,7 @@ export default async function PlanoPage() {
 
             {/* Card Anual — destaque */}
             <a
-              href={waAnual}
+              href={CHECKOUT_ANNUAL || waAnual}
               target="_blank"
               rel="noopener noreferrer"
               className="group block relative bg-brand rounded-2xl p-5 transition-all hover:opacity-95 hover:shadow-lg"
@@ -173,9 +177,15 @@ export default async function PlanoPage() {
               </div>
             </a>
 
-            <p className="text-center text-xs text-slate-400 leading-relaxed">
-              Pagamento via Pix. Após o envio, a liberação é feita em até 1 hora útil.
-            </p>
+            {CHECKOUT_MONTHLY || CHECKOUT_ANNUAL ? (
+              <p className="text-center text-xs text-slate-400 leading-relaxed">
+                🔒 Compra segura · O acesso é liberado automaticamente após a confirmação do pagamento.
+              </p>
+            ) : (
+              <p className="text-center text-xs text-slate-400 leading-relaxed">
+                Pagamento via Pix. Após o envio, a liberação é feita em até 1 hora útil.
+              </p>
+            )}
           </div>
         )}
 

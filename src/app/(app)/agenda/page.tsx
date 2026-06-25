@@ -349,13 +349,22 @@ export default function AgendaPage() {
                     </>
                   )}
                   {b.status === "concluido" && (
-                    <button
-                      className="btn-primary text-sm px-3 py-1.5"
-                      onClick={() => criarCobranca(b)}
-                      disabled={!!isLoading("cobrar")}
-                    >
-                      {isLoading("cobrar") ? "Criando..." : "💰 Gerar cobrança Pix"}
-                    </button>
+                    <>
+                      <button
+                        className="btn-primary text-sm px-3 py-1.5"
+                        onClick={() => criarCobranca(b)}
+                        disabled={!!isLoading("cobrar")}
+                      >
+                        {isLoading("cobrar") ? "Criando..." : "💰 Gerar cobrança Pix"}
+                      </button>
+                      <button
+                        className="btn text-sm px-3 py-1.5 text-red-500 border border-red-200 hover:bg-red-50"
+                        onClick={() => setConfirmDeleteId(b.id)}
+                        disabled={!!isLoading("excluir")}
+                      >
+                        🗑 Excluir
+                      </button>
+                    </>
                   )}
                   {b.status === "cancelado" && (
                     <button

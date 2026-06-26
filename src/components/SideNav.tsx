@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Home, CalendarDays, Users, CreditCard, BarChart3, Settings, HelpCircle,
+  Home, CalendarDays, Users, CreditCard, BarChart3, Settings, HelpCircle, ShieldCheck,
 } from "lucide-react";
 import { SignOutButton } from "@/components/SignOutButton";
 
@@ -16,7 +16,7 @@ const nav = [
   { href: "/configuracoes", label: "Configurações",  Icon: Settings },
 ];
 
-export function SideNav() {
+export function SideNav({ isAdmin }: { isAdmin?: boolean }) {
   const pathname = usePathname();
 
   return (
@@ -30,6 +30,23 @@ export function SideNav() {
 
         {/* Nav items */}
         <nav className="flex-1 px-3 py-4 space-y-0.5">
+          {isAdmin && (
+            <Link
+              href="/admin"
+              className={[
+                "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 mb-2",
+                pathname.startsWith("/admin")
+                  ? "bg-purple-100 text-purple-700"
+                  : "text-purple-500 hover:bg-purple-50 hover:text-purple-700",
+              ].join(" ")}
+            >
+              <ShieldCheck size={18} strokeWidth={pathname.startsWith("/admin") ? 2.5 : 2} className="shrink-0" />
+              Admin
+              {pathname.startsWith("/admin") && (
+                <span className="ml-auto w-1.5 h-1.5 rounded-full bg-purple-500" />
+              )}
+            </Link>
+          )}
           {nav.map(({ href, label, Icon }) => {
             const isActive = pathname === href || pathname.startsWith(href + "/");
             return (

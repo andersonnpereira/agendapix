@@ -40,7 +40,7 @@ export default async function AppLayout({
     <div className="min-h-screen bg-slate-50">
 
       {/* ── Desktop sidebar ───────────────────────────────── */}
-      <SideNav />
+      <SideNav isAdmin={isAdmin} />
 
       {/* ── Mobile header ─────────────────────────────────── */}
       <header className="lg:hidden sticky top-0 z-20 bg-white/95 backdrop-blur-sm border-b border-slate-100">

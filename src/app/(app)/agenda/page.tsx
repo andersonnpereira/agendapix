@@ -377,7 +377,7 @@ export default function AgendaPage() {
           weekStart={weekStart}
           onPrev={() => setWeekStart((ws) => addDaysToDate(ws, -7))}
           onNext={() => setWeekStart((ws) => addDaysToDate(ws, 7))}
-          onBookingClick={(b) => setCalendarDetail(b)}
+          onBookingClick={(b) => { const full = bookings.find((bk) => bk.id === b.id); if (full) setCalendarDetail(full); }}
         />
       )}
 

@@ -83,7 +83,7 @@ export default async function AgendarPage({ params }: Props) {
 
   const { data: services } = await supabase
     .from("services")
-    .select("id, name, duration_minutes, price_cents, image_url")
+    .select("id, name, duration_minutes, price_cents, image_url, extra_questions")
     .eq("profile_id", profile.id)
     .eq("active", true)
     .order("name");

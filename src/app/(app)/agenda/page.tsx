@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase-browser";
 import { formatBRL, getTodayBR, addDaysBR } from "@/lib/format";
 import { generatePixBRCode, normalizePixKey, type PixKeyType } from "@/lib/pix";
+import WeekCalendar from "./WeekCalendar";
 
 type Booking = {
   id: string;
@@ -55,6 +56,17 @@ export default function AgendaPage() {
   const [toast, setToast] = useState("");
   const [chargeModal, setChargeModal] = useState<Booking | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<"lista" | "semana">("lista");
+  const [weekStart, setWeekStart] = useState<string>(() => {
+    // Monday of current week (BR timezone)
+    const d = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+    const day = d.getDay(); // 0=Sun
+    const diff = day === 0 ? -6 : 1 - day;
+    d.setDate(d.getDate() + diff);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  });
+
+  const [calendarDetail, setCalendarDetail] = useState<Booking | null>(null);
 
   // Reagendamento
   const [rescheduleModal, setRescheduleModal] = useState<Booking | null>(null);
@@ -65,6 +77,12 @@ export default function AgendaPage() {
     setToast(msg);
     setTimeout(() => setToast(""), 3500);
   };
+
+  function addDaysToDate(dateStr: string, n: number): string {
+    const [y, m, d] = dateStr.split("-").map(Number);
+    const dt = new Date(y, m - 1, d + n);
+    return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+  }
 
   const load = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -85,13 +103,19 @@ export default function AgendaPage() {
       .order("date", { ascending: true })
       .order("time", { ascending: true });
 
-    if (filter === "hoje") query = query.eq("date", today);
-    else if (filter === "proximos") query = query.gt("date", today).lte("date", addDaysBR(7));
+    if (viewMode === "semana") {
+      const weekEnd = addDaysToDate(weekStart, 6);
+      query = query.gte("date", weekStart).lte("date", weekEnd);
+    } else if (filter === "hoje") {
+      query = query.eq("date", today);
+    } else if (filter === "proximos") {
+      query = query.gt("date", today).lte("date", addDaysBR(7));
+    }
 
     const { data } = await query;
     setBookings((data as Booking[]) ?? []);
     setLoading(false);
-  }, [supabase, filter]);
+  }, [supabase, filter, viewMode, weekStart]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -291,42 +315,74 @@ export default function AgendaPage() {
 
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-slate-900">Agenda</h1>
-        <a
-          href="/api/ical"
-          download="agenda.ics"
-          className="text-xs text-slate-500 hover:text-brand border border-slate-200 rounded-lg px-3 py-1.5 transition-colors"
-          title="Exportar para Google Calendar, iPhone ou Outlook"
-        >
-          📅 Exportar .ics
-        </a>
-      </div>
-
-      {/* Busca */}
-      <input
-        className="input text-sm"
-        placeholder="Buscar por nome ou telefone..."
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-      />
-
-      {/* Filtros com badge de contagem */}
-      <div className="flex gap-2">
-        {(["hoje", "proximos", "todos"] as Filter[]).map((f) => (
-          <button
-            key={f}
-            onClick={() => setFilter(f)}
-            className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-              filter === f
-                ? "bg-brand text-white"
-                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-            }`}
+        <div className="flex gap-2 items-center">
+          <div className="flex rounded-lg border border-slate-200 overflow-hidden">
+            <button
+              onClick={() => setViewMode("lista")}
+              className={`px-3 py-1.5 text-xs font-medium transition-colors ${viewMode === "lista" ? "bg-brand text-white" : "text-slate-500 hover:bg-slate-50"}`}
+            >
+              ☰ Lista
+            </button>
+            <button
+              onClick={() => setViewMode("semana")}
+              className={`px-3 py-1.5 text-xs font-medium transition-colors border-l border-slate-200 ${viewMode === "semana" ? "bg-brand text-white" : "text-slate-500 hover:bg-slate-50"}`}
+            >
+              📅 Semana
+            </button>
+          </div>
+          <a
+            href="/api/ical"
+            download="agenda.ics"
+            className="text-xs text-slate-500 hover:text-brand border border-slate-200 rounded-lg px-3 py-1.5 transition-colors"
+            title="Exportar para Google Calendar, iPhone ou Outlook"
           >
-            {filterLabel(f)}
-          </button>
-        ))}
+            ↓ .ics
+          </a>
+        </div>
       </div>
 
-      {loading ? (
+      {/* Busca (only in list mode) */}
+      {viewMode === "lista" && (
+        <input
+          className="input text-sm"
+          placeholder="Buscar por nome ou telefone..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      )}
+
+      {/* Filtros com badge de contagem (only in list mode) */}
+      {viewMode === "lista" && (
+        <div className="flex gap-2">
+          {(["hoje", "proximos", "todos"] as Filter[]).map((f) => (
+            <button
+              key={f}
+              onClick={() => setFilter(f)}
+              className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                filter === f
+                  ? "bg-brand text-white"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              }`}
+            >
+              {filterLabel(f)}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* ── Visão de semana ── */}
+      {viewMode === "semana" && (
+        <WeekCalendar
+          bookings={bookings}
+          weekStart={weekStart}
+          onPrev={() => setWeekStart((ws) => addDaysToDate(ws, -7))}
+          onNext={() => setWeekStart((ws) => addDaysToDate(ws, 7))}
+          onBookingClick={(b) => setCalendarDetail(b)}
+        />
+      )}
+
+      {/* ── Visão de lista ── */}
+      {viewMode === "lista" && (loading ? (
         <p className="text-slate-400 text-sm">Carregando...</p>
       ) : filtered.length === 0 ? (
         <div className="card text-center text-slate-500 text-sm py-10">
@@ -468,6 +524,31 @@ export default function AgendaPage() {
               </div>
             );
           })}
+        </div>
+      ))}
+
+      {/* Modal detalhe agendamento (calendário semana) */}
+      {calendarDetail && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end justify-center p-4" onClick={() => setCalendarDetail(null)}>
+          <div className="bg-white rounded-2xl w-full max-w-sm p-6 space-y-3" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-slate-900">{calendarDetail.client_name}</h3>
+              <button onClick={() => setCalendarDetail(null)} className="text-slate-400 hover:text-slate-600 text-xl">×</button>
+            </div>
+            <p className="text-sm text-slate-600">{calendarDetail.services?.name || "Serviço"}</p>
+            <p className="text-sm text-slate-500">
+              {formatDate(calendarDetail.date)} às {calendarDetail.time?.slice(0, 5)}
+            </p>
+            <span className={`inline-block text-xs font-semibold px-2 py-1 rounded-full ${STATUS_LABELS[calendarDetail.status]?.color}`}>
+              {STATUS_LABELS[calendarDetail.status]?.label}
+            </span>
+            <button
+              className="w-full mt-2 py-2 rounded-xl border border-slate-200 text-sm text-slate-600 hover:bg-slate-50"
+              onClick={() => { setCalendarDetail(null); setViewMode("lista"); setFilter("todos"); }}
+            >
+              Ver na lista →
+            </button>
+          </div>
         </div>
       )}
 

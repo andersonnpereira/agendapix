@@ -39,7 +39,7 @@ function checkRateLimit(profile_id: string, date: string): boolean {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { profile_id, service_id, client_name, client_phone, client_email, client_notes, date, time } = body;
+    const { profile_id, service_id, client_name, client_phone, client_email, client_notes, extra_answers, date, time } = body;
 
     if (!profile_id || !client_name || !client_phone || !date || !time) {
       return NextResponse.json({ error: "Dados incompletos." }, { status: 400 });
@@ -96,6 +96,7 @@ export async function POST(req: NextRequest) {
         client_phone,
         client_email: client_email || null,
         notes: client_notes || null,
+        extra_answers: extra_answers || null,
         date,
         time,
         status: "pendente",

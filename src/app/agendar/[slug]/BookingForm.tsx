@@ -5,20 +5,24 @@ import Image from "next/image";
 import { createClient } from "@/lib/supabase-browser";
 import { formatBRL } from "@/lib/format";
 
+type ExtraQuestion = {
+  id: string;
+  label: string;
+  type: "text" | "textarea" | "select";
+  options: string[];
+  required: boolean;
+};
+
 type Service = {
   id: string;
   name: string;
   duration_minutes: number;
   price_cents: number;
   image_url?: string | null;
+  extra_questions?: ExtraQuestion[];
 };
 
-type AvailBlock = {
-  weekday: number;
-  start_time: string;
-  end_time: string;
-};
-
+type AvailBlock = { weekday: number; start_time: string; end_time: string };
 type BlockedPeriod = { start: string; end: string };
 
 type Props = {
@@ -44,7 +48,6 @@ function getCurrentMinutesBrasilia(): number {
   return d.getHours() * 60 + d.getMinutes();
 }
 
-// Gera os slots disponíveis para um dia, excluindo os já agendados
 function calcSlots(
   blocks: AvailBlock[],
   weekday: number,
@@ -53,7 +56,6 @@ function calcSlots(
 ): string[] {
   const dayBlocks = blocks.filter((b) => b.weekday === weekday);
   const slots: string[] = [];
-
   for (const block of dayBlocks) {
     const start = timeToMin(block.start_time);
     const end = timeToMin(block.end_time);
@@ -70,24 +72,20 @@ function calcSlots(
   return [...new Set(slots)].sort();
 }
 
-// Gera lista de datas disponíveis para os próximos 60 dias (inclui hoje no horário de Brasília)
 function getAvailableDates(blocks: AvailBlock[], blockedPeriods: BlockedPeriod[] = []): string[] {
   const availableWeekdays = new Set(blocks.map((b) => b.weekday));
   const dates: string[] = [];
-
   for (let i = 0; i < 60; i++) {
     const base = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
     base.setDate(base.getDate() + i);
     const dateStr = `${base.getFullYear()}-${String(base.getMonth() + 1).padStart(2, "0")}-${String(base.getDate()).padStart(2, "0")}`;
     const isBlocked = blockedPeriods.some((p) => dateStr >= p.start && dateStr <= p.end);
-    if (availableWeekdays.has(base.getDay()) && !isBlocked) {
-      dates.push(dateStr);
-    }
+    if (availableWeekdays.has(base.getDay()) && !isBlocked) dates.push(dateStr);
   }
   return dates.slice(0, 30);
 }
 
-type Step = "service" | "datetime" | "contact" | "confirm" | "success";
+type Step = "service" | "datetime" | "contact" | "extras" | "confirm" | "success";
 
 function CalendarPicker({
   availableDates,
@@ -122,38 +120,27 @@ function CalendarPicker({
     else setViewMonth((m) => m + 1);
   };
 
-  const monthLabel = new Date(viewYear, viewMonth).toLocaleDateString("pt-BR", {
-    month: "long", year: "numeric",
-  });
+  const monthLabel = new Date(viewYear, viewMonth).toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
 
   return (
     <div className="border border-slate-200 rounded-2xl p-4 bg-white shadow-sm select-none">
       <div className="flex items-center justify-between mb-4">
-        <button type="button" onClick={prevMonth}
-          className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-slate-100 text-slate-500 text-xl font-light">
-          ‹
-        </button>
+        <button type="button" onClick={prevMonth} className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-slate-100 text-slate-500 text-xl font-light">‹</button>
         <span className="font-semibold text-slate-900 capitalize text-sm">{monthLabel}</span>
-        <button type="button" onClick={nextMonth}
-          className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-slate-100 text-slate-500 text-xl font-light">
-          ›
-        </button>
+        <button type="button" onClick={nextMonth} className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-slate-100 text-slate-500 text-xl font-light">›</button>
       </div>
-
       <div className="grid grid-cols-7 mb-2">
         {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((d) => (
           <div key={d} className="text-center text-xs text-slate-400 font-medium py-1">{d}</div>
         ))}
       </div>
-
       <div className="grid grid-cols-7 gap-1">
         {cells.map((dateStr, i) => {
           if (!dateStr) return <div key={i} />;
           const isAvailable = availableSet.has(dateStr);
           const isSelected = dateStr === selectedDate;
-          const isToday = dateStr === today;
           const isPast = dateStr < today;
-
+          const isToday = dateStr === today;
           return (
             <button
               key={dateStr}
@@ -162,12 +149,9 @@ function CalendarPicker({
               onClick={() => onSelect(dateStr)}
               className={[
                 "h-9 w-full rounded-xl text-sm font-medium transition-all",
-                isSelected
-                  ? "bg-brand text-white shadow-md scale-105"
-                  : isAvailable
-                  ? "bg-brand-light text-brand-dark hover:bg-brand hover:text-white"
-                  : isPast
-                  ? "text-slate-200 cursor-default"
+                isSelected ? "bg-brand text-white shadow-md scale-105"
+                  : isAvailable ? "bg-brand-light text-brand-dark hover:bg-brand hover:text-white"
+                  : isPast ? "text-slate-200 cursor-default"
                   : "text-slate-300 cursor-default",
                 isToday && !isSelected ? "ring-2 ring-brand ring-offset-1" : "",
               ].filter(Boolean).join(" ")}
@@ -193,11 +177,37 @@ export default function BookingForm({ profileId, services, availability, blocked
   const [clientPhone, setClientPhone] = useState("");
   const [clientEmail, setClientEmail] = useState("");
   const [clientNotes, setClientNotes] = useState("");
+  const [extraAnswers, setExtraAnswers] = useState<Record<string, string>>({});
+  const [extrasError, setExtrasError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
   const availableDates = getAvailableDates(availability, blockedDates);
   const slotRequestRef = useRef(0);
+
+  const serviceQuestions: ExtraQuestion[] = selectedService?.extra_questions?.length
+    ? selectedService.extra_questions
+    : [];
+
+  function goFromContactToNext() {
+    if (serviceQuestions.length > 0) {
+      setExtrasError("");
+      setStep("extras");
+    } else {
+      setStep("confirm");
+    }
+  }
+
+  function validateExtras(): boolean {
+    for (const q of serviceQuestions) {
+      if (q.required && !extraAnswers[q.id]?.trim()) {
+        setExtrasError(`"${q.label}" é obrigatória.`);
+        return false;
+      }
+    }
+    setExtrasError("");
+    return true;
+  }
 
   async function onDateChange(date: string) {
     setSelectedDate(date);
@@ -215,7 +225,6 @@ export default function BookingForm({ profileId, services, availability, blocked
       .eq("date", date)
       .in("status", ["pendente", "confirmado"]);
 
-    // Descarta resultado se o usuário já selecionou outra data
     if (requestId !== slotRequestRef.current) return;
 
     const bookedForCalc = (booked || []).map((b) => {
@@ -227,9 +236,7 @@ export default function BookingForm({ profileId, services, availability, blocked
     });
 
     let slots = calcSlots(availability, weekday, selectedService.duration_minutes, bookedForCalc);
-    // filtra horários passados se for hoje (horário de Brasília)
-    const todayBrasilia = getTodayBrasilia();
-    if (date === todayBrasilia) {
+    if (date === getTodayBrasilia()) {
       const currentMin = getCurrentMinutesBrasilia();
       slots = slots.filter((s) => timeToMin(s) > currentMin + 30);
     }
@@ -253,6 +260,7 @@ export default function BookingForm({ profileId, services, availability, blocked
           client_phone: clientPhone,
           client_email: clientEmail || null,
           client_notes: clientNotes,
+          extra_answers: Object.keys(extraAnswers).length > 0 ? extraAnswers : null,
           date: selectedDate,
           time: selectedTime + ":00",
         }),
@@ -278,25 +286,31 @@ export default function BookingForm({ profileId, services, availability, blocked
     return `${day}/${m}/${y}`;
   };
 
+  function resetForm() {
+    setStep("service");
+    setSelectedService(null);
+    setSelectedDate("");
+    setSelectedTime("");
+    setClientName("");
+    setClientPhone("");
+    setClientEmail("");
+    setClientNotes("");
+    setExtraAnswers({});
+  }
+
   // ── Step: success ──────────────────────────────────────────────────
   if (step === "success" && selectedService) {
     return (
       <div className="card text-center space-y-5 py-4">
-        {/* Animação de check */}
         <div className="w-20 h-20 rounded-full bg-brand/10 flex items-center justify-center mx-auto">
           <span className="text-4xl">✅</span>
         </div>
-
         <div>
           <h2 className="text-xl font-bold text-slate-900">Agendamento solicitado!</h2>
           <p className="text-sm text-slate-500 mt-1">
-            {clientEmail
-              ? "Confirmação enviada para seu e-mail. 📧"
-              : "Você receberá a confirmação pelo WhatsApp em breve. 📲"}
+            {clientEmail ? "Confirmação enviada para seu e-mail. 📧" : "Você receberá a confirmação pelo WhatsApp em breve. 📲"}
           </p>
         </div>
-
-        {/* Card resumo */}
         <div className="bg-slate-50 rounded-2xl p-4 text-left space-y-3">
           <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Resumo do agendamento</p>
           <div className="space-y-2">
@@ -304,25 +318,10 @@ export default function BookingForm({ profileId, services, availability, blocked
             <SummaryRow icon="📅" label={formatDate(selectedDate) + " às " + selectedTime} />
             <SummaryRow icon="👤" label={clientName} />
             <SummaryRow icon="📱" label={clientPhone} />
-            {selectedService.price_cents > 0 && (
-              <SummaryRow icon="💰" label={formatBRL(selectedService.price_cents)} />
-            )}
+            {selectedService.price_cents > 0 && <SummaryRow icon="💰" label={formatBRL(selectedService.price_cents)} />}
           </div>
         </div>
-
-        <button
-          onClick={() => {
-            setStep("service");
-            setSelectedService(null);
-            setSelectedDate("");
-            setSelectedTime("");
-            setClientName("");
-            setClientPhone("");
-            setClientEmail("");
-            setClientNotes("");
-          }}
-          className="w-full py-3 rounded-2xl border border-slate-200 text-sm text-slate-600 hover:bg-slate-50 transition-colors"
-        >
+        <button onClick={resetForm} className="w-full py-3 rounded-2xl border border-slate-200 text-sm text-slate-600 hover:bg-slate-50 transition-colors">
           ← Fazer outro agendamento
         </button>
       </div>
@@ -330,20 +329,17 @@ export default function BookingForm({ profileId, services, availability, blocked
   }
 
   // ── Progress bar ───────────────────────────────────────────────────
-  const steps: Step[] = ["service", "datetime", "contact", "confirm"];
-  const currentIdx = steps.indexOf(step);
+  const allSteps: Step[] = serviceQuestions.length > 0
+    ? ["service", "datetime", "contact", "extras", "confirm"]
+    : ["service", "datetime", "contact", "confirm"];
+  const currentIdx = allSteps.indexOf(step);
 
   return (
     <div className="space-y-5">
       {/* Progress */}
       <div className="flex gap-1.5">
-        {steps.map((s, i) => (
-          <div
-            key={s}
-            className={`h-1.5 flex-1 rounded-full transition-colors ${
-              i <= currentIdx ? "bg-brand" : "bg-slate-200"
-            }`}
-          />
+        {allSteps.map((s, i) => (
+          <div key={s} className={`h-1.5 flex-1 rounded-full transition-colors ${i <= currentIdx ? "bg-brand" : "bg-slate-200"}`} />
         ))}
       </div>
 
@@ -354,17 +350,11 @@ export default function BookingForm({ profileId, services, availability, blocked
           {services.map((s) => (
             <button
               key={s.id}
-              onClick={() => { setSelectedService(s); setSelectedDate(""); setSelectedTime(""); setStep("datetime"); }}
+              onClick={() => { setSelectedService(s); setSelectedDate(""); setSelectedTime(""); setExtraAnswers({}); setStep("datetime"); }}
               className="card w-full text-left py-3 flex items-center gap-3 hover:border-brand transition-colors"
             >
               {s.image_url && (
-                <Image
-                  src={s.image_url}
-                  alt={s.name}
-                  width={56}
-                  height={56}
-                  className="rounded-xl object-cover w-14 h-14 shrink-0"
-                />
+                <Image src={s.image_url} alt={s.name} width={56} height={56} className="rounded-xl object-cover w-14 h-14 shrink-0" />
               )}
               <div className="flex-1 min-w-0">
                 <p className="font-semibold text-slate-900">{s.name}</p>
@@ -388,11 +378,7 @@ export default function BookingForm({ profileId, services, availability, blocked
           </div>
           <div>
             <label className="label">Data</label>
-            <CalendarPicker
-              availableDates={availableDates}
-              selectedDate={selectedDate}
-              onSelect={(d) => onDateChange(d)}
-            />
+            <CalendarPicker availableDates={availableDates} selectedDate={selectedDate} onSelect={(d) => onDateChange(d)} />
           </div>
           {selectedDate && (
             <div>
@@ -407,11 +393,7 @@ export default function BookingForm({ profileId, services, availability, blocked
                     <button
                       key={t}
                       onClick={() => setSelectedTime(t)}
-                      className={`py-2 rounded-lg text-sm font-medium border transition-colors ${
-                        selectedTime === t
-                          ? "bg-brand text-white border-brand"
-                          : "border-slate-200 text-slate-700 hover:border-brand hover:text-brand"
-                      }`}
+                      className={`py-2 rounded-lg text-sm font-medium border transition-colors ${selectedTime === t ? "bg-brand text-white border-brand" : "border-slate-200 text-slate-700 hover:border-brand hover:text-brand"}`}
                     >
                       {t}
                     </button>
@@ -420,11 +402,7 @@ export default function BookingForm({ profileId, services, availability, blocked
               )}
             </div>
           )}
-          <button
-            className="btn-primary w-full"
-            disabled={!selectedDate || !selectedTime}
-            onClick={() => setStep("contact")}
-          >
+          <button className="btn-primary w-full" disabled={!selectedDate || !selectedTime} onClick={() => setStep("contact")}>
             Continuar →
           </button>
         </div>
@@ -443,53 +421,78 @@ export default function BookingForm({ profileId, services, availability, blocked
           </div>
           <div>
             <label className="label">Seu WhatsApp</label>
-            <input
-              className="input"
-              value={clientPhone}
-              onChange={(e) => setClientPhone(e.target.value)}
-              placeholder="(11) 99999-8888"
-              inputMode="tel"
-            />
+            <input className="input" value={clientPhone} onChange={(e) => setClientPhone(e.target.value)} placeholder="(11) 99999-8888" inputMode="tel" />
             <p className="text-xs text-slate-400 mt-1">A confirmação chegará aqui.</p>
           </div>
           <div>
             <label className="label">Seu e-mail (opcional)</label>
-            <input
-              className="input"
-              type="email"
-              value={clientEmail}
-              onChange={(e) => setClientEmail(e.target.value)}
-              placeholder="joao@email.com"
-              inputMode="email"
-              autoComplete="email"
-            />
+            <input className="input" type="email" value={clientEmail} onChange={(e) => setClientEmail(e.target.value)} placeholder="joao@email.com" inputMode="email" autoComplete="email" />
             <p className="text-xs text-slate-400 mt-1">Receba a confirmação por e-mail com link para cancelar.</p>
           </div>
           <div>
             <label className="label">Observação (opcional)</label>
-            <textarea
-              className="input resize-none text-sm"
-              rows={3}
-              value={clientNotes}
-              onChange={(e) => setClientNotes(e.target.value)}
-              placeholder="Ex: prefiro franja curta, alergia a produto X, chegar 5 min antes..."
-            />
+            <textarea className="input resize-none text-sm" rows={3} value={clientNotes} onChange={(e) => setClientNotes(e.target.value)} placeholder="Ex: prefiro franja curta, alergia a produto X..." />
           </div>
+          <button className="btn-primary w-full" disabled={!clientName || !clientPhone} onClick={goFromContactToNext}>
+            {serviceQuestions.length > 0 ? "Próximo →" : "Revisar agendamento →"}
+          </button>
+        </div>
+      )}
+
+      {/* ── Step 4 (opcional): Perguntas do serviço ── */}
+      {step === "extras" && selectedService && serviceQuestions.length > 0 && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <button onClick={() => setStep("contact")} className="text-slate-400 hover:text-slate-600 text-xl">←</button>
+            <h2 className="font-bold text-slate-900">Mais informações</h2>
+          </div>
+          <p className="text-xs text-slate-500">O profissional precisa de algumas informações sobre o serviço:</p>
+          {serviceQuestions.map((q) => (
+            <div key={q.id}>
+              <label className="label">
+                {q.label}
+                {q.required && <span className="text-red-500 ml-1">*</span>}
+              </label>
+              {q.type === "select" ? (
+                <select
+                  className="input"
+                  value={extraAnswers[q.id] || ""}
+                  onChange={(e) => setExtraAnswers((prev) => ({ ...prev, [q.id]: e.target.value }))}
+                >
+                  <option value="">Selecione...</option>
+                  {q.options.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+                </select>
+              ) : q.type === "textarea" ? (
+                <textarea
+                  className="input resize-none text-sm"
+                  rows={3}
+                  value={extraAnswers[q.id] || ""}
+                  onChange={(e) => setExtraAnswers((prev) => ({ ...prev, [q.id]: e.target.value }))}
+                />
+              ) : (
+                <input
+                  className="input"
+                  value={extraAnswers[q.id] || ""}
+                  onChange={(e) => setExtraAnswers((prev) => ({ ...prev, [q.id]: e.target.value }))}
+                />
+              )}
+            </div>
+          ))}
+          {extrasError && <p className="text-sm text-red-500">{extrasError}</p>}
           <button
             className="btn-primary w-full"
-            disabled={!clientName || !clientPhone}
-            onClick={() => setStep("confirm")}
+            onClick={() => { if (validateExtras()) setStep("confirm"); }}
           >
             Revisar agendamento →
           </button>
         </div>
       )}
 
-      {/* ── Step 4: Confirmar ── */}
+      {/* ── Step: Confirmar ── */}
       {step === "confirm" && selectedService && (
         <div className="space-y-4">
           <div className="flex items-center gap-2">
-            <button onClick={() => setStep("contact")} className="text-slate-400 hover:text-slate-600 text-xl">←</button>
+            <button onClick={() => setStep(serviceQuestions.length > 0 ? "extras" : "contact")} className="text-slate-400 hover:text-slate-600 text-xl">←</button>
             <h2 className="font-bold text-slate-900">Confirmar agendamento</h2>
           </div>
           <div className="card space-y-2.5 py-4">
@@ -498,7 +501,12 @@ export default function BookingForm({ profileId, services, availability, blocked
             <Row label="Horário" value={selectedTime} />
             <Row label="Nome" value={clientName} />
             <Row label="WhatsApp" value={clientPhone} />
-            {clientEmail && <Row label="E-mail" value={clientEmail} />
+            {clientEmail && <Row label="E-mail" value={clientEmail} />}
+            {serviceQuestions.map((q) => (
+              extraAnswers[q.id]
+                ? <Row key={q.id} label={q.label} value={extraAnswers[q.id]} />
+                : null
+            ))}
             <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
               <span className="text-sm text-slate-500">Valor do serviço</span>
               <span className="font-bold text-slate-900">{formatBRL(selectedService.price_cents)}</span>
@@ -516,9 +524,9 @@ export default function BookingForm({ profileId, services, availability, blocked
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center justify-between">
-      <span className="text-sm text-slate-500">{label}</span>
-      <span className="text-sm font-medium text-slate-900">{value}</span>
+    <div className="flex items-start justify-between gap-2">
+      <span className="text-sm text-slate-500 shrink-0">{label}</span>
+      <span className="text-sm font-medium text-slate-900 text-right">{value}</span>
     </div>
   );
 }

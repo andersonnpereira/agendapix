@@ -9,26 +9,48 @@
 
 body {
   color: var(--foreground);
-  background: #f8fafc;
+  background: #f1f5f9;
   -webkit-font-smoothing: antialiased;
 }
 
-/* botão padrão */
+/* ── Buttons ──────────────────────────────────────────────── */
 .btn {
-  @apply inline-flex items-center justify-center rounded-xl px-4 py-3 font-semibold transition active:scale-[0.98];
+  @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5
+         font-semibold text-sm transition-all duration-150 ease-out
+         select-none cursor-pointer active:scale-[0.97];
 }
 .btn-primary {
-  @apply btn bg-brand text-white hover:bg-brand-dark;
+  @apply btn bg-brand text-white shadow-sm
+         hover:bg-brand-dark hover:shadow-md hover:-translate-y-px
+         active:translate-y-0 active:shadow-sm;
 }
 .btn-ghost {
-  @apply btn bg-white text-slate-700 border border-slate-200 hover:bg-slate-50;
+  @apply btn bg-white text-slate-700 border border-slate-200 shadow-sm
+         hover:bg-slate-50 hover:border-slate-300
+         active:bg-slate-100;
 }
+
+/* ── Cards ────────────────────────────────────────────────── */
 .card {
   @apply bg-white rounded-2xl border border-slate-100 shadow-sm p-5;
 }
+
+/* ── Inputs ───────────────────────────────────────────────── */
 .input {
-  @apply w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-brand focus:ring-2 focus:ring-brand/20;
+  @apply w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm
+         outline-none transition-all duration-150
+         focus:border-brand focus:ring-2 focus:ring-brand/20
+         placeholder:text-slate-400;
 }
 .label {
   @apply block text-sm font-medium text-slate-600 mb-1.5;
+}
+
+/* ── Page enter animation ─────────────────────────────────── */
+@keyframes fadeSlideUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+main > * {
+  animation: fadeSlideUp 0.2s ease-out both;
 }

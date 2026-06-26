@@ -2,37 +2,46 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Home, CalendarDays, Users, CreditCard, BarChart3, Settings } from "lucide-react";
 
 const nav = [
-  { href: "/dashboard",     label: "Início",     icon: "🏠" },
-  { href: "/agenda",        label: "Agenda",     icon: "📅" },
-  { href: "/clientes",      label: "Clientes",   icon: "👥" },
-  { href: "/cobrancas",     label: "Cobranças",  icon: "💰" },
-  { href: "/financeiro",    label: "Financeiro", icon: "📊" },
-  { href: "/configuracoes", label: "Config",     icon: "⚙️" },
+  { href: "/dashboard",     label: "Início",     Icon: Home },
+  { href: "/agenda",        label: "Agenda",     Icon: CalendarDays },
+  { href: "/clientes",      label: "Clientes",   Icon: Users },
+  { href: "/cobrancas",     label: "Cobranças",  Icon: CreditCard },
+  { href: "/financeiro",    label: "Financeiro", Icon: BarChart3 },
+  { href: "/configuracoes", label: "Config",     Icon: Settings },
 ];
 
 export function BottomNav() {
   const pathname = usePathname();
 
   return (
-    <nav className="fixed bottom-0 inset-x-0 bg-white border-t border-slate-100 z-10">
-      <div className="max-w-2xl mx-auto grid grid-cols-6">
-        {nav.map((item) => {
-          const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
+    <nav className="fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur-sm border-t border-slate-100 z-20 lg:hidden">
+      <div className="grid grid-cols-6 px-1 pb-safe">
+        {nav.map(({ href, label, Icon }) => {
+          const isActive = pathname === href || pathname.startsWith(href + "/");
           return (
             <Link
-              key={item.href}
-              href={item.href}
+              key={href}
+              href={href}
               className={[
-                "flex flex-col items-center py-2.5 text-xs transition-colors duration-200",
-                isActive
-                  ? "text-brand border-t-2 border-brand"
-                  : "text-slate-400 hover:text-brand border-t-2 border-transparent",
+                "flex flex-col items-center gap-0.5 py-2.5 px-1 transition-all duration-150",
+                isActive ? "text-brand" : "text-slate-400 hover:text-slate-600",
               ].join(" ")}
             >
-              <span className="text-lg leading-none">{item.icon}</span>
-              <span className="mt-0.5">{item.label}</span>
+              <div className={[
+                "p-1.5 rounded-lg transition-all duration-150",
+                isActive ? "bg-brand/10" : "",
+              ].join(" ")}>
+                <Icon size={19} strokeWidth={isActive ? 2.5 : 1.75} />
+              </div>
+              <span className={[
+                "text-[10px] leading-none",
+                isActive ? "font-semibold" : "font-medium",
+              ].join(" ")}>
+                {label}
+              </span>
             </Link>
           );
         })}

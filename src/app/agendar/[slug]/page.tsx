@@ -62,7 +62,24 @@ export default async function AgendarPage({ params }: Props) {
     .eq("slug", params.slug)
     .single();
 
-  if (!profile || !profile.pix_key) notFound();
+  if (!profile) notFound();
+
+  if (!profile.pix_key) {
+    const name = profile.business_name || profile.name || "Este profissional";
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4">
+        <div className="max-w-sm w-full bg-white rounded-2xl border border-slate-200 p-8 text-center space-y-4">
+          <div className="text-5xl">🔧</div>
+          <h1 className="text-xl font-bold text-slate-900">{name}</h1>
+          <p className="text-slate-500 text-sm leading-relaxed">
+            Este profissional ainda está configurando o perfil de agendamento.
+            <br />Tente novamente em breve!
+          </p>
+          <p className="text-xs text-slate-400">Se você é o dono desta página, acesse o portal e configure sua chave Pix em Configurações.</p>
+        </div>
+      </div>
+    );
+  }
 
   const { data: services } = await supabase
     .from("services")

@@ -31,6 +31,7 @@ export default function ConfiguracoesPage() {
   const [businessName, setBusinessName] = useState("");
   const [phone, setPhone] = useState("");
   const [slug, setSlug] = useState("");
+  const [originalSlug, setOriginalSlug] = useState("");
   const [notificationEmail, setNotificationEmail] = useState("");
 
   // Pix
@@ -145,6 +146,7 @@ export default function ConfiguracoesPage() {
       setBusinessName(p.business_name || "");
       setPhone(p.phone || "");
       setSlug(p.slug || "");
+      setOriginalSlug(p.slug || "");
       setNotificationEmail(p.notification_email || user.email || "");
       setPixKey(p.pix_key || "");
       setPixKeyType((p.pix_key_type as PixKeyType) || "celular");
@@ -263,6 +265,11 @@ export default function ConfiguracoesPage() {
               onChange={(e) => setSlug(e.target.value)}
               placeholder="studio-da-ana"
             />
+            {originalSlug && slug && slugify(slug) !== originalSlug && (
+              <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 mt-1.5">
+                ⚠️ Ao salvar, o link antigo <strong>/agendar/{originalSlug}</strong> para de funcionar. Clientes com o link salvo não conseguirão agendar.
+              </p>
+            )}
           </div>
         </div>
         <div>

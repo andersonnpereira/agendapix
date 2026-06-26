@@ -107,6 +107,34 @@ export function htmlLembreteCliente(data: {
 </div>`.trim();
 }
 
+export function htmlCancelamentoProfissional(data: {
+  clientName: string;
+  service: string;
+  date: string;
+  time: string;
+  siteUrl: string;
+}): string {
+  return `
+<div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#1a1a1a">
+  <div style="background:#ef4444;padding:20px 24px;border-radius:8px 8px 0 0">
+    <h2 style="color:#fff;margin:0;font-size:20px">❌ Agendamento cancelado</h2>
+  </div>
+  <div style="border:1px solid #e5e7eb;border-top:none;padding:24px;border-radius:0 0 8px 8px">
+    <p style="margin-top:0">O cliente <strong>${data.clientName}</strong> cancelou o seguinte agendamento:</p>
+    <table style="width:100%;border-collapse:collapse;margin:12px 0">
+      <tr><td style="padding:8px 0;font-weight:700;width:100px">Cliente</td><td style="padding:8px 0">${data.clientName}</td></tr>
+      <tr style="background:#f9fafb"><td style="padding:8px;font-weight:700">Serviço</td><td style="padding:8px">${data.service}</td></tr>
+      <tr><td style="padding:8px 0;font-weight:700">Data</td><td style="padding:8px 0">${data.date}</td></tr>
+      <tr style="background:#f9fafb"><td style="padding:8px;font-weight:700">Horário</td><td style="padding:8px">${data.time}</td></tr>
+    </table>
+    <p style="font-size:13px;color:#6b7280">O horário ficou disponível automaticamente.</p>
+    <a href="${data.siteUrl}/agenda" style="display:inline-block;background:#16a34a;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:700;margin-top:8px">
+      Ver agenda →
+    </a>
+  </div>
+</div>`.trim();
+}
+
 export function htmlNovoAgendamento(data: {
   clientName: string;
   service: string;

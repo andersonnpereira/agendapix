@@ -58,7 +58,7 @@ export default async function AgendarPage({ params }: Props) {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("id, name, business_name, avatar_url, brand_color, pix_key, pix_merchant_name, pix_merchant_city, bio, review_link, cover_url")
+    .select("id, name, business_name, avatar_url, brand_color, pix_key, pix_merchant_name, pix_merchant_city, bio, review_link, cover_url, min_notice_hours, max_advance_days, daily_booking_limit, booking_buffer_minutes, auto_confirm, cancel_min_hours")
     .eq("slug", params.slug)
     .single();
 
@@ -185,6 +185,14 @@ export default async function AgendarPage({ params }: Props) {
             services={services}
             availability={availability || []}
             blockedDates={blockedDates}
+            bookingSettings={{
+              minNoticeHours: (profile as Record<string, unknown>).min_notice_hours as number ?? 1,
+              maxAdvanceDays: (profile as Record<string, unknown>).max_advance_days as number ?? 60,
+              dailyBookingLimit: (profile as Record<string, unknown>).daily_booking_limit as number | null ?? null,
+              bufferMinutes: (profile as Record<string, unknown>).booking_buffer_minutes as number ?? 0,
+              autoConfirm: (profile as Record<string, unknown>).auto_confirm as boolean ?? false,
+              cancelMinHours: (profile as Record<string, unknown>).cancel_min_hours as number ?? 0,
+            }}
           />
         )}
       </div>

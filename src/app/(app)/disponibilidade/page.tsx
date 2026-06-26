@@ -34,11 +34,24 @@ export default function DisponibilidadePage() {
   const [blockReason, setBlockReason] = useState("");
   const [savingBlock, setSavingBlock] = useState(false);
 
+  // Regras de agendamento
+  const [profileId, setProfileId] = useState<string | null>(null);
+  const [minNoticeHours, setMinNoticeHours] = useState(1);
+  const [maxAdvanceDays, setMaxAdvanceDays] = useState(60);
+  const [dailyLimit, setDailyLimit] = useState("");
+  const [bufferMinutes, setBufferMinutes] = useState(0);
+  const [autoConfirm, setAutoConfirm] = useState(false);
+  const [cancelMinHours, setCancelMinHours] = useState(0);
+  const [savingRules, setSavingRules] = useState(false);
+  const [rulesSaved, setRulesSaved] = useState(false);
+
   async function load() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const [{ data: avail }, { data: overrides }] = await Promise.all([
+    setProfileId(user.id);
+
+    const [{ data: avail }, { data: overrides }, { data: prof }] = await Promise.all([
       supabase
         .from("availability")
         .select("*")
@@ -50,10 +63,24 @@ export default function DisponibilidadePage() {
         .select("*")
         .eq("profile_id", user.id)
         .order("date"),
+      supabase
+        .from("profiles")
+        .select("min_notice_hours, max_advance_days, daily_booking_limit, booking_buffer_minutes, auto_confirm, cancel_min_hours")
+        .eq("id", user.id)
+        .single(),
     ]);
 
     setBlocks(avail || []);
     setDateOverrides((overrides as DateOverride[]) || []);
+
+    if (prof) {
+      setMinNoticeHours(prof.min_notice_hours ?? 1);
+      setMaxAdvanceDays(prof.max_advance_days ?? 60);
+      setDailyLimit(prof.daily_booking_limit != null ? String(prof.daily_booking_limit) : "");
+      setBufferMinutes(prof.booking_buffer_minutes ?? 0);
+      setAutoConfirm(prof.auto_confirm ?? false);
+      setCancelMinHours(prof.cancel_min_hours ?? 0);
+    }
     setLoading(false);
   }
 
@@ -131,6 +158,23 @@ export default function DisponibilidadePage() {
     }
     setTemplating(false);
     load();
+  }
+
+  async function saveRules() {
+    if (!profileId) return;
+    setSavingRules(true);
+    setRulesSaved(false);
+    await supabase.from("profiles").update({
+      min_notice_hours: minNoticeHours,
+      max_advance_days: maxAdvanceDays,
+      daily_booking_limit: dailyLimit !== "" ? parseInt(dailyLimit) : null,
+      booking_buffer_minutes: bufferMinutes,
+      auto_confirm: autoConfirm,
+      cancel_min_hours: cancelMinHours,
+    }).eq("id", profileId);
+    setSavingRules(false);
+    setRulesSaved(true);
+    setTimeout(() => setRulesSaved(false), 2500);
   }
 
   const fmt = (d: string) => {
@@ -314,6 +358,109 @@ export default function DisponibilidadePage() {
         {!loading && dateOverrides.length === 0 && (
           <p className="text-sm text-slate-400 text-center py-4">Nenhum período bloqueado.</p>
         )}
+      </div>
+
+      {/* Regras de agendamento */}
+      <div className="space-y-3">
+        <div>
+          <h2 className="font-semibold text-slate-900">Regras de agendamento</h2>
+          <p className="text-xs text-slate-400 mt-1">
+            Controle como e quando os clientes podem agendar.
+          </p>
+        </div>
+
+        <div className="card space-y-5">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="label">Antecedência mínima (h)</label>
+              <input
+                type="number"
+                min={0}
+                max={72}
+                className="input"
+                value={minNoticeHours}
+                onChange={(e) => setMinNoticeHours(Math.max(0, parseInt(e.target.value) || 0))}
+              />
+              <p className="text-xs text-slate-400 mt-1">Horas antes do horário</p>
+            </div>
+            <div>
+              <label className="label">Máx. dias à frente</label>
+              <input
+                type="number"
+                min={1}
+                max={365}
+                className="input"
+                value={maxAdvanceDays}
+                onChange={(e) => setMaxAdvanceDays(Math.max(1, parseInt(e.target.value) || 30))}
+              />
+              <p className="text-xs text-slate-400 mt-1">Até X dias no futuro</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="label">Limite por dia</label>
+              <input
+                type="number"
+                min={1}
+                max={100}
+                className="input"
+                value={dailyLimit}
+                onChange={(e) => setDailyLimit(e.target.value)}
+                placeholder="Ilimitado"
+              />
+              <p className="text-xs text-slate-400 mt-1">Vazio = ilimitado</p>
+            </div>
+            <div>
+              <label className="label">Buffer (min)</label>
+              <input
+                type="number"
+                min={0}
+                max={120}
+                step={5}
+                className="input"
+                value={bufferMinutes}
+                onChange={(e) => setBufferMinutes(Math.max(0, parseInt(e.target.value) || 0))}
+              />
+              <p className="text-xs text-slate-400 mt-1">Intervalo entre atend.</p>
+            </div>
+          </div>
+
+          <div>
+            <label className="label">Prazo mínimo p/ cliente cancelar (h)</label>
+            <input
+              type="number"
+              min={0}
+              max={72}
+              className="input"
+              value={cancelMinHours}
+              onChange={(e) => setCancelMinHours(Math.max(0, parseInt(e.target.value) || 0))}
+            />
+            <p className="text-xs text-slate-400 mt-1">0 = cliente pode cancelar a qualquer momento</p>
+          </div>
+
+          <div className="flex items-center justify-between py-3 border-t border-slate-100">
+            <div>
+              <p className="text-sm font-medium text-slate-900">Confirmação automática</p>
+              <p className="text-xs text-slate-400">Novos agendamentos ficam confirmados sem revisão manual</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAutoConfirm((v) => !v)}
+              className={`relative w-12 h-6 rounded-full transition-colors ${autoConfirm ? "bg-brand" : "bg-slate-300"}`}
+            >
+              <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${autoConfirm ? "right-0.5" : "left-0.5"}`} />
+            </button>
+          </div>
+
+          <button
+            className="btn-primary w-full"
+            onClick={saveRules}
+            disabled={savingRules}
+          >
+            {savingRules ? "Salvando..." : rulesSaved ? "✓ Salvo!" : "Salvar regras"}
+          </button>
+        </div>
       </div>
     </div>
   );

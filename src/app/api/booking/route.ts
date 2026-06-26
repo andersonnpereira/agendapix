@@ -69,6 +69,61 @@ export async function POST(req: NextRequest) {
 
     const supabase = supabaseAdmin();
 
+    // Busca regras do perfil para validações
+    const { data: profileRules } = await supabase
+      .from("profiles")
+      .select("min_notice_hours, max_advance_days, daily_booking_limit, auto_confirm")
+      .eq("id", profile_id)
+      .single();
+
+    // Valida antecedência mínima
+    if (profileRules?.min_notice_hours && profileRules.min_notice_hours > 0) {
+      const nowBR = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
+      const todayStr = `${nowBR.getFullYear()}-${String(nowBR.getMonth() + 1).padStart(2, "0")}-${String(nowBR.getDate()).padStart(2, "0")}`;
+      const [sy, sm, sd] = date.split("-").map(Number);
+      const [ty, tm, td] = todayStr.split("-").map(Number);
+      const daysDiff = Math.round((new Date(sy, sm - 1, sd).getTime() - new Date(ty, tm - 1, td).getTime()) / (1000 * 60 * 60 * 24));
+      const nowMinutes = nowBR.getHours() * 60 + nowBR.getMinutes();
+      const [th, tmin] = time.slice(0, 5).split(":").map(Number);
+      const minutesUntilSlot = daysDiff * 1440 + th * 60 + tmin - nowMinutes;
+      if (minutesUntilSlot < profileRules.min_notice_hours * 60) {
+        return NextResponse.json(
+          { error: `Este serviço requer ${profileRules.min_notice_hours}h de antecedência para agendamento.` },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Valida antecedência máxima
+    if (profileRules?.max_advance_days) {
+      const todayBR = new Date().toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" }).split("/").reverse().join("-");
+      const [ty2, tm2, td2] = todayBR.split("-").map(Number);
+      const [sy2, sm2, sd2] = date.split("-").map(Number);
+      const daysDiff2 = Math.round((new Date(sy2, sm2 - 1, sd2).getTime() - new Date(ty2, tm2 - 1, td2).getTime()) / (1000 * 60 * 60 * 24));
+      if (daysDiff2 > profileRules.max_advance_days) {
+        return NextResponse.json(
+          { error: `Só é possível agendar com até ${profileRules.max_advance_days} dias de antecedência.` },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Valida limite diário
+    if (profileRules?.daily_booking_limit) {
+      const { count: dayCount } = await supabase
+        .from("bookings")
+        .select("id", { count: "exact", head: true })
+        .eq("profile_id", profile_id)
+        .eq("date", date)
+        .in("status", ["pendente", "confirmado"]);
+      if ((dayCount || 0) >= profileRules.daily_booking_limit) {
+        return NextResponse.json(
+          { error: "Não há mais horários disponíveis nesta data." },
+          { status: 400 }
+        );
+      }
+    }
+
     // Verifica conflito de horário antes do insert
     const { data: conflito } = await supabase
       .from("bookings")
@@ -99,7 +154,7 @@ export async function POST(req: NextRequest) {
         extra_answers: extra_answers || null,
         date,
         time,
-        status: "pendente",
+        status: profileRules?.auto_confirm ? "confirmado" : "pendente",
       })
       .select("*, cancel_token")
       .single();

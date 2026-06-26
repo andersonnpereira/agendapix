@@ -25,11 +25,21 @@ type Service = {
 type AvailBlock = { weekday: number; start_time: string; end_time: string };
 type BlockedPeriod = { start: string; end: string };
 
+type BookingSettings = {
+  minNoticeHours: number;
+  maxAdvanceDays: number;
+  dailyBookingLimit: number | null;
+  bufferMinutes: number;
+  autoConfirm: boolean;
+  cancelMinHours: number;
+};
+
 type Props = {
   profileId: string;
   services: Service[];
   availability: AvailBlock[];
   blockedDates?: BlockedPeriod[];
+  bookingSettings?: BookingSettings;
 };
 
 function timeToMin(t: string) {
@@ -52,7 +62,8 @@ function calcSlots(
   blocks: AvailBlock[],
   weekday: number,
   duration: number,
-  booked: { time: string; duration_minutes: number }[]
+  booked: { time: string; duration_minutes: number }[],
+  bufferMinutes = 0
 ): string[] {
   const dayBlocks = blocks.filter((b) => b.weekday === weekday);
   const slots: string[] = [];
@@ -63,7 +74,7 @@ function calcSlots(
       const slotEnd = t + duration;
       const conflict = booked.some((bk) => {
         const bs = timeToMin(bk.time);
-        const be = bs + bk.duration_minutes;
+        const be = bs + bk.duration_minutes + bufferMinutes;
         return t < be && slotEnd > bs;
       });
       if (!conflict) slots.push(minToTime(t));
@@ -72,17 +83,27 @@ function calcSlots(
   return [...new Set(slots)].sort();
 }
 
-function getAvailableDates(blocks: AvailBlock[], blockedPeriods: BlockedPeriod[] = []): string[] {
+function getMinutesUntilSlot(date: string, slotTime: string): number {
+  const todayBR = getTodayBrasilia();
+  const [ty, tm, td] = todayBR.split("-").map(Number);
+  const [sy, sm, sd] = date.split("-").map(Number);
+  const daysDiff = Math.round(
+    (new Date(sy, sm - 1, sd).getTime() - new Date(ty, tm - 1, td).getTime()) / (1000 * 60 * 60 * 24)
+  );
+  return daysDiff * 1440 + timeToMin(slotTime) - getCurrentMinutesBrasilia();
+}
+
+function getAvailableDates(blocks: AvailBlock[], blockedPeriods: BlockedPeriod[] = [], maxDays = 60): string[] {
   const availableWeekdays = new Set(blocks.map((b) => b.weekday));
   const dates: string[] = [];
-  for (let i = 0; i < 60; i++) {
+  for (let i = 0; i < maxDays; i++) {
     const base = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
     base.setDate(base.getDate() + i);
     const dateStr = `${base.getFullYear()}-${String(base.getMonth() + 1).padStart(2, "0")}-${String(base.getDate()).padStart(2, "0")}`;
     const isBlocked = blockedPeriods.some((p) => dateStr >= p.start && dateStr <= p.end);
     if (availableWeekdays.has(base.getDay()) && !isBlocked) dates.push(dateStr);
   }
-  return dates.slice(0, 30);
+  return dates;
 }
 
 type Step = "service" | "datetime" | "contact" | "extras" | "confirm" | "success";
@@ -165,7 +186,7 @@ function CalendarPicker({
   );
 }
 
-export default function BookingForm({ profileId, services, availability, blockedDates = [] }: Props) {
+export default function BookingForm({ profileId, services, availability, blockedDates = [], bookingSettings }: Props) {
   const supabase = createClient();
   const [step, setStep] = useState<Step>("service");
   const [selectedService, setSelectedService] = useState<Service | null>(null);
@@ -182,7 +203,7 @@ export default function BookingForm({ profileId, services, availability, blocked
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
-  const availableDates = getAvailableDates(availability, blockedDates);
+  const availableDates = getAvailableDates(availability, blockedDates, bookingSettings?.maxAdvanceDays ?? 60);
   const slotRequestRef = useRef(0);
 
   const serviceQuestions: ExtraQuestion[] = selectedService?.extra_questions?.length
@@ -235,11 +256,11 @@ export default function BookingForm({ profileId, services, availability, blocked
       return { time: b.time as string, duration_minutes: dur || selectedService.duration_minutes };
     });
 
-    let slots = calcSlots(availability, weekday, selectedService.duration_minutes, bookedForCalc);
-    if (date === getTodayBrasilia()) {
-      const currentMin = getCurrentMinutesBrasilia();
-      slots = slots.filter((s) => timeToMin(s) > currentMin + 30);
-    }
+    const bufferMins = bookingSettings?.bufferMinutes ?? 0;
+    let slots = calcSlots(availability, weekday, selectedService.duration_minutes, bookedForCalc, bufferMins);
+    const baseNotice = date === getTodayBrasilia() ? 30 : 0;
+    const minNoticeMinutes = Math.max((bookingSettings?.minNoticeHours ?? 0) * 60, baseNotice);
+    slots = slots.filter((s) => getMinutesUntilSlot(date, s) >= minNoticeMinutes);
     setAvailableSlots(slots);
     setLoadingSlots(false);
   }

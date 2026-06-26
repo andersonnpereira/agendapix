@@ -58,6 +58,14 @@ export default function ConfiguracoesPage() {
   const [coverUrl, setCoverUrl] = useState("");
   const [uploadingLogo, setUploadingLogo] = useState(false);
 
+  // Regras de agendamento
+  const [minNoticeHours, setMinNoticeHours] = useState(1);
+  const [maxAdvanceDays, setMaxAdvanceDays] = useState(60);
+  const [dailyLimit, setDailyLimit] = useState("");
+  const [bufferMinutes, setBufferMinutes] = useState(0);
+  const [autoConfirm, setAutoConfirm] = useState(false);
+  const [cancelMinHours, setCancelMinHours] = useState(0);
+
   // QR Code WhatsApp
   const [qrStatus, setQrStatus] = useState<"idle" | "loading" | "connected" | "disconnected">("loading");
   const [qrBase64, setQrBase64] = useState("");
@@ -161,6 +169,12 @@ export default function ConfiguracoesPage() {
       setBio(p.bio || "");
       setReviewLink(p.review_link || "");
       setCoverUrl(p.cover_url || "");
+      setMinNoticeHours(p.min_notice_hours ?? 1);
+      setMaxAdvanceDays(p.max_advance_days ?? 60);
+      setDailyLimit(p.daily_booking_limit != null ? String(p.daily_booking_limit) : "");
+      setBufferMinutes(p.booking_buffer_minutes ?? 0);
+      setAutoConfirm(p.auto_confirm ?? false);
+      setCancelMinHours(p.cancel_min_hours ?? 0);
     })();
     fetchQr();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -204,6 +218,12 @@ export default function ConfiguracoesPage() {
         bio: bio.trim() || null,
         review_link: reviewLink.trim() || null,
         cover_url: coverUrl.trim() || null,
+        min_notice_hours: minNoticeHours,
+        max_advance_days: maxAdvanceDays,
+        daily_booking_limit: dailyLimit !== "" ? parseInt(dailyLimit) : null,
+        booking_buffer_minutes: bufferMinutes,
+        auto_confirm: autoConfirm,
+        cancel_min_hours: cancelMinHours,
       })
       .eq("id", user.id);
 
@@ -288,12 +308,12 @@ export default function ConfiguracoesPage() {
           />
           <p className="text-xs text-slate-400 mt-1">Exibida no seu link público de agendamento.</p>
         </div>
-        <div className="flex flex-col gap-2">
-          <Link href="/servicos" className="btn-ghost text-sm inline-block text-center">
-            ✂️ Gerenciar serviços →
+        <div className="grid grid-cols-2 gap-2">
+          <Link href="/servicos" className="btn-ghost text-sm text-center">
+            ✂️ Serviços →
           </Link>
-          <Link href="/disponibilidade" className="btn-ghost text-sm inline-block text-center">
-            ⏰ Gerenciar horários de atendimento →
+          <Link href="/disponibilidade" className="btn-ghost text-sm text-center">
+            ⏰ Horários →
           </Link>
         </div>
       </section>
@@ -620,6 +640,62 @@ export default function ConfiguracoesPage() {
         </div>
       </section>
 
+
+      {/* Regras de agendamento */}
+      <section className="card space-y-5">
+        <div>
+          <h2 className="font-semibold text-slate-900">Regras de agendamento</h2>
+          <p className="text-xs text-slate-400 mt-1">Controle como e quando os clientes podem agendar.</p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="label">Antecedência mínima (h)</label>
+            <input type="number" min={0} max={72} className="input" value={minNoticeHours}
+              onChange={(e) => setMinNoticeHours(Math.max(0, parseInt(e.target.value) || 0))} />
+            <p className="text-xs text-slate-400 mt-1">Horas antes do horário</p>
+          </div>
+          <div>
+            <label className="label">Máx. dias à frente</label>
+            <input type="number" min={1} max={365} className="input" value={maxAdvanceDays}
+              onChange={(e) => setMaxAdvanceDays(Math.max(1, parseInt(e.target.value) || 30))} />
+            <p className="text-xs text-slate-400 mt-1">Até X dias no futuro</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="label">Limite por dia</label>
+            <input type="number" min={1} max={100} className="input" value={dailyLimit}
+              onChange={(e) => setDailyLimit(e.target.value)} placeholder="Ilimitado" />
+            <p className="text-xs text-slate-400 mt-1">Vazio = ilimitado</p>
+          </div>
+          <div>
+            <label className="label">Buffer (min)</label>
+            <input type="number" min={0} max={120} step={5} className="input" value={bufferMinutes}
+              onChange={(e) => setBufferMinutes(Math.max(0, parseInt(e.target.value) || 0))} />
+            <p className="text-xs text-slate-400 mt-1">Intervalo entre atend.</p>
+          </div>
+        </div>
+
+        <div>
+          <label className="label">Prazo mínimo p/ cliente cancelar (h)</label>
+          <input type="number" min={0} max={72} className="input" value={cancelMinHours}
+            onChange={(e) => setCancelMinHours(Math.max(0, parseInt(e.target.value) || 0))} />
+          <p className="text-xs text-slate-400 mt-1">0 = cliente pode cancelar a qualquer momento</p>
+        </div>
+
+        <div className="flex items-center justify-between py-3 border-t border-slate-100">
+          <div>
+            <p className="text-sm font-medium text-slate-900">Confirmação automática</p>
+            <p className="text-xs text-slate-400">Novos agendamentos ficam confirmados sem revisão manual</p>
+          </div>
+          <button type="button" onClick={() => setAutoConfirm((v) => !v)}
+            className={`relative w-12 h-6 rounded-full transition-colors ${autoConfirm ? "bg-brand" : "bg-slate-300"}`}>
+            <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${autoConfirm ? "right-0.5" : "left-0.5"}`} />
+          </button>
+        </div>
+      </section>
 
       {error && <p className="text-sm text-red-600 text-center">{error}</p>}
 

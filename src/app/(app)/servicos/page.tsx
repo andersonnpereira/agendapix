@@ -304,23 +304,19 @@ export default function ServicosPage() {
   async function uploadImage(serviceId: string, file: File) {
     setUploadingImage(serviceId);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      const form = new FormData();
+      form.append("file", file);
+      form.append("serviceId", serviceId);
 
-      const ext = file.name.split(".").pop() || "jpg";
-      const path = `${user.id}/${serviceId}.${ext}`;
+      const res = await fetch("/api/upload-service-image", { method: "POST", body: form });
+      const json = await res.json();
 
-      const { error: upErr } = await supabase.storage
-        .from("service-images")
-        .upload(path, file, { upsert: true, contentType: file.type });
-
-      if (upErr) {
-        showToast("Erro ao enviar imagem. Verifique o bucket 'service-images' no Supabase.");
+      if (!res.ok) {
+        showToast(json.error || "Erro ao enviar imagem.");
         return;
       }
 
-      const { data: urlData } = supabase.storage.from("service-images").getPublicUrl(path);
-      await supabase.from("services").update({ image_url: urlData.publicUrl }).eq("id", serviceId);
+      await supabase.from("services").update({ image_url: json.url }).eq("id", serviceId);
       showToast("Foto atualizada!");
       load();
     } finally {

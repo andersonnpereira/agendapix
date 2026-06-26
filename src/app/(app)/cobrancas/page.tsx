@@ -266,7 +266,7 @@ export default function CobrancasPage() {
         .from("charges")
         .update({
           auto_reminder: true,
-          scheduled_reminder_at: new Date(reminderScheduledAt + "T00:00:00").toISOString(),
+          scheduled_reminder_at: new Date(reminderScheduledAt).toISOString(),
           last_auto_reminder_at: null,
         })
         .eq("id", charge.id);
@@ -919,16 +919,16 @@ export default function CobrancasPage() {
 
             {reminderSendMode === "schedule" && (
               <div>
-                <label className="label text-sm">Data do envio</label>
+                <label className="label text-sm">Data e hora do envio</label>
                 <input
-                  type="date"
+                  type="datetime-local"
                   className="input"
                   value={reminderScheduledAt}
                   onChange={(e) => setReminderScheduledAt(e.target.value)}
-                  min={new Date().toISOString().slice(0, 10)}
+                  min={new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)}
                 />
-                <p className="text-xs text-amber-600 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 mt-2">
-                  ⏰ Os lembretes são disparados automaticamente entre 09h e 18h do dia escolhido.
+                <p className="text-xs text-slate-400 mt-1">
+                  O lembrete será enviado automaticamente no horário escolhido (±1 hora).
                 </p>
               </div>
             )}

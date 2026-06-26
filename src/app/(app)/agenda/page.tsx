@@ -10,11 +10,14 @@ type Booking = {
   id: string;
   client_name: string;
   client_phone: string;
+  client_email: string | null;
   date: string;
   time: string;
   status: "pendente" | "confirmado" | "concluido" | "cancelado";
   whatsapp_sent: boolean;
   notes: string | null;
+  extra_answers: Record<string, string> | null;
+  cancel_token: string | null;
   services: { name: string; price_cents: number; duration_minutes: number } | null;
 };
 
@@ -413,11 +416,26 @@ export default function AgendaPage() {
                     <p className="text-sm text-slate-500">
                       {b.services?.name || "Serviço"} · {formatDate(b.date)} às {timeDisplay}
                     </p>
-                    <p className="text-xs text-slate-400 mt-0.5">{b.client_phone}</p>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      {b.client_phone}
+                      {b.client_email && <span className="ml-2 text-slate-300">·</span>}
+                      {b.client_email && <span className="ml-1">{b.client_email}</span>}
+                    </p>
                     {b.notes && (
                       <p className="text-xs text-amber-700 bg-amber-50 rounded-lg px-2 py-0.5 mt-1 italic">
                         📝 {b.notes}
                       </p>
+                    )}
+                    {b.extra_answers && Object.keys(b.extra_answers).length > 0 && (
+                      <div className="mt-1 space-y-0.5">
+                        {Object.entries(b.extra_answers).map(([, v]) =>
+                          v ? (
+                            <p key={v} className="text-xs text-indigo-700 bg-indigo-50 rounded-lg px-2 py-0.5">
+                              {v}
+                            </p>
+                          ) : null
+                        )}
+                      </div>
                     )}
                   </div>
                   <span className={`text-xs font-semibold px-2 py-1 rounded-full ${st.color}`}>
@@ -539,6 +557,10 @@ export default function AgendaPage() {
             <p className="text-sm text-slate-500">
               {formatDate(calendarDetail.date)} às {calendarDetail.time?.slice(0, 5)}
             </p>
+            <p className="text-xs text-slate-400">{calendarDetail.client_phone}</p>
+            {calendarDetail.client_email && (
+              <p className="text-xs text-slate-400">{calendarDetail.client_email}</p>
+            )}
             <span className={`inline-block text-xs font-semibold px-2 py-1 rounded-full ${STATUS_LABELS[calendarDetail.status]?.color}`}>
               {STATUS_LABELS[calendarDetail.status]?.label}
             </span>

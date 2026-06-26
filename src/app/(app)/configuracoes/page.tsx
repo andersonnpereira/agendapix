@@ -58,6 +58,9 @@ export default function ConfiguracoesPage() {
   const [coverUrl, setCoverUrl] = useState("");
   const [uploadingLogo, setUploadingLogo] = useState(false);
 
+  // Lembretes
+  const [reminderHour, setReminderHour] = useState(8);
+
   // Regras de agendamento
   const [minNoticeHours, setMinNoticeHours] = useState(1);
   const [maxAdvanceDays, setMaxAdvanceDays] = useState(60);
@@ -169,6 +172,7 @@ export default function ConfiguracoesPage() {
       setBio(p.bio || "");
       setReviewLink(p.review_link || "");
       setCoverUrl(p.cover_url || "");
+      setReminderHour(p.reminder_hour ?? 8);
       setMinNoticeHours(p.min_notice_hours ?? 1);
       setMaxAdvanceDays(p.max_advance_days ?? 60);
       setDailyLimit(p.daily_booking_limit != null ? String(p.daily_booking_limit) : "");
@@ -218,6 +222,7 @@ export default function ConfiguracoesPage() {
         bio: bio.trim() || null,
         review_link: reviewLink.trim() || null,
         cover_url: coverUrl.trim() || null,
+        reminder_hour: reminderHour,
         min_notice_hours: minNoticeHours,
         max_advance_days: maxAdvanceDays,
         daily_booking_limit: dailyLimit !== "" ? parseInt(dailyLimit) : null,
@@ -646,6 +651,22 @@ export default function ConfiguracoesPage() {
         <div>
           <h2 className="font-semibold text-slate-900">Regras de agendamento</h2>
           <p className="text-xs text-slate-400 mt-1">Controle como e quando os clientes podem agendar.</p>
+        </div>
+
+        <div>
+          <label className="label">Horário do lembrete automático</label>
+          <select
+            className="input"
+            value={reminderHour}
+            onChange={(e) => setReminderHour(parseInt(e.target.value))}
+          >
+            {[6, 7, 8, 9, 10, 11, 12].map((h) => (
+              <option key={h} value={h}>{String(h).padStart(2, "0")}:00</option>
+            ))}
+          </select>
+          <p className="text-xs text-slate-400 mt-1">
+            Horário (BRT) em que o lembrete de amanhã será enviado ao cliente
+          </p>
         </div>
 
         <div className="grid grid-cols-2 gap-4">

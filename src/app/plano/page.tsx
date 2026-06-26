@@ -4,20 +4,9 @@ import { createClient } from "@/lib/supabase-server";
 
 const PRECO_MENSAL_LABEL = "R$ 47";
 const PRECO_ANUAL_LABEL  = "R$ 397";
-const PRECO_ANUAL_MES    = "R$ 33";
 const ECONOMIA_ANUAL     = "R$ 167";
 const WHATSAPP_CONTATO   = process.env.NEXT_PUBLIC_CONTACT_WHATSAPP || "5567999999999";
 const NOME_PRODUTO       = "Agendou";
-
-// Se configurado no Vercel, usa checkout direto; caso contrário cai no WhatsApp
-const CHECKOUT_MONTHLY =
-  process.env.NEXT_PUBLIC_CHECKOUT_MONTHLY ||
-  process.env.NEXT_PUBLIC_CHECKOUT_URL ||
-  "";
-const CHECKOUT_ANNUAL =
-  process.env.NEXT_PUBLIC_CHECKOUT_ANNUAL ||
-  process.env.NEXT_PUBLIC_CHECKOUT_URL ||
-  "";
 
 function waLink(msg: string) {
   return `https://wa.me/${WHATSAPP_CONTATO}?text=${encodeURIComponent(msg)}`;
@@ -27,6 +16,22 @@ export default async function PlanoPage() {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
+
+  // Lê URLs de checkout da tabela app_settings (fallback: env vars)
+  const { data: settings } = await supabase
+    .from("app_settings")
+    .select("key, value")
+    .in("key", ["checkout_monthly_url", "checkout_annual_url"]);
+
+  const settingsMap = Object.fromEntries((settings || []).map((s) => [s.key, s.value]));
+  const CHECKOUT_MONTHLY =
+    settingsMap["checkout_monthly_url"] ||
+    process.env.NEXT_PUBLIC_CHECKOUT_MONTHLY ||
+    "";
+  const CHECKOUT_ANNUAL =
+    settingsMap["checkout_annual_url"] ||
+    process.env.NEXT_PUBLIC_CHECKOUT_ANNUAL ||
+    "";
 
   const isAdmin = user.email === process.env.ADMIN_EMAIL;
   const { data: profile } = await supabase
@@ -166,7 +171,7 @@ export default async function PlanoPage() {
                 </div>
                 <div className="text-right shrink-0">
                   <p className="font-extrabold text-white text-2xl leading-none">{PRECO_ANUAL_LABEL}</p>
-                  <p className="text-xs text-green-200 mt-0.5">{PRECO_ANUAL_MES}/mês</p>
+                  <p className="text-xs text-green-200 mt-0.5">por ano</p>
                 </div>
               </div>
               <div className="mt-4 flex items-center justify-center gap-2 text-sm font-semibold text-white group-hover:gap-3 transition-all">

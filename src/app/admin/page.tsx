@@ -29,7 +29,7 @@ const PLAN_LABELS: Record<string, { label: string; color: string }> = {
 
 const PLAN_TYPES = ["trial", "monthly", "annual", "lifetime"];
 
-type Tab = "visao-geral" | "clientes";
+type Tab = "visao-geral" | "clientes" | "config";
 
 export default function AdminPage() {
   const supabase = createClient();
@@ -46,6 +46,11 @@ export default function AdminPage() {
   const [deleting, setDeleting] = useState(false);
   const [toast, setToast] = useState("");
 
+  const [cfgMonthlyUrl, setCfgMonthlyUrl] = useState("");
+  const [cfgAnnualUrl, setCfgAnnualUrl] = useState("");
+  const [cfgSaving, setCfgSaving] = useState(false);
+  const [cfgSaved, setCfgSaved] = useState(false);
+
   const [ePlan, setEPlan] = useState("trial");
   const [eExpires, setEExpires] = useState("");
   const [ePrice, setEPrice] = useState("");
@@ -56,6 +61,39 @@ export default function AdminPage() {
     setToast(msg);
     setTimeout(() => setToast(""), 3500);
   };
+
+  async function loadConfig() {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+    const res = await fetch("/api/admin/settings", {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      setCfgMonthlyUrl(data.settings?.checkout_monthly_url || "");
+      setCfgAnnualUrl(data.settings?.checkout_annual_url || "");
+    }
+  }
+
+  async function saveConfig() {
+    setCfgSaving(true);
+    const { data: { session } } = await supabase.auth.getSession();
+    const res = await fetch("/api/admin/settings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token}` },
+      body: JSON.stringify({
+        checkout_monthly_url: cfgMonthlyUrl.trim(),
+        checkout_annual_url: cfgAnnualUrl.trim(),
+      }),
+    });
+    setCfgSaving(false);
+    if (res.ok) {
+      setCfgSaved(true);
+      setTimeout(() => setCfgSaved(false), 3000);
+    } else {
+      showToast("Erro ao salvar configurações.");
+    }
+  }
 
   async function load() {
     const { data: { session } } = await supabase.auth.getSession();
@@ -75,7 +113,7 @@ export default function AdminPage() {
     setLoading(false);
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); loadConfig(); }, []);
 
   function openEdit(c: Client) {
     setEditClient(c);
@@ -180,6 +218,7 @@ export default function AdminPage() {
   const TABS: { key: Tab; label: string }[] = [
     { key: "visao-geral", label: "📊 Visão Geral" },
     { key: "clientes",    label: `👥 Clientes (${clients.length})` },
+    { key: "config",      label: "⚙️ Configurações" },
   ];
 
   return (
@@ -435,6 +474,75 @@ export default function AdminPage() {
               })}
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── CONFIGURAÇÕES ── */}
+      {tab === "config" && (
+        <div className="space-y-6">
+          <div className="bg-white rounded-2xl border border-slate-200 p-6 space-y-5">
+            <div>
+              <h2 className="font-bold text-slate-900 text-lg">Links de pagamento</h2>
+              <p className="text-sm text-slate-500 mt-1">
+                Configure os links de checkout do Infinit Pay para cada plano. Os clientes serão redirecionados para esses links ao tentar assinar.
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="label">Plano Mensal — URL do checkout</label>
+                <input
+                  className="input font-mono text-sm"
+                  value={cfgMonthlyUrl}
+                  onChange={(e) => setCfgMonthlyUrl(e.target.value)}
+                  placeholder="https://checkout.infinitpay.io/..."
+                  type="url"
+                />
+                <p className="text-xs text-slate-400 mt-1">
+                  Configure o webhook no Infinit Pay como:{" "}
+                  <code className="bg-slate-100 px-1 rounded">https://agendasj.vercel.app/api/webhook/infinitpay?plan=monthly</code>
+                </p>
+              </div>
+
+              <div>
+                <label className="label">Plano Anual — URL do checkout</label>
+                <input
+                  className="input font-mono text-sm"
+                  value={cfgAnnualUrl}
+                  onChange={(e) => setCfgAnnualUrl(e.target.value)}
+                  placeholder="https://checkout.infinitpay.io/..."
+                  type="url"
+                />
+                <p className="text-xs text-slate-400 mt-1">
+                  Configure o webhook no Infinit Pay como:{" "}
+                  <code className="bg-slate-100 px-1 rounded">https://agendasj.vercel.app/api/webhook/infinitpay?plan=annual</code>
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 pt-1">
+              <button
+                className="btn-primary px-6"
+                onClick={saveConfig}
+                disabled={cfgSaving}
+              >
+                {cfgSaving ? "Salvando..." : "Salvar configurações"}
+              </button>
+              {cfgSaved && (
+                <span className="text-sm text-brand font-medium">✅ Salvo com sucesso!</span>
+              )}
+            </div>
+          </div>
+
+          <div className="bg-blue-50 border border-blue-200 rounded-2xl p-5 text-sm text-blue-700 space-y-2">
+            <p className="font-semibold">Como configurar o Infinit Pay:</p>
+            <ol className="list-decimal list-inside space-y-1 text-blue-600">
+              <li>Crie dois produtos/links de checkout no Infinit Pay (mensal e anual)</li>
+              <li>Em cada produto, configure o webhook apontando para a URL acima com o <code className="bg-blue-100 px-1 rounded">?plan=</code> correspondente</li>
+              <li>Cole as URLs de checkout nos campos acima e salve</li>
+              <li>Quando um cliente pagar, o plano será ativado automaticamente pelo e-mail cadastrado</li>
+            </ol>
+          </div>
         </div>
       )}
 

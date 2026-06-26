@@ -4,8 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase-browser";
 import { slugify, parseToCents } from "@/lib/format";
-import { validatePixKey, generatePixBRCode, normalizePixKey, type PixKeyType } from "@/lib/pix";
-import { PixDisplay } from "@/components/PixDisplay";
+import { validatePixKey, normalizePixKey, type PixKeyType } from "@/lib/pix";
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -24,18 +23,6 @@ export default function OnboardingPage() {
   const [pixKey, setPixKey] = useState("");
   const [pixType, setPixType] = useState<PixKeyType>("celular");
   const [merchantName, setMerchantName] = useState("");
-  const [merchantCity, setMerchantCity] = useState("");
-
-  const previewCode =
-    pixKey && merchantName && merchantCity
-      ? generatePixBRCode({
-          pixKey: normalizePixKey(pixKey, pixType),
-          amount: parseToCents(servicePrice || "0") / 100 || 1,
-          merchantName,
-          merchantCity,
-          txid: "TESTE",
-        })
-      : "";
 
   async function finish() {
     setError(null);
@@ -44,8 +31,8 @@ export default function OnboardingPage() {
       setError(keyCheck.message || "Chave Pix inválida.");
       return;
     }
-    if (!merchantName || !merchantCity) {
-      setError("Preencha o nome e a cidade do recebedor.");
+    if (!merchantName) {
+      setError("Preencha o nome do recebedor.");
       return;
     }
     setLoading(true);
@@ -71,7 +58,7 @@ export default function OnboardingPage() {
         pix_key: normalizePixKey(pixKey, pixType),
         pix_key_type: pixType,
         pix_merchant_name: merchantName,
-        pix_merchant_city: merchantCity,
+        pix_merchant_city: "BR",
         plan_type: "trial",
         plan_expires_at: trialExpires,
         whatsapp_provider: "evolution",
@@ -245,35 +232,15 @@ export default function OnboardingPage() {
               }
             />
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="label">Nome do recebedor</label>
-              <input
-                className="input"
-                value={merchantName}
-                onChange={(e) => setMerchantName(e.target.value)}
-                placeholder="Ana Souza"
-              />
-            </div>
-            <div>
-              <label className="label">Cidade</label>
-              <input
-                className="input"
-                value={merchantCity}
-                onChange={(e) => setMerchantCity(e.target.value)}
-                placeholder="Campo Grande"
-              />
-            </div>
+          <div>
+            <label className="label">Nome do recebedor</label>
+            <input
+              className="input"
+              value={merchantName}
+              onChange={(e) => setMerchantName(e.target.value)}
+              placeholder="Ana Souza"
+            />
           </div>
-
-          {previewCode && (
-            <div className="card bg-slate-50">
-              <p className="text-sm font-medium text-slate-600 mb-3 text-center">
-                Pré-visualização do seu Pix
-              </p>
-              <PixDisplay payload={previewCode} />
-            </div>
-          )}
 
           {error && (
             <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">

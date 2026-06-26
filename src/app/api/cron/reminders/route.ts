@@ -27,14 +27,15 @@ export async function GET(req: NextRequest) {
       pix_key: string | null;
     };
 
-    // ── 1. Lembretes antecipados agendados ─────────────────────────────────
+    // ── 1. Lembretes antecipados — dispara diariamente até o pagamento ────
+    // Condição: data agendada já chegou E ainda não enviou hoje
     const { data: advanceCharges, error } = await admin
       .from("charges")
       .select("*, profiles!inner(whatsapp_provider, whatsapp_token, whatsapp_instance_id, msg_lembrete, pix_key)")
       .eq("auto_reminder", true)
       .eq("status", "pendente")
       .lte("scheduled_reminder_at", now)
-      .is("last_auto_reminder_at", null);
+      .or(`last_auto_reminder_at.is.null,last_auto_reminder_at.lt.${todayStart}`);
 
     if (error) throw error;
 

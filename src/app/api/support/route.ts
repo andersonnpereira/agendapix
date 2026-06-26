@@ -1,7 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sendEmail } from "@/lib/email";
 
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+
+function checkRate(ip: string): boolean {
+  const now = Date.now();
+  const entry = rateLimitMap.get(ip);
+  if (!entry || now >= entry.resetAt) {
+    rateLimitMap.set(ip, { count: 1, resetAt: now + 60 * 60 * 1000 });
+    return true;
+  }
+  if (entry.count >= 3) return false;
+  entry.count += 1;
+  return true;
+}
+
 export async function POST(req: NextRequest) {
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0] || "unknown";
+  if (!checkRate(ip)) {
+    return NextResponse.json({ error: "Muitas mensagens. Tente novamente mais tarde." }, { status: 429 });
+  }
+
   try {
     const { name, email, message } = await req.json();
 

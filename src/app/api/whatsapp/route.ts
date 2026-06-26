@@ -19,6 +19,11 @@ export async function POST(req: NextRequest) {
 
     const supabase = createClient();
 
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
+    }
+
     // Busca booking + serviço + profile
     const { data: booking, error: bErr } = await supabase
       .from("bookings")
@@ -28,6 +33,10 @@ export async function POST(req: NextRequest) {
 
     if (bErr || !booking) {
       return NextResponse.json({ error: "Agendamento não encontrado." }, { status: 404 });
+    }
+
+    if (booking.profile_id !== user.id) {
+      return NextResponse.json({ error: "Não autorizado." }, { status: 403 });
     }
 
     const { data: profile, error: pErr } = await supabase

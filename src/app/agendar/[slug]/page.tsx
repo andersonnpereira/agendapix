@@ -90,7 +90,8 @@ export default async function AgendarPage({ params }: Props) {
     })
   );
 
-  const brandColor = (profile as { brand_color?: string | null }).brand_color || "#16A34A";
+  const rawColor = (profile as { brand_color?: string | null }).brand_color || "#16A34A";
+  const brandColor = /^#[0-9A-Fa-f]{6}$/.test(rawColor) ? rawColor : "#16A34A";
   const brandDark = darkenHex(brandColor);
   const brandLight = lightenRgba(brandColor, 0.12);
   const brandBorder = lightenRgba(brandColor, 0.3);

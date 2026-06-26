@@ -21,20 +21,32 @@ export async function GET(req: NextRequest) {
   try {
     const admin = createAdminClient();
 
-    const [{ data: profiles }, { data: authData }] = await Promise.all([
+    const [{ data: profiles }, { data: authData }, { count: totalBookings }, { data: bookingCounts }] = await Promise.all([
       admin.from("profiles").select("*").order("created_at", { ascending: false }),
       admin.auth.admin.listUsers({ perPage: 1000 }),
+      admin.from("bookings").select("*", { count: "exact", head: true }),
+      admin.from("bookings").select("profile_id").then(({ data }) => {
+        const counts: Record<string, number> = {};
+        (data || []).forEach((b) => { counts[b.profile_id] = (counts[b.profile_id] || 0) + 1; });
+        return { data: counts };
+      }),
     ]);
 
-    const emailMap = new Map((authData?.users || []).map((u) => [u.id, { email: u.email, created_at: u.created_at }]));
+    const emailMap = new Map((authData?.users || []).map((u) => [u.id, {
+      email: u.email,
+      created_at: u.created_at,
+      last_sign_in_at: u.last_sign_in_at,
+    }]));
 
     const clients = (profiles || []).map((p) => ({
       ...p,
       email: emailMap.get(p.id)?.email || null,
       registered_at: emailMap.get(p.id)?.created_at || p.created_at,
+      last_sign_in_at: emailMap.get(p.id)?.last_sign_in_at || null,
+      booking_count: (bookingCounts as Record<string, number>)[p.id] || 0,
     }));
 
-    return NextResponse.json({ clients });
+    return NextResponse.json({ clients, totalBookings: totalBookings || 0 });
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }
@@ -53,6 +65,7 @@ export async function DELETE(req: NextRequest) {
     const steps = [
       () => admin.from("charges").delete().eq("profile_id", id),
       () => admin.from("bookings").delete().eq("profile_id", id),
+      () => admin.from("clients").delete().eq("profile_id", id),
       () => admin.from("availability").delete().eq("profile_id", id),
       () => admin.from("services").delete().eq("profile_id", id),
       () => admin.from("profiles").delete().eq("id", id),

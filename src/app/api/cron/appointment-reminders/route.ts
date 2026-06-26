@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { sendWhatsApp } from "@/lib/whatsapp";
+import { sendEmail, htmlLembreteCliente } from "@/lib/email";
 
 export async function GET(req: NextRequest) {
   const auth = req.headers.get("authorization") || "";
@@ -22,10 +23,9 @@ export async function GET(req: NextRequest) {
   // Busca agendamentos de amanhã ainda não lembrados
   const { data: bookings, error } = await supabase
     .from("bookings")
-    .select("id, profile_id, client_name, client_phone, time, services(name)")
+    .select("id, profile_id, client_name, client_phone, client_email, cancel_token, time, services(name)")
     .eq("date", tomorrow)
-    .in("status", ["pendente", "confirmado"])
-    .not("client_phone", "is", null);
+    .in("status", ["pendente", "confirmado"]);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   if (!bookings || bookings.length === 0) return NextResponse.json({ ok: true, sent: 0 });
@@ -71,17 +71,41 @@ Lembrando que você tem *${serviceName}* amanhã:` +
 
 Qualquer dúvida é só chamar. Te esperamos! 😊`;
 
-    const result = await sendWhatsApp({
-      to: booking.client_phone.replace(/\D/g, ""),
-      message,
-      provider: profile.whatsapp_provider as "mock" | "zapi" | "evolution" | "ultramsg",
-      token: profile.whatsapp_token || undefined,
-      instanceId: profile.whatsapp_instance_id || undefined,
-    });
+    let notified = false;
 
-    if (result.ok) {
+    if (booking.client_phone) {
+      const result = await sendWhatsApp({
+        to: booking.client_phone.replace(/\D/g, ""),
+        message,
+        provider: profile.whatsapp_provider as "mock" | "zapi" | "evolution" | "ultramsg",
+        token: profile.whatsapp_token || undefined,
+        instanceId: profile.whatsapp_instance_id || undefined,
+      });
+      if (result.ok) notified = true;
+    }
+
+    const clientEmail = (booking as Record<string, unknown>).client_email as string | null | undefined;
+    const cancelToken = (booking as Record<string, unknown>).cancel_token as string | null | undefined;
+    if (clientEmail) {
+      const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "";
+      const cancelUrl = cancelToken ? `${siteUrl}/cancelar/${cancelToken}` : siteUrl;
+      const ok = await sendEmail({
+        to: clientEmail,
+        subject: `Lembrete: ${serviceName} amanhã`,
+        html: htmlLembreteCliente({
+          clientName: booking.client_name,
+          service: serviceName,
+          date: dateFormatted,
+          time: timeStr,
+          businessName,
+          cancelUrl,
+        }),
+      });
+      if (ok) notified = true;
+    }
+
+    if (notified) {
       sent++;
-      // Marcar como enviado (a coluna pode não existir — silencia o erro)
       try {
         await supabase
           .from("bookings")

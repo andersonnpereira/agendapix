@@ -47,6 +47,66 @@ export async function sendEmail(params: {
   }
 }
 
+export function htmlConfirmacaoCliente(data: {
+  clientName: string;
+  service: string;
+  date: string;
+  time: string;
+  businessName: string;
+  cancelUrl: string;
+  siteUrl: string;
+}): string {
+  return `
+<div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#1a1a1a">
+  <div style="background:#16a34a;padding:20px 24px;border-radius:8px 8px 0 0">
+    <h2 style="color:#fff;margin:0;font-size:20px">✅ Agendamento solicitado!</h2>
+  </div>
+  <div style="border:1px solid #e5e7eb;border-top:none;padding:24px;border-radius:0 0 8px 8px">
+    <p style="margin-top:0">Olá, <strong>${data.clientName}</strong>! Seu agendamento foi recebido com sucesso.</p>
+    <table style="width:100%;border-collapse:collapse;margin:12px 0">
+      <tr><td style="padding:8px 0;font-weight:700;width:110px">Serviço</td><td style="padding:8px 0">${data.service}</td></tr>
+      <tr style="background:#f9fafb"><td style="padding:8px;font-weight:700">Data</td><td style="padding:8px">${data.date}</td></tr>
+      <tr><td style="padding:8px 0;font-weight:700">Horário</td><td style="padding:8px 0">${data.time}</td></tr>
+      <tr style="background:#f9fafb"><td style="padding:8px;font-weight:700">Profissional</td><td style="padding:8px">${data.businessName}</td></tr>
+    </table>
+    <p style="font-size:13px;color:#6b7280">Você receberá a confirmação pelo WhatsApp em breve. Caso precise cancelar, clique no botão abaixo.</p>
+    <a href="${data.cancelUrl}" style="display:inline-block;background:#f1f5f9;color:#475569;padding:10px 20px;border-radius:6px;text-decoration:none;font-size:13px;margin-top:4px;border:1px solid #e2e8f0">
+      Cancelar agendamento
+    </a>
+    <p style="font-size:11px;color:#94a3b8;margin-top:20px">Agendamento gerenciado via <a href="${data.siteUrl}" style="color:#16a34a">Agendou</a></p>
+  </div>
+</div>`.trim();
+}
+
+export function htmlLembreteCliente(data: {
+  clientName: string;
+  service: string;
+  date: string;
+  time: string;
+  businessName: string;
+  cancelUrl: string;
+}): string {
+  return `
+<div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#1a1a1a">
+  <div style="background:#0ea5e9;padding:20px 24px;border-radius:8px 8px 0 0">
+    <h2 style="color:#fff;margin:0;font-size:20px">🔔 Lembrete de agendamento</h2>
+  </div>
+  <div style="border:1px solid #e5e7eb;border-top:none;padding:24px;border-radius:0 0 8px 8px">
+    <p style="margin-top:0">Olá, <strong>${data.clientName}</strong>! Lembrando que você tem um agendamento <strong>amanhã</strong>:</p>
+    <table style="width:100%;border-collapse:collapse;margin:12px 0">
+      <tr><td style="padding:8px 0;font-weight:700;width:110px">Serviço</td><td style="padding:8px 0">${data.service}</td></tr>
+      <tr style="background:#f9fafb"><td style="padding:8px;font-weight:700">Data</td><td style="padding:8px">${data.date}</td></tr>
+      <tr><td style="padding:8px 0;font-weight:700">Horário</td><td style="padding:8px 0">${data.time}</td></tr>
+      <tr style="background:#f9fafb"><td style="padding:8px;font-weight:700">Profissional</td><td style="padding:8px">${data.businessName}</td></tr>
+    </table>
+    <p style="font-size:13px;color:#6b7280">Caso não possa comparecer, cancele com antecedência:</p>
+    <a href="${data.cancelUrl}" style="display:inline-block;background:#f1f5f9;color:#475569;padding:10px 20px;border-radius:6px;text-decoration:none;font-size:13px;border:1px solid #e2e8f0">
+      Cancelar agendamento
+    </a>
+  </div>
+</div>`.trim();
+}
+
 export function htmlNovoAgendamento(data: {
   clientName: string;
   service: string;

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
-import { sendEmail, htmlNovoAgendamento } from "@/lib/email";
+import { sendEmail, htmlNovoAgendamento, htmlConfirmacaoCliente } from "@/lib/email";
 import { sendWhatsApp, msgConfirmacao } from "@/lib/whatsapp";
 
 const supabaseAdmin = () =>
@@ -39,7 +39,7 @@ function checkRateLimit(profile_id: string, date: string): boolean {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { profile_id, service_id, client_name, client_phone, client_notes, date, time } = body;
+    const { profile_id, service_id, client_name, client_phone, client_email, client_notes, date, time } = body;
 
     if (!profile_id || !client_name || !client_phone || !date || !time) {
       return NextResponse.json({ error: "Dados incompletos." }, { status: 400 });
@@ -94,12 +94,13 @@ export async function POST(req: NextRequest) {
         service_id: service_id || null,
         client_name,
         client_phone,
+        client_email: client_email || null,
         notes: client_notes || null,
         date,
         time,
         status: "pendente",
       })
-      .select()
+      .select("*, cancel_token")
       .single();
 
     if (error) {
@@ -184,6 +185,25 @@ export async function POST(req: NextRequest) {
           siteUrl: process.env.NEXT_PUBLIC_SITE_URL || "",
         }),
       }).catch((e) => console.error("[booking notify email]", e));
+    }
+
+    // Confirmação por e-mail ao cliente
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "";
+    if (client_email && booking.cancel_token) {
+      const cancelUrl = `${siteUrl}/cancelar/${booking.cancel_token}`;
+      sendEmail({
+        to: client_email,
+        subject: `Agendamento confirmado — ${serviceName}`,
+        html: htmlConfirmacaoCliente({
+          clientName: client_name,
+          service: serviceName,
+          date: dateFormatted,
+          time: time.slice(0, 5),
+          businessName: profile?.business_name || profile?.name || "seu profissional",
+          cancelUrl,
+          siteUrl,
+        }),
+      }).catch((e) => console.error("[booking confirm client email]", e));
     }
 
     // Notifica o cliente com confirmação

@@ -2,8 +2,10 @@
 
 // MIGRATION: run once on your Supabase SQL editor:
 // ALTER TABLE public.services ADD COLUMN IF NOT EXISTS description text;
+// ALTER TABLE public.services ADD COLUMN IF NOT EXISTS image_url text;
 
 import { useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import { createClient } from "@/lib/supabase-browser";
 import { formatBRL, parseToCents } from "@/lib/format";
 
@@ -14,6 +16,7 @@ type Service = {
   duration_minutes: number;
   price_cents: number;
   active: boolean;
+  image_url: string | null;
 };
 
 type FormState = {
@@ -54,6 +57,8 @@ export default function ServicosPage() {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  const [uploadingImage, setUploadingImage] = useState<string | null>(null); // service id
 
   // delete confirmation
   const [confirmDelete, setConfirmDelete] = useState<Service | null>(null);
@@ -146,6 +151,39 @@ export default function ServicosPage() {
   async function toggleActive(s: Service) {
     await supabase.from("services").update({ active: !s.active }).eq("id", s.id);
     showToast(s.active ? "Serviço pausado." : "Serviço ativado.");
+    load();
+  }
+
+  async function uploadImage(serviceId: string, file: File) {
+    setUploadingImage(serviceId);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const ext = file.name.split(".").pop() || "jpg";
+      const path = `${user.id}/${serviceId}.${ext}`;
+
+      const { error: upErr } = await supabase.storage
+        .from("service-images")
+        .upload(path, file, { upsert: true, contentType: file.type });
+
+      if (upErr) {
+        showToast("Erro ao enviar imagem. Verifique o bucket 'service-images' no Supabase.");
+        return;
+      }
+
+      const { data: urlData } = supabase.storage.from("service-images").getPublicUrl(path);
+      await supabase.from("services").update({ image_url: urlData.publicUrl }).eq("id", serviceId);
+      showToast("Foto atualizada!");
+      load();
+    } finally {
+      setUploadingImage(null);
+    }
+  }
+
+  async function removeImage(serviceId: string) {
+    await supabase.from("services").update({ image_url: null }).eq("id", serviceId);
+    showToast("Foto removida.");
     load();
   }
 
@@ -255,42 +293,75 @@ export default function ServicosPage() {
           {services.map((s) => (
             <div
               key={s.id}
-              className="card flex items-center justify-between py-3 gap-3"
+              className="card py-3 gap-3"
             >
-              <div className="min-w-0">
-                <p
-                  className={`font-medium truncate ${
-                    s.active ? "text-slate-900" : "text-slate-400 line-through"
-                  }`}
-                >
-                  {s.name}
-                </p>
-                {s.description && (
-                  <p className="text-xs text-slate-400 truncate">{s.description}</p>
+              <div className="flex items-center justify-between gap-3">
+                {s.image_url && (
+                  <Image
+                    src={s.image_url}
+                    alt={s.name}
+                    width={56}
+                    height={56}
+                    className="rounded-xl object-cover w-14 h-14 shrink-0"
+                  />
                 )}
-                <p className="text-sm text-slate-500">
-                  {formatBRL(s.price_cents)} · {s.duration_minutes} min
-                </p>
+                <div className="min-w-0 flex-1">
+                  <p
+                    className={`font-medium truncate ${
+                      s.active ? "text-slate-900" : "text-slate-400 line-through"
+                    }`}
+                  >
+                    {s.name}
+                  </p>
+                  {s.description && (
+                    <p className="text-xs text-slate-400 truncate">{s.description}</p>
+                  )}
+                  <p className="text-sm text-slate-500">
+                    {formatBRL(s.price_cents)} · {s.duration_minutes} min
+                  </p>
+                </div>
+                <div className="flex gap-2 shrink-0">
+                  <button
+                    className="text-xs text-indigo-500 hover:text-indigo-700"
+                    onClick={() => openEdit(s)}
+                  >
+                    Editar
+                  </button>
+                  <button
+                    className="text-xs text-slate-500 hover:text-slate-800"
+                    onClick={() => toggleActive(s)}
+                  >
+                    {s.active ? "Pausar" : "Ativar"}
+                  </button>
+                  <button
+                    className="text-xs text-red-500 hover:text-red-700"
+                    onClick={() => setConfirmDelete(s)}
+                  >
+                    Excluir
+                  </button>
+                </div>
               </div>
-              <div className="flex gap-2 shrink-0">
-                <button
-                  className="text-xs text-indigo-500 hover:text-indigo-700"
-                  onClick={() => openEdit(s)}
-                >
-                  Editar
-                </button>
-                <button
-                  className="text-xs text-slate-500 hover:text-slate-800"
-                  onClick={() => toggleActive(s)}
-                >
-                  {s.active ? "Pausar" : "Ativar"}
-                </button>
-                <button
-                  className="text-xs text-red-500 hover:text-red-700"
-                  onClick={() => setConfirmDelete(s)}
-                >
-                  Excluir
-                </button>
+              <div className="flex gap-2 mt-2 pt-2 border-t border-slate-100">
+                <label className={`text-xs cursor-pointer px-2 py-1 rounded-lg border border-slate-200 text-slate-500 hover:border-brand hover:text-brand transition-colors ${uploadingImage === s.id ? "opacity-50 pointer-events-none" : ""}`}>
+                  {uploadingImage === s.id ? "Enviando..." : s.image_url ? "Trocar foto" : "📷 Adicionar foto"}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) uploadImage(s.id, f);
+                    }}
+                  />
+                </label>
+                {s.image_url && (
+                  <button
+                    className="text-xs text-red-400 hover:text-red-600"
+                    onClick={() => removeImage(s.id)}
+                  >
+                    Remover foto
+                  </button>
+                )}
               </div>
             </div>
           ))}

@@ -289,7 +289,17 @@ export default function AgendaPage() {
         </div>
       )}
 
-      <h1 className="text-2xl font-bold text-slate-900">Agenda</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-slate-900">Agenda</h1>
+        <a
+          href="/api/ical"
+          download="agenda.ics"
+          className="text-xs text-slate-500 hover:text-brand border border-slate-200 rounded-lg px-3 py-1.5 transition-colors"
+          title="Exportar para Google Calendar, iPhone ou Outlook"
+        >
+          📅 Exportar .ics
+        </a>
+      </div>
 
       {/* Busca */}
       <input

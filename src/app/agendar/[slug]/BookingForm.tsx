@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
+import Image from "next/image";
 import { createClient } from "@/lib/supabase-browser";
 import { formatBRL } from "@/lib/format";
 
@@ -9,6 +10,7 @@ type Service = {
   name: string;
   duration_minutes: number;
   price_cents: number;
+  image_url?: string | null;
 };
 
 type AvailBlock = {
@@ -189,6 +191,7 @@ export default function BookingForm({ profileId, services, availability, blocked
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [clientName, setClientName] = useState("");
   const [clientPhone, setClientPhone] = useState("");
+  const [clientEmail, setClientEmail] = useState("");
   const [clientNotes, setClientNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -248,6 +251,7 @@ export default function BookingForm({ profileId, services, availability, blocked
           service_id: selectedService.id,
           client_name: clientName,
           client_phone: clientPhone,
+          client_email: clientEmail || null,
           client_notes: clientNotes,
           date: selectedDate,
           time: selectedTime + ":00",
@@ -286,7 +290,9 @@ export default function BookingForm({ profileId, services, availability, blocked
         <div>
           <h2 className="text-xl font-bold text-slate-900">Agendamento solicitado!</h2>
           <p className="text-sm text-slate-500 mt-1">
-            Você receberá a confirmação pelo WhatsApp em breve. 📲
+            {clientEmail
+              ? "Confirmação enviada para seu e-mail. 📧"
+              : "Você receberá a confirmação pelo WhatsApp em breve. 📲"}
           </p>
         </div>
 
@@ -312,6 +318,7 @@ export default function BookingForm({ profileId, services, availability, blocked
             setSelectedTime("");
             setClientName("");
             setClientPhone("");
+            setClientEmail("");
             setClientNotes("");
           }}
           className="w-full py-3 rounded-2xl border border-slate-200 text-sm text-slate-600 hover:bg-slate-50 transition-colors"
@@ -348,13 +355,22 @@ export default function BookingForm({ profileId, services, availability, blocked
             <button
               key={s.id}
               onClick={() => { setSelectedService(s); setSelectedDate(""); setSelectedTime(""); setStep("datetime"); }}
-              className="card w-full text-left py-4 flex items-center justify-between hover:border-brand transition-colors"
+              className="card w-full text-left py-3 flex items-center gap-3 hover:border-brand transition-colors"
             >
-              <div>
+              {s.image_url && (
+                <Image
+                  src={s.image_url}
+                  alt={s.name}
+                  width={56}
+                  height={56}
+                  className="rounded-xl object-cover w-14 h-14 shrink-0"
+                />
+              )}
+              <div className="flex-1 min-w-0">
                 <p className="font-semibold text-slate-900">{s.name}</p>
                 <p className="text-sm text-slate-500">{s.duration_minutes} minutos</p>
               </div>
-              <span className="text-brand font-bold text-lg">{formatBRL(s.price_cents)}</span>
+              <span className="text-brand font-bold text-lg shrink-0">{formatBRL(s.price_cents)}</span>
             </button>
           ))}
         </div>
@@ -437,6 +453,19 @@ export default function BookingForm({ profileId, services, availability, blocked
             <p className="text-xs text-slate-400 mt-1">A confirmação chegará aqui.</p>
           </div>
           <div>
+            <label className="label">Seu e-mail (opcional)</label>
+            <input
+              className="input"
+              type="email"
+              value={clientEmail}
+              onChange={(e) => setClientEmail(e.target.value)}
+              placeholder="joao@email.com"
+              inputMode="email"
+              autoComplete="email"
+            />
+            <p className="text-xs text-slate-400 mt-1">Receba a confirmação por e-mail com link para cancelar.</p>
+          </div>
+          <div>
             <label className="label">Observação (opcional)</label>
             <textarea
               className="input resize-none text-sm"
@@ -469,6 +498,7 @@ export default function BookingForm({ profileId, services, availability, blocked
             <Row label="Horário" value={selectedTime} />
             <Row label="Nome" value={clientName} />
             <Row label="WhatsApp" value={clientPhone} />
+            {clientEmail && <Row label="E-mail" value={clientEmail} />
             <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
               <span className="text-sm text-slate-500">Valor do serviço</span>
               <span className="font-bold text-slate-900">{formatBRL(selectedService.price_cents)}</span>

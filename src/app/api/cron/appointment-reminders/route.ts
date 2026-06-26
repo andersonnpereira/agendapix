@@ -4,9 +4,12 @@ import { sendWhatsApp } from "@/lib/whatsapp";
 import { sendEmail, htmlLembreteCliente } from "@/lib/email";
 
 export async function GET(req: NextRequest) {
-  const auth = req.headers.get("authorization") || "";
-  if (auth.replace("Bearer ", "") !== process.env.CRON_SECRET) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const secret = process.env.CRON_SECRET;
+  if (secret) {
+    const auth = req.headers.get("authorization");
+    if (auth !== `Bearer ${secret}`) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
   }
 
   const supabase = createClient(
@@ -25,7 +28,8 @@ export async function GET(req: NextRequest) {
     .from("bookings")
     .select("id, profile_id, client_name, client_phone, client_email, cancel_token, time, services(name)")
     .eq("date", tomorrow)
-    .in("status", ["pendente", "confirmado"]);
+    .in("status", ["pendente", "confirmado"])
+    .neq("client_reminder_sent", true);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   if (!bookings || bookings.length === 0) return NextResponse.json({ ok: true, sent: 0 });

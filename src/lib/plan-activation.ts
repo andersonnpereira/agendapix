@@ -2,12 +2,17 @@ import { createAdminClient } from "./supabase-admin";
 
 export type PlanType = "monthly" | "annual" | "lifetime";
 
-export function calcExpiry(planType: PlanType): string | null {
+export function calcExpiry(planType: PlanType, currentExpiresAt?: string | null): string | null {
   if (planType === "lifetime") return null;
-  const d = new Date();
-  if (planType === "monthly") d.setDate(d.getDate() + 31);
-  else d.setDate(d.getDate() + 366);
-  return d.toISOString();
+  // Renova a partir da data de expiração atual se ainda estiver no futuro
+  // Isso garante que o ciclo de cobrança não seja encurtado em renovações antecipadas
+  const base =
+    currentExpiresAt && new Date(currentExpiresAt) > new Date()
+      ? new Date(currentExpiresAt)
+      : new Date();
+  if (planType === "monthly") base.setDate(base.getDate() + 31);
+  else base.setDate(base.getDate() + 366);
+  return base.toISOString();
 }
 
 /**
@@ -22,7 +27,6 @@ export async function activatePlanByEmail(
   rawPayload?: object
 ): Promise<{ activated: boolean; userId?: string }> {
   const admin = createAdminClient();
-  const expiresAt = calcExpiry(planType);
   const normalizedEmail = email.toLowerCase().trim();
 
   // Tenta encontrar o usuário já cadastrado pelo e-mail
@@ -32,6 +36,15 @@ export async function activatePlanByEmail(
   );
 
   if (user) {
+    // Lê expiração atual para renovar a partir do ciclo correto
+    const { data: profile } = await admin
+      .from("profiles")
+      .select("plan_expires_at")
+      .eq("id", user.id)
+      .single();
+
+    const expiresAt = calcExpiry(planType, profile?.plan_expires_at);
+
     await admin
       .from("profiles")
       .update({

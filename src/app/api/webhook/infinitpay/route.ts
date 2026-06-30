@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
     (data.payer as Record<string, unknown>) ||
     {};
 
-  const email =
+  let email =
     (customer.email as string) ||
     (payer.email as string) ||
     (body.customer_email as string) ||
@@ -87,6 +87,27 @@ export async function POST(req: NextRequest) {
     "";
 
   console.log("[webhook/infinitpay] email extraído do payload:", email || "(não encontrado)");
+
+  // Detecta plano: query param ?plan=monthly|annual tem precedência
+  const planParam = req.nextUrl.searchParams.get("plan");
+  let planType: PlanType;
+
+  if (planParam === "monthly") {
+    planType = "monthly";
+  } else if (planParam === "annual") {
+    planType = "annual";
+  } else {
+    const planName =
+      (customer.plan as string) ||
+      ((data.plan as Record<string, unknown>)?.name as string) ||
+      ((subscription.plan as Record<string, unknown>)?.name as string) ||
+      (body.plan_name as string) ||
+      (body.product_name as string) ||
+      "";
+
+    const detected = detectPlanType(planName, event);
+    planType = detected || "monthly";
+  }
 
   // Fallback: busca sessão de checkout mais recente para este plano
   // (Infinit Pay não inclui email no webhook de link de pagamento PIX)
@@ -117,27 +138,6 @@ export async function POST(req: NextRequest) {
       error: "E-mail do cliente não encontrado",
       debug_body_keys: Object.keys(body),
     }, { status: 422 });
-  }
-
-  // Detecta plano: query param ?plan=monthly|annual tem precedência
-  const planParam = req.nextUrl.searchParams.get("plan");
-  let planType: PlanType;
-
-  if (planParam === "monthly") {
-    planType = "monthly";
-  } else if (planParam === "annual") {
-    planType = "annual";
-  } else {
-    const planName =
-      (customer.plan as string) ||
-      ((data.plan as Record<string, unknown>)?.name as string) ||
-      ((subscription.plan as Record<string, unknown>)?.name as string) ||
-      (body.plan_name as string) ||
-      (body.product_name as string) ||
-      "";
-
-    const detected = detectPlanType(planName, event);
-    planType = detected || "monthly";
   }
 
   const result = await activatePlanByEmail(email, planType, "infinitpay", body);

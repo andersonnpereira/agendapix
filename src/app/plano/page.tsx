@@ -118,8 +118,8 @@ export default async function PlanoPage() {
 
             {/* Mensal */}
             <a
-              href={CHECKOUT_MONTHLY || waMensal}
-              target="_blank"
+              href={CHECKOUT_MONTHLY ? "/api/checkout/start?plan=monthly" : waMensal}
+              target={CHECKOUT_MONTHLY ? "_self" : "_blank"}
               rel="noopener noreferrer"
               className="group block bg-white border-2 border-slate-200 hover:border-brand rounded-2xl p-5 transition-all hover:shadow-md"
             >
@@ -148,8 +148,8 @@ export default async function PlanoPage() {
 
             {/* Anual */}
             <a
-              href={CHECKOUT_ANNUAL || waAnual}
-              target="_blank"
+              href={CHECKOUT_ANNUAL ? "/api/checkout/start?plan=annual" : waAnual}
+              target={CHECKOUT_ANNUAL ? "_self" : "_blank"}
               rel="noopener noreferrer"
               className="group block relative bg-brand rounded-2xl p-5 transition-all hover:opacity-95 hover:shadow-lg"
             >

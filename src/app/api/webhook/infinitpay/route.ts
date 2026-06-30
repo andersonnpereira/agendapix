@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { activatePlanByEmail, detectPlanType, type PlanType } from "@/lib/plan-activation";
+import { createAdminClient } from "@/lib/supabase-admin";
 
 export async function POST(req: NextRequest) {
   // Autenticação opcional via secret header
@@ -46,6 +47,7 @@ export async function POST(req: NextRequest) {
     "";
 
   const APPROVED = ["paid", "approved", "captured", "succeeded", "active", "completed"];
+  const paidAmount = Number(body.paid_amount ?? (data.paid_amount ?? 0));
   const isApproved =
     APPROVED.includes(status.toLowerCase()) ||
     event.toLowerCase().includes("paid") ||
@@ -53,9 +55,10 @@ export async function POST(req: NextRequest) {
     event.toLowerCase().includes("captured") ||
     event.toLowerCase().includes("succeeded") ||
     event.toLowerCase().includes("payment_succeeded") ||
-    event.toLowerCase().includes("completed");
+    event.toLowerCase().includes("completed") ||
+    paidAmount > 0; // Infinit Pay manda o webhook sem status quando o link de pagamento é pago
 
-  console.log("[webhook/infinitpay] status:", status, "| event:", event, "| isApproved:", isApproved);
+  console.log("[webhook/infinitpay] status:", status, "| event:", event, "| paid_amount:", paidAmount, "| isApproved:", isApproved);
 
   if (!isApproved) {
     return NextResponse.json({ ok: true, skipped: true, status, event, debug_body_keys: Object.keys(body) });
@@ -83,14 +86,36 @@ export async function POST(req: NextRequest) {
     (data.email as string) ||
     "";
 
-  console.log("[webhook/infinitpay] email extraído:", email || "(não encontrado)");
+  console.log("[webhook/infinitpay] email extraído do payload:", email || "(não encontrado)");
+
+  // Fallback: busca sessão de checkout mais recente para este plano
+  // (Infinit Pay não inclui email no webhook de link de pagamento PIX)
+  let sessionId: string | null = null;
+  if (!email) {
+    const admin = createAdminClient();
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const { data: session } = await admin
+      .from("checkout_sessions")
+      .select("id, email")
+      .eq("plan", planType)
+      .eq("activated", false)
+      .gte("created_at", since)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
+
+    if (session?.email) {
+      email = session.email;
+      sessionId = session.id;
+      console.log("[webhook/infinitpay] email via checkout_session:", email);
+    }
+  }
 
   if (!email) {
-    console.error("[webhook/infinitpay] ERRO: email não encontrado. Chaves do body:", Object.keys(body));
+    console.error("[webhook/infinitpay] ERRO: email não encontrado em payload nem em checkout_sessions");
     return NextResponse.json({
-      error: "E-mail do cliente não encontrado no payload",
+      error: "E-mail do cliente não encontrado",
       debug_body_keys: Object.keys(body),
-      debug_data_keys: Object.keys(data),
     }, { status: 422 });
   }
 
@@ -117,7 +142,13 @@ export async function POST(req: NextRequest) {
 
   const result = await activatePlanByEmail(email, planType, "infinitpay", body);
 
-  console.log("[webhook/infinitpay] RESULTADO:", { event, status, email, planType, ...result });
+  // Marca sessão de checkout como usada
+  if (sessionId && result.activated) {
+    const admin = createAdminClient();
+    await admin.from("checkout_sessions").update({ activated: true }).eq("id", sessionId);
+  }
+
+  console.log("[webhook/infinitpay] RESULTADO:", { event, status, email, planType, sessionId, ...result });
 
   return NextResponse.json({ ok: true, ...result });
 }

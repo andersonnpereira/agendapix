@@ -16,8 +16,12 @@ export async function GET(req: NextRequest) {
   try {
     const admin = createAdminClient();
     const now = new Date().toISOString();
-    const todayDate = now.slice(0, 10); // "YYYY-MM-DD"
-    const todayStart = todayDate + "T00:00:00.000Z";
+
+    // Data/hora de hoje no fuso horário de Brasília (UTC-3)
+    const BRT_OFFSET_MS = 3 * 60 * 60 * 1000;
+    const nowBRtMs = Date.now() - BRT_OFFSET_MS;
+    const todayDate = new Date(nowBRtMs).toISOString().slice(0, 10); // "YYYY-MM-DD" BRT
+    const todayStart = todayDate + "T03:00:00.000Z"; // meia-noite BRT = 03:00 UTC
 
     type ProfileJoin = {
       whatsapp_provider: string;
@@ -134,6 +138,9 @@ export async function GET(req: NextRequest) {
           })
           .eq("id", charge.id);
         sent++;
+        console.log("[cron/reminders] enviado:", { id: charge.id, client: charge.client_name, phone: charge.client_phone });
+      } else {
+        console.error("[cron/reminders] FALHA no envio:", { id: charge.id, client: charge.client_name, phone: charge.client_phone, result });
       }
     }
 

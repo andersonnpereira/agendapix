@@ -112,6 +112,7 @@ export default function CobrancasPage() {
   const [showClientSuggestions, setShowClientSuggestions] = useState(false);
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState<"todos" | "pendente" | "pago" | "atrasado">("todos");
+  const [sortBy, setSortBy] = useState<"created_at" | "due_date">("created_at");
   const [showModal, setShowModal] = useState(false);
   const [openPix, setOpenPix] = useState<string | null>(null);
   const [toast, setToast] = useState("");
@@ -254,8 +255,35 @@ export default function CobrancasPage() {
         );
     setReminderModal(charge);
     setReminderText(text);
-    setReminderSendMode("now");
-    setReminderScheduledAt("");
+    // Se já tem lembrete agendado, abre direto na aba "Agendar" com a data pré-preenchida
+    if (charge.auto_reminder && charge.scheduled_reminder_at) {
+      setReminderSendMode("schedule");
+      const d = new Date(charge.scheduled_reminder_at);
+      const localISO = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+      setReminderScheduledAt(localISO);
+    } else {
+      setReminderSendMode("now");
+      setReminderScheduledAt("");
+    }
+  }
+
+  async function cancelAutoReminder(charge: Charge) {
+    setActionId(charge.id + "-cancel-reminder");
+    await supabase.from("charges").update({
+      auto_reminder: false,
+      scheduled_reminder_at: null,
+      last_auto_reminder_at: null,
+    }).eq("id", charge.id);
+    setCharges((prev) =>
+      prev.map((c) =>
+        c.id === charge.id
+          ? { ...c, auto_reminder: false, scheduled_reminder_at: null, last_auto_reminder_at: null }
+          : c
+      )
+    );
+    showToast("🔕 Lembrete automático cancelado.");
+    setReminderModal(null);
+    setActionId(null);
   }
 
   async function scheduleReminder(charge: Charge) {
@@ -579,7 +607,20 @@ export default function CobrancasPage() {
     }
   }
 
-  const filtered = filterStatus === "todos" ? charges : charges.filter((c) => c.status === filterStatus);
+  const filtered = (() => {
+    const base =
+      filterStatus === "todos"
+        ? charges.filter((c) => c.status !== "pago")
+        : charges.filter((c) => c.status === filterStatus);
+    if (sortBy === "due_date") {
+      return [...base].sort((a, b) => {
+        if (!a.due_date) return 1;
+        if (!b.due_date) return -1;
+        return a.due_date.localeCompare(b.due_date);
+      });
+    }
+    return base;
+  })();
 
   const clientSuggestions = fClientName.trim().length > 0
     ? clientOptions.filter((c) =>
@@ -612,7 +653,7 @@ export default function CobrancasPage() {
         </div>
       )}
 
-      <div className="flex gap-2 flex-wrap">
+      <div className="flex flex-wrap items-center gap-2">
         {(["todos", "pendente", "atrasado", "pago"] as const).map((s) => (
           <button
             key={s}
@@ -621,9 +662,15 @@ export default function CobrancasPage() {
               filterStatus === s ? "bg-brand text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
             }`}
           >
-            {s === "todos" ? "Todos" : s.charAt(0).toUpperCase() + s.slice(1)}
+            {s === "todos" ? "Em aberto" : s.charAt(0).toUpperCase() + s.slice(1)}
           </button>
         ))}
+        <button
+          onClick={() => setSortBy(sortBy === "created_at" ? "due_date" : "created_at")}
+          className="ml-auto px-3 py-1.5 rounded-full text-xs font-medium border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 flex items-center gap-1"
+        >
+          {sortBy === "due_date" ? "📅 Por vencimento" : "🕐 Mais recentes"}
+        </button>
       </div>
 
       {loading ? (
@@ -869,7 +916,7 @@ export default function CobrancasPage() {
 
       {/* ── Modal: lembrete ────────────────────────────────────────── */}
       {reminderModal && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-2xl w-full max-w-md p-5 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between">
               <h3 className="font-bold text-slate-900">
@@ -880,6 +927,24 @@ export default function CobrancasPage() {
             {isOverdue(reminderModal) && (
               <div className="bg-red-50 border border-red-200 rounded-xl px-3 py-2 text-xs text-red-700 font-medium">
                 ⚠️ Esta cobrança está vencida. A mensagem foi adaptada para recuperação do pagamento.
+              </div>
+            )}
+            {reminderModal.auto_reminder && reminderModal.scheduled_reminder_at && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-xs text-amber-700 flex items-center justify-between gap-3">
+                <span>
+                  ⏰ Agendado para{" "}
+                  {new Date(reminderModal.scheduled_reminder_at).toLocaleString("pt-BR", {
+                    day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
+                  })}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => cancelAutoReminder(reminderModal)}
+                  className="text-red-500 underline whitespace-nowrap shrink-0"
+                  disabled={actionId === reminderModal.id + "-cancel-reminder"}
+                >
+                  {actionId === reminderModal.id + "-cancel-reminder" ? "..." : "Cancelar"}
+                </button>
               </div>
             )}
             <div className="bg-slate-50 rounded-xl p-3 text-sm space-y-0.5">

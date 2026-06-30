@@ -6,10 +6,10 @@ import { randomUUID } from "crypto";
 const INFINITPAY_API = "https://api.checkout.infinitepay.io/links";
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://agendasj.vercel.app";
 
-// Preços em centavos — ajuste conforme necessário
+// Preços em centavos
 const PRICES: Record<string, number> = {
-  monthly: 100,   // R$ 1,00 (teste) — voltar para 4700 em produção
-  annual:  39700, // R$ 397,00
+  monthly: 1990,  // R$ 19,90
+  annual:  17990, // R$ 179,90
 };
 
 const DESCRIPTIONS: Record<string, string> = {

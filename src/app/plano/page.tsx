@@ -2,9 +2,9 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase-server";
 
-const PRECO_MENSAL_LABEL = "R$ 47";
-const PRECO_ANUAL_LABEL  = "R$ 397";
-const ECONOMIA_ANUAL     = "R$ 167";
+const PRECO_MENSAL_LABEL = "R$ 19,90";
+const PRECO_ANUAL_LABEL  = "R$ 179,90";
+const ECONOMIA_ANUAL     = "R$ 58,90"; // 19,90×12=238,80 − 179,90
 const WHATSAPP_CONTATO   = process.env.NEXT_PUBLIC_CONTACT_WHATSAPP || "5567999999999";
 const NOME_PRODUTO       = "Agendou";
 

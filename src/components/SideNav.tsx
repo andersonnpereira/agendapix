@@ -16,8 +16,31 @@ const nav = [
   { href: "/configuracoes", label: "Configurações",  Icon: Settings },
 ];
 
-export function SideNav({ isAdmin }: { isAdmin?: boolean }) {
+const PLAN_LABELS: Record<string, string> = {
+  trial:    "Trial gratuito",
+  monthly:  "Plano Mensal",
+  annual:   "Plano Anual",
+  lifetime: "Plano Vitalício",
+};
+
+function formatDateBR(iso: string) {
+  const [y, m, d] = iso.slice(0, 10).split("-");
+  return `${d}/${m}/${y}`;
+}
+
+interface SideNavProps {
+  isAdmin?: boolean;
+  planType?: string | null;
+  planExpiresAt?: string | null;
+  daysLeft?: number | null;
+}
+
+export function SideNav({ isAdmin, planType, planExpiresAt, daysLeft }: SideNavProps) {
   const pathname = usePathname();
+
+  const planLabel  = planType ? (PLAN_LABELS[planType] ?? planType) : null;
+  const isExpiring = daysLeft !== null && daysLeft !== undefined && daysLeft <= (planType === "annual" ? 15 : 7);
+  const isPaid     = planType === "monthly" || planType === "annual" || planType === "lifetime";
 
   return (
     <aside className="hidden lg:fixed lg:inset-y-0 lg:left-0 lg:flex lg:w-64 lg:flex-col z-20">
@@ -73,6 +96,37 @@ export function SideNav({ isAdmin }: { isAdmin?: boolean }) {
             );
           })}
         </nav>
+
+        {/* Badge do plano */}
+        {!isAdmin && planLabel && (
+          <div className="px-3 pb-2">
+            <div className={`rounded-xl p-3 border ${
+              isExpiring
+                ? "bg-amber-50 border-amber-200"
+                : isPaid
+                ? "bg-brand/5 border-brand/20"
+                : "bg-slate-50 border-slate-200"
+            }`}>
+              <div className="flex items-center gap-2 mb-0.5">
+                <span className="text-sm">{planType === "lifetime" ? "♾️" : isPaid ? "👑" : "⏳"}</span>
+                <span className={`text-xs font-semibold truncate ${
+                  isExpiring ? "text-amber-700" : isPaid ? "text-brand-dark" : "text-slate-600"
+                }`}>
+                  {planLabel}
+                </span>
+              </div>
+              {planExpiresAt && planType !== "lifetime" && (
+                <p className={`text-xs ${isExpiring ? "text-amber-600 font-medium" : "text-slate-400"}`}>
+                  {isExpiring && daysLeft === 0
+                    ? "Vence hoje!"
+                    : isExpiring
+                    ? `Vence em ${daysLeft}d — ${formatDateBR(planExpiresAt)}`
+                    : `Vence em ${formatDateBR(planExpiresAt)}`}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Bottom actions */}
         <div className="px-3 py-4 border-t border-slate-100 space-y-0.5">

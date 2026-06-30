@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase-admin";
 import {
   sendWhatsApp, msgLembrete, formatTemplate,
-  DEFAULT_MSG_LEMBRETE_HOJE, DEFAULT_MSG_LEMBRETE_AMANHA, DEFAULT_MSG_COBRANCA_VENCIDA,
+  DEFAULT_MSG_LEMBRETE_HOJE, DEFAULT_MSG_COBRANCA_VENCIDA,
 } from "@/lib/whatsapp";
 import { formatBRL } from "@/lib/format";
 
@@ -25,9 +25,12 @@ export async function GET(req: NextRequest) {
     const todayDate = new Date(nowBRtMs).toISOString().slice(0, 10); // "YYYY-MM-DD" BRT
     const todayStart = todayDate + "T03:00:00.000Z"; // meia-noite BRT = 03:00 UTC
 
-    // Amanhã BRT
-    const tomorrowMs = nowBRtMs + 24 * 60 * 60 * 1000;
-    const tomorrowDate = new Date(tomorrowMs).toISOString().slice(0, 10);
+    // Marca todas as cobranças vencidas (não pagas) como "atrasado" no banco
+    await admin
+      .from("charges")
+      .update({ status: "atrasado" })
+      .neq("status", "pago")
+      .lt("due_date", todayDate);
 
     type ProfileJoin = {
       whatsapp_provider: string;
@@ -35,12 +38,11 @@ export async function GET(req: NextRequest) {
       whatsapp_instance_id: string | null;
       msg_lembrete: string | null;
       msg_lembrete_hoje: string | null;
-      msg_lembrete_amanha: string | null;
       msg_cobranca_vencida: string | null;
       pix_key: string | null;
     };
 
-    const PROFILE_SELECT = "whatsapp_provider, whatsapp_token, whatsapp_instance_id, msg_lembrete, msg_lembrete_hoje, msg_lembrete_amanha, msg_cobranca_vencida, pix_key";
+    const PROFILE_SELECT = "whatsapp_provider, whatsapp_token, whatsapp_instance_id, msg_lembrete, msg_lembrete_hoje, msg_cobranca_vencida, pix_key";
 
     // ── 1. Lembretes antecipados + vencidas ─────────────────────────────────
     // Inclui: antes do vencimento (regular) E após vencimento (cobrança vencida)
@@ -110,20 +112,8 @@ export async function GET(req: NextRequest) {
           pix:     profile.pix_key || "",
           data:    dueDateFormatted,
         });
-      } else if (charge.due_date === tomorrowDate) {
-        // ── 1 dia antes — lembrete de amanhã ─────────────────────────────────
-        const tpl = profile.msg_lembrete_amanha || DEFAULT_MSG_LEMBRETE_AMANHA;
-        message = formatTemplate(tpl, {
-          nome:    charge.client_name || "Cliente",
-          servico: charge.description || "Serviço",
-          data:    dueDateFormatted,
-          horario: "",
-          negocio: "",
-          valor:   amount,
-          pix:     profile.pix_key || "",
-        });
       } else {
-        // ── Antecipado regular (>1 dia antes) ────────────────────────────────
+        // ── Antecipado: 1 dia antes ou mais ──────────────────────────────────
         message = msgLembrete(
           charge.client_name || "Cliente",
           charge.description || "Serviço",

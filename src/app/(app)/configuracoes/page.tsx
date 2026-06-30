@@ -609,7 +609,7 @@ export default function ConfiguracoesPage() {
         <MsgCard
           icon="🔔"
           title="Lembrete de pagamento"
-          description="Enviada ao clicar em 'Lembrete' ou pelo lembrete automático agendado antes do vencimento."
+          description="Enviada ao clicar em 'Lembrete' ou pelo automático (inclui 1 dia antes do vencimento e envios antecipados)."
           value={msgLembrete}
           onChange={setMsgLembrete}
           onReset={() => setMsgLembrete(DEFAULT_MSG_LEMBRETE)}
@@ -633,7 +633,7 @@ export default function ConfiguracoesPage() {
         <MsgCard
           icon="💸"
           title="Cobrança vencida"
-          description="Enviada ao clicar em '💸 Cobrar vencido' para cobranças com vencimento em atraso."
+          description="Enviada automaticamente pelo cron e ao clicar em '💸 Cobrar vencido' para cobranças em atraso."
           value={msgCobrancaVencida}
           onChange={setMsgCobrancaVencida}
           onReset={() => setMsgCobrancaVencida(DEFAULT_MSG_COBRANCA_VENCIDA)}

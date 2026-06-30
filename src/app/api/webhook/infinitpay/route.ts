@@ -109,26 +109,29 @@ export async function POST(req: NextRequest) {
     planType = detected || "monthly";
   }
 
-  // Fallback: busca sessão de checkout mais recente para este plano
-  // (Infinit Pay não inclui email no webhook de link de pagamento PIX)
+  // Lookup exato por order_nsu (UUID definido por nós ao criar o link via API)
+  // Elimina qualquer problema de concorrência — cada order_nsu é único por usuário
   let sessionId: string | null = null;
   if (!email) {
-    const admin = createAdminClient();
-    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    const { data: session } = await admin
-      .from("checkout_sessions")
-      .select("id, email")
-      .eq("plan", planType)
-      .eq("activated", false)
-      .gte("created_at", since)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .single();
+    const orderNsu = (body.order_nsu as string) || "";
+    console.log("[webhook/infinitpay] order_nsu recebido:", orderNsu || "(não encontrado)");
 
-    if (session?.email) {
-      email = session.email;
-      sessionId = session.id;
-      console.log("[webhook/infinitpay] email via checkout_session:", email);
+    if (orderNsu) {
+      const admin = createAdminClient();
+      const { data: session } = await admin
+        .from("checkout_sessions")
+        .select("id, email")
+        .eq("order_nsu", orderNsu)
+        .eq("activated", false)
+        .single();
+
+      if (session?.email) {
+        email = session.email;
+        sessionId = session.id;
+        console.log("[webhook/infinitpay] email via order_nsu:", email);
+      } else {
+        console.warn("[webhook/infinitpay] order_nsu não encontrado em checkout_sessions:", orderNsu);
+      }
     }
   }
 

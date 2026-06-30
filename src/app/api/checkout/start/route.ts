@@ -1,6 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase-server";
 import { createAdminClient } from "@/lib/supabase-admin";
+import { randomUUID } from "crypto";
+
+const INFINITPAY_API = "https://api.checkout.infinitepay.io/links";
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://agendasj.vercel.app";
+
+// Preços em centavos — ajuste conforme necessário
+const PRICES: Record<string, number> = {
+  monthly: 4700,  // R$ 47,00
+  annual:  39700, // R$ 397,00
+};
+
+const DESCRIPTIONS: Record<string, string> = {
+  monthly: "Plano Mensal Agendou",
+  annual:  "Plano Anual Agendou",
+};
 
 export async function GET(req: NextRequest) {
   const supabase = createClient();
@@ -15,28 +30,65 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(new URL("/plano", req.url));
   }
 
-  const admin = createAdminClient();
-
-  // Lê URL de checkout configurada pelo admin
-  const { data: settings } = await admin
-    .from("app_settings")
-    .select("key, value")
-    .in("key", ["checkout_monthly_url", "checkout_annual_url"]);
-
-  const map = Object.fromEntries((settings || []).map((s) => [s.key, s.value]));
-  const checkoutUrl = plan === "monthly" ? map["checkout_monthly_url"] : map["checkout_annual_url"];
-
-  if (!checkoutUrl) {
-    return NextResponse.redirect(new URL("/plano", req.url));
+  const handle = process.env.INFINITPAY_HANDLE;
+  if (!handle) {
+    console.error("[checkout/start] INFINITPAY_HANDLE não configurado nas env vars do Vercel");
+    return NextResponse.redirect(new URL("/plano?erro=config", req.url));
   }
 
-  // Salva sessão de checkout: email + plano + timestamp
-  await admin.from("checkout_sessions").insert({
-    email: user.email,
-    plan,
-  });
+  const orderNsu  = randomUUID();
+  const webhookUrl  = `${APP_URL}/api/webhook/infinitpay?plan=${plan}`;
+  const redirectUrl = `${APP_URL}/dashboard`;
 
-  console.log("[checkout/start]", { email: user.email, plan, checkoutUrl });
+  // Headers — INFINITPAY_API_KEY opcional; alguns endpoints não exigem auth
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const apiKey = process.env.INFINITPAY_API_KEY;
+  if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
+
+  let checkoutUrl: string;
+  try {
+    const res = await fetch(INFINITPAY_API, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        handle,
+        redirect_url: redirectUrl,
+        webhook_url: webhookUrl,
+        order_nsu: orderNsu,
+        customer: {
+          email: user.email,
+          name:  user.user_metadata?.full_name || user.email,
+        },
+        items: [{
+          quantity:    1,
+          price:       PRICES[plan],
+          description: DESCRIPTIONS[plan],
+        }],
+      }),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error("[checkout/start] Erro API Infinit Pay:", res.status, errText);
+      return NextResponse.redirect(new URL("/plano?erro=pagamento", req.url));
+    }
+
+    const data = await res.json() as { url?: string };
+    checkoutUrl = data.url || "";
+    if (!checkoutUrl) {
+      console.error("[checkout/start] API não retornou url:", data);
+      return NextResponse.redirect(new URL("/plano?erro=pagamento", req.url));
+    }
+  } catch (err) {
+    console.error("[checkout/start] Falha ao criar link:", err);
+    return NextResponse.redirect(new URL("/plano?erro=pagamento", req.url));
+  }
+
+  // Salva sessão — order_nsu permite lookup exato no webhook
+  const admin = createAdminClient();
+  await admin.from("checkout_sessions").insert({ order_nsu: orderNsu, email: user.email, plan });
+
+  console.log("[checkout/start]", { email: user.email, plan, orderNsu });
 
   return NextResponse.redirect(checkoutUrl);
 }

@@ -277,10 +277,14 @@ export default function ConfiguracoesPage() {
     setSaving(false);
     if (uErr) {
       setError(uErr.message);
-    } else {
-      setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
+      return;
     }
+
+    // Configura/remove webhook no Evolution API automaticamente (não bloqueia o save)
+    fetch("/api/bot-webhook-setup", { method: "POST" }).catch(() => {});
+
+    setSaved(true);
+    setTimeout(() => setSaved(false), 3000);
   }
 
   const publicLink = slug ? `${siteUrl}/agendar/${slugify(slug)}` : "";
@@ -681,47 +685,18 @@ export default function ConfiguracoesPage() {
           </button>
         </div>
 
-        {botEnabled && userId && (
-          <div className="space-y-3">
-            {/* Fluxo do bot */}
-            <div className="bg-slate-50 rounded-xl p-3 text-xs text-slate-500 space-y-1 leading-relaxed">
-              <p className="font-semibold text-slate-700 mb-1.5">Fluxo do bot:</p>
-              <p>1️⃣ <strong>Agendar</strong> → envia o link do seu agendamento</p>
-              <p>2️⃣ <strong>Cobrança</strong> → consulta cobranças em aberto pelo número do cliente</p>
-              <p>3️⃣ <strong>Atendente</strong> → encaminha para atendimento humano</p>
-              <p className="pt-1 text-slate-400">Palavras "oi", "olá", "menu" resetam o bot para o menu principal.</p>
-            </div>
-
-            {/* URL do webhook */}
-            <div>
-              <label className="label">URL do webhook (Evolution API)</label>
-              <div className="flex items-center gap-2">
-                <input
-                  readOnly
-                  value={`${siteUrl}/api/whatsapp-incoming/${userId}`}
-                  className="input text-xs bg-slate-50 flex-1 truncate font-mono"
-                />
-                <CopyLinkButton text={`${siteUrl}/api/whatsapp-incoming/${userId}`} />
-              </div>
-              <p className="text-xs text-slate-400 mt-1.5">
-                Cole esta URL em <strong>Evolution API → Instância → Webhook → URL</strong> e marque o evento <strong>MESSAGES_UPSERT</strong>.
-              </p>
-            </div>
-
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700 space-y-1">
-              <p className="font-semibold">⚙️ Como configurar no Evolution API:</p>
-              <p>1. Acesse o painel do Evolution API</p>
-              <p>2. Vá em <strong>Instances → sua instância → Webhook</strong></p>
-              <p>3. Ative o webhook e cole a URL acima</p>
-              <p>4. Marque o evento <strong>MESSAGES_UPSERT</strong></p>
-              <p>5. Salve e teste enviando "oi" para o número</p>
-            </div>
+        {botEnabled ? (
+          <div className="bg-slate-50 rounded-xl p-3 text-xs text-slate-600 space-y-1.5 leading-relaxed">
+            <p className="font-semibold text-slate-700">Fluxo automático ao receber mensagem:</p>
+            <p>1️⃣ <strong>Agendar</strong> — envia o link do seu agendamento</p>
+            <p>2️⃣ <strong>Cobrança</strong> — consulta cobranças em aberto pelo número do cliente</p>
+            <p>3️⃣ <strong>Atendente</strong> — encaminha para atendimento humano</p>
+            <p className="text-slate-400 pt-0.5">"oi", "olá" ou "menu" sempre abrem o menu principal.</p>
+            <p className="text-brand-dark font-semibold pt-1">✅ Ao salvar, o webhook é configurado automaticamente na sua conexão WhatsApp.</p>
           </div>
-        )}
-
-        {!botEnabled && (
+        ) : (
           <p className="text-xs text-slate-400">
-            Ative para configurar e visualizar a URL do webhook.
+            Ative e salve — o webhook é configurado automaticamente na conexão WhatsApp existente.
           </p>
         )}
       </section>

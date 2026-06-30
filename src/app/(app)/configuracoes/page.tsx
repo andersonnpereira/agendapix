@@ -16,12 +16,14 @@ import {
   DEFAULT_MSG_LEMBRETE,
   DEFAULT_MSG_LEMBRETE_HOJE,
   DEFAULT_MSG_LEMBRETE_AMANHA,
+  DEFAULT_MSG_COBRANCA_VENCIDA,
 } from "@/lib/whatsapp";
 
 // Rodar no Supabase SQL Editor se as colunas ainda não existirem:
 // ALTER TABLE public.profiles
 //   ADD COLUMN IF NOT EXISTS msg_lembrete_hoje text,
-//   ADD COLUMN IF NOT EXISTS msg_lembrete_amanha text;
+//   ADD COLUMN IF NOT EXISTS msg_lembrete_amanha text,
+//   ADD COLUMN IF NOT EXISTS msg_cobranca_vencida text;
 
 const KEY_TYPES: { value: PixKeyType; label: string }[] = [
   { value: "celular", label: "Celular" },
@@ -62,6 +64,7 @@ export default function ConfiguracoesPage() {
   const [msgLembrete, setMsgLembrete] = useState("");
   const [msgLembreteHoje, setMsgLembreteHoje] = useState("");
   const [msgLembreteAmanha, setMsgLembreteAmanha] = useState("");
+  const [msgCobrancaVencida, setMsgCobrancaVencida] = useState("");
 
   // Identidade visual
   const [brandColor, setBrandColor] = useState("#16A34A");
@@ -182,6 +185,7 @@ export default function ConfiguracoesPage() {
       setMsgLembrete(p.msg_lembrete || DEFAULT_MSG_LEMBRETE);
       setMsgLembreteHoje((p as Record<string, unknown>).msg_lembrete_hoje as string || DEFAULT_MSG_LEMBRETE_HOJE);
       setMsgLembreteAmanha((p as Record<string, unknown>).msg_lembrete_amanha as string || DEFAULT_MSG_LEMBRETE_AMANHA);
+      setMsgCobrancaVencida((p as Record<string, unknown>).msg_cobranca_vencida as string || DEFAULT_MSG_COBRANCA_VENCIDA);
       setBrandColor(p.brand_color || "#16A34A");
       setAvatarUrl(p.avatar_url || "");
       setBio(p.bio || "");
@@ -235,6 +239,7 @@ export default function ConfiguracoesPage() {
         msg_lembrete: msgLembrete || null,
         msg_lembrete_hoje: msgLembreteHoje || null,
         msg_lembrete_amanha: msgLembreteAmanha || null,
+        msg_cobranca_vencida: msgCobrancaVencida || null,
         brand_color: brandColor || null,
         bio: bio.trim() || null,
         review_link: reviewLink.trim() || null,
@@ -620,6 +625,18 @@ export default function ConfiguracoesPage() {
           value={msgLembreteHoje}
           onChange={setMsgLembreteHoje}
           onReset={() => setMsgLembreteHoje(DEFAULT_MSG_LEMBRETE_HOJE)}
+          vars={["{nome}", "{servico}", "{valor}", "{pix}", "{data}"]}
+          varLabels={{ "{nome}": "Nome do cliente", "{servico}": "Serviço", "{valor}": "Valor (R$)", "{pix}": "Chave Pix", "{data}": "Vencimento" }}
+        />
+
+        {/* 6 — Cobrança vencida */}
+        <MsgCard
+          icon="💸"
+          title="Cobrança vencida"
+          description="Enviada ao clicar em '💸 Cobrar vencido' para cobranças com vencimento em atraso."
+          value={msgCobrancaVencida}
+          onChange={setMsgCobrancaVencida}
+          onReset={() => setMsgCobrancaVencida(DEFAULT_MSG_COBRANCA_VENCIDA)}
           vars={["{nome}", "{servico}", "{valor}", "{pix}", "{data}"]}
           varLabels={{ "{nome}": "Nome do cliente", "{servico}": "Serviço", "{valor}": "Valor (R$)", "{pix}": "Chave Pix", "{data}": "Vencimento" }}
         />

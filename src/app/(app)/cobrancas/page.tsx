@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase-browser";
 import { formatBRL, parseToCents, getTodayBR } from "@/lib/format";
 import { generatePixBRCode, normalizePixKey, type PixKeyType } from "@/lib/pix";
 import { PixDisplay } from "@/components/PixDisplay";
-import { msgLembrete } from "@/lib/whatsapp";
+import { msgLembrete, formatTemplate, DEFAULT_MSG_COBRANCA_VENCIDA } from "@/lib/whatsapp";
 import { ModalPortal } from "@/components/ModalPortal";
 
 // -- ALTER TABLE public.charges ADD COLUMN IF NOT EXISTS send_history text[];
@@ -39,6 +39,7 @@ type Profile = {
   payment_link: string | null;
   msg_lembrete: string | null;
   msg_pix: string | null;
+  msg_cobranca_vencida: string | null;
 };
 
 type ClientOption = {
@@ -163,7 +164,7 @@ export default function CobrancasPage() {
     if (!user) return;
 
     const [{ data: p }, { data: cls }] = await Promise.all([
-      supabase.from("profiles").select("id, pix_key, pix_key_type, pix_merchant_name, pix_merchant_city, payment_link, msg_lembrete, msg_pix").eq("id", user.id).single(),
+      supabase.from("profiles").select("id, pix_key, pix_key_type, pix_merchant_name, pix_merchant_city, payment_link, msg_lembrete, msg_pix, msg_cobranca_vencida").eq("id", user.id).single(),
       supabase.from("clients").select("id, name, phone").eq("profile_id", user.id).eq("status", "ativo").order("name"),
     ]);
     setProfile(p);
@@ -225,21 +226,14 @@ export default function CobrancasPage() {
   }
 
   function buildRecoveryMessage(charge: Charge): string {
-    const lines = [
-      `Olá, ${charge.client_name || "Cliente"}! 😊`,
-      ``,
-      `Passando para lembrar que temos uma cobrança em aberto no seu nome:`,
-      ``,
-      `📋 ${charge.description || "Serviço"}`,
-      `💰 Valor: *${formatBRL(charge.amount_cents)}*`,
-      charge.due_date ? `📅 Vencimento: *${formatDate(charge.due_date)}*` : null,
-      profile?.pix_key ? `\n🔑 Chave Pix para pagamento:\n${profile.pix_key}` : null,
-      ``,
-      `Caso já tenha efetuado o pagamento, desconsidere esta mensagem. 🙏`,
-      ``,
-      `Qualquer dúvida estou à disposição!`,
-    ].filter((l) => l !== null) as string[];
-    return lines.join("\n");
+    const tpl = profile?.msg_cobranca_vencida || DEFAULT_MSG_COBRANCA_VENCIDA;
+    return formatTemplate(tpl, {
+      nome:    charge.client_name || "Cliente",
+      servico: charge.description || "Serviço",
+      valor:   formatBRL(charge.amount_cents),
+      pix:     profile?.pix_key || "",
+      data:    formatDate(charge.due_date),
+    });
   }
 
   function openReminderModal(charge: Charge, forceRecovery = false) {

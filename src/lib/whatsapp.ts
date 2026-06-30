@@ -15,6 +15,9 @@ export const DEFAULT_MSG_LEMBRETE_HOJE =
 export const DEFAULT_MSG_LEMBRETE_AMANHA =
   `Olá, {nome}! 👋\n\nLembrando que você tem *{servico}* amanhã:\n📅 *{data}* às *{horario}*\n📍 *{negocio}*\n\nQualquer dúvida é só chamar. Te esperamos! 😊`;
 
+export const DEFAULT_MSG_COBRANCA_VENCIDA =
+  `Olá, {nome}! 😊\n\nPassando para lembrar que temos uma cobrança em aberto no seu nome:\n\n📋 *{servico}*\n💰 Valor: *{valor}*\n📅 Vencimento: *{data}*\n\n🔑 *Chave Pix para pagamento:*\n{pix}\n\nCaso já tenha efetuado o pagamento, desconsidere esta mensagem. 🙏\n\nQualquer dúvida estou à disposição!`;
+
 export interface SendWhatsAppParams {
   to: string; // apenas dígitos, com DDI: "5511999998888"
   message: string;

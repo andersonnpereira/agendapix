@@ -8,7 +8,9 @@ import { PixDisplay } from "@/components/PixDisplay";
 import { msgLembrete, formatTemplate, DEFAULT_MSG_COBRANCA_VENCIDA } from "@/lib/whatsapp";
 import { ModalPortal } from "@/components/ModalPortal";
 
-// -- ALTER TABLE public.charges ADD COLUMN IF NOT EXISTS send_history text[];
+// -- ALTER TABLE public.charges
+// --   ADD COLUMN IF NOT EXISTS send_history text[],
+// --   ADD COLUMN IF NOT EXISTS recurrence_remaining int;
 
 type Charge = {
   id: string;
@@ -28,6 +30,7 @@ type Charge = {
   auto_reminder: boolean;
   last_auto_reminder_at: string | null;
   send_history: string[] | null;
+  recurrence_remaining: number | null;
 };
 
 type Profile = {
@@ -113,7 +116,8 @@ export default function CobrancasPage() {
   const [clientOptions, setClientOptions] = useState<ClientOption[]>([]);
   const [showClientSuggestions, setShowClientSuggestions] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [filterStatus, setFilterStatus] = useState<"todos" | "pendente" | "pago" | "atrasado">("todos");
+  const [search, setSearch] = useState("");
+  const [filterStatus, setFilterStatus] = useState<"todos" | "em_aberto" | "pendente" | "atrasado" | "pago">("todos");
   const [sortBy, setSortBy] = useState<"created_at" | "due_date">("created_at");
   const [showModal, setShowModal] = useState(false);
   const [openPix, setOpenPix] = useState<string | null>(null);
@@ -139,6 +143,8 @@ export default function CobrancasPage() {
   const [fAmount, setFAmount] = useState("");
   const [fDueDate, setFDueDate] = useState(getTodayBR);
   const [fRecurrence, setFRecurrence] = useState("none");
+  const [fRecurrenceMode, setFRecurrenceMode] = useState<"fixa" | "times">("fixa");
+  const [fRecurrenceTimes, setFRecurrenceTimes] = useState("1");
   const [fAutoReminder, setFAutoReminder] = useState(false);
   const [fScheduledAt, setFScheduledAt] = useState("");
   const [fSaving, setFSaving] = useState(false);
@@ -176,7 +182,11 @@ export default function CobrancasPage() {
       .eq("profile_id", user.id)
       .order("created_at", { ascending: false });
 
-    if (filterStatus !== "todos") q = q.eq("status", filterStatus);
+    if (filterStatus === "pago") {
+      q = q.eq("status", "pago");
+    } else {
+      q = q.neq("status", "pago");
+    }
 
     const { data } = await q;
     setCharges((data as Charge[]) || []);
@@ -413,10 +423,15 @@ export default function CobrancasPage() {
     setActionId(charge.id + "-pago");
     await supabase.from("charges").update({ status: "pago", paid_at: new Date().toISOString() }).eq("id", charge.id);
 
-    if (charge.recurrence !== "none" && profile?.pix_key) {
+    const canRecur = charge.recurrence !== "none" && profile?.pix_key &&
+      (charge.recurrence_remaining === null || charge.recurrence_remaining === undefined || charge.recurrence_remaining > 0);
+    if (canRecur) {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         const nextDue = nextDate(charge.due_date || today, charge.recurrence);
+        const nextRemaining = (charge.recurrence_remaining === null || charge.recurrence_remaining === undefined)
+          ? null
+          : charge.recurrence_remaining - 1;
         let pix_payload: string | null = null;
         try {
           pix_payload = generatePixBRCode({
@@ -450,6 +465,7 @@ export default function CobrancasPage() {
           due_date: nextDue,
           recurrence: charge.recurrence,
           next_due_date: nextDate(nextDue, charge.recurrence),
+          recurrence_remaining: nextRemaining,
           auto_reminder: charge.auto_reminder,
           scheduled_reminder_at: new_scheduled_reminder_at,
           last_auto_reminder_at: null,
@@ -568,6 +584,11 @@ export default function CobrancasPage() {
         } catch { /* segue sem QR */ }
       }
 
+      const recurrenceRemaining =
+        fRecurrence !== "none" && fRecurrenceMode === "times"
+          ? Math.max(0, (parseInt(fRecurrenceTimes) || 1) - 1)
+          : null;
+
       const { error: insertError } = await supabase.from("charges").insert({
         profile_id: user.id,
         client_name: fClientName.trim(),
@@ -578,6 +599,7 @@ export default function CobrancasPage() {
         due_date: fDueDate,
         recurrence: fRecurrence,
         next_due_date: fRecurrence !== "none" ? nextDate(fDueDate, fRecurrence) : null,
+        recurrence_remaining: recurrenceRemaining,
         auto_reminder: fAutoReminder,
         scheduled_reminder_at: fAutoReminder && fScheduledAt ? new Date(fScheduledAt).toISOString() : null,
       });
@@ -590,6 +612,7 @@ export default function CobrancasPage() {
 
       setFClientName(""); setFClientPhone(""); setFDescription(""); setFAmount("");
       setFDueDate(getTodayBR()); setFRecurrence("none");
+      setFRecurrenceMode("fixa"); setFRecurrenceTimes("1");
       setFAutoReminder(false); setFScheduledAt(""); setFError("");
       setShowModal(false);
       load();
@@ -602,11 +625,35 @@ export default function CobrancasPage() {
     }
   }
 
+  const tabCounts = filterStatus !== "pago" ? {
+    todos: charges.length,
+    em_aberto: charges.filter((c) => !isOverdue(c) && c.reminders_sent === 0).length,
+    pendente: charges.filter((c) => !isOverdue(c) && c.reminders_sent > 0).length,
+    atrasado: charges.filter((c) => isOverdue(c)).length,
+  } : null;
+
   const filtered = (() => {
-    const base =
-      filterStatus === "todos"
-        ? charges.filter((c) => c.status !== "pago")
-        : charges.filter((c) => c.status === filterStatus);
+    let base: Charge[];
+    if (filterStatus === "pago") {
+      base = charges;
+    } else if (filterStatus === "atrasado") {
+      base = charges.filter((c) => isOverdue(c));
+    } else if (filterStatus === "pendente") {
+      base = charges.filter((c) => !isOverdue(c) && c.reminders_sent > 0);
+    } else if (filterStatus === "em_aberto") {
+      base = charges.filter((c) => !isOverdue(c) && c.reminders_sent === 0);
+    } else {
+      base = charges;
+    }
+
+    if (search.trim()) {
+      const s = search.toLowerCase();
+      base = base.filter((c) =>
+        (c.client_name || "").toLowerCase().includes(s) ||
+        (c.description || "").toLowerCase().includes(s)
+      );
+    }
+
     if (sortBy === "due_date") {
       return [...base].sort((a, b) => {
         if (!a.due_date) return 1;
@@ -648,18 +695,39 @@ export default function CobrancasPage() {
         </div>
       )}
 
+      <input
+        className="input text-sm"
+        placeholder="Buscar por cliente ou descrição..."
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+      />
+
       <div className="flex flex-wrap items-center gap-2">
-        {(["todos", "pendente", "atrasado", "pago"] as const).map((s) => (
-          <button
-            key={s}
-            onClick={() => setFilterStatus(s)}
-            className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors capitalize ${
-              filterStatus === s ? "bg-brand text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-            }`}
-          >
-            {s === "todos" ? "Em aberto" : s.charAt(0).toUpperCase() + s.slice(1)}
-          </button>
-        ))}
+        {([
+          { key: "todos", label: "Todos" },
+          { key: "em_aberto", label: "Em aberto" },
+          { key: "pendente", label: "Pendente" },
+          { key: "atrasado", label: "Atrasado" },
+          { key: "pago", label: "Pago" },
+        ] as const).map(({ key, label }) => {
+          const count = tabCounts && key !== "pago" ? tabCounts[key as keyof typeof tabCounts] : undefined;
+          return (
+            <button
+              key={key}
+              onClick={() => setFilterStatus(key)}
+              className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                filterStatus === key
+                  ? key === "atrasado" ? "bg-red-500 text-white" : "bg-brand text-white"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              }`}
+            >
+              {label}
+              {count !== undefined && count > 0 && (
+                <span className="ml-1.5 text-[10px] bg-white/30 rounded-full px-1.5 py-0.5">{count}</span>
+              )}
+            </button>
+          );
+        })}
         <button
           onClick={() => setSortBy(sortBy === "created_at" ? "due_date" : "created_at")}
           className="ml-auto px-3 py-1.5 rounded-full text-xs font-medium border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 flex items-center gap-1"
@@ -1196,31 +1264,80 @@ export default function CobrancasPage() {
               </div>
               <div className="col-span-2">
                 <label className="label">Recorrência</label>
-                <select className="input" value={fRecurrence} onChange={(e) => setFRecurrence(e.target.value)}>
+                <select className="input" value={fRecurrence} onChange={(e) => { setFRecurrence(e.target.value); setFRecurrenceMode("fixa"); setFRecurrenceTimes("1"); }}>
                   {Object.entries(RECURRENCE_LABELS).map(([v, l]) => (
                     <option key={v} value={v}>{l}</option>
                   ))}
                 </select>
-                {(() => {
-                  const info = getRecurrenceInfo(fDueDate, fRecurrence);
-                  if (!info) return null;
-                  return (
-                    <div className="mt-2 bg-brand-light border border-brand/20 rounded-xl p-3 space-y-2">
-                      <p className="text-sm font-medium text-brand-dark">🔁 {info.label}</p>
-                      <div className="space-y-1">
-                        <p className="text-xs text-slate-500 font-medium">Próximas cobranças:</p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {info.nextDates.map((d, i) => (
-                            <span key={i} className="text-xs bg-white border border-brand/30 text-brand-dark px-2 py-0.5 rounded-full font-mono">
-                              {d}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                      <p className="text-xs text-slate-400">A cobrança é gerada automaticamente após marcar cada pagamento como pago.</p>
+
+                {fRecurrence !== "none" && (
+                  <div className="mt-3 space-y-3">
+                    {/* Fixa vs N vezes */}
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setFRecurrenceMode("fixa")}
+                        className={`flex-1 py-2 rounded-xl text-sm font-medium border transition-colors ${
+                          fRecurrenceMode === "fixa" ? "bg-brand text-white border-brand" : "border-slate-200 text-slate-600 hover:border-brand"
+                        }`}
+                      >
+                        🔄 Fixa
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFRecurrenceMode("times")}
+                        className={`flex-1 py-2 rounded-xl text-sm font-medium border transition-colors ${
+                          fRecurrenceMode === "times" ? "bg-brand text-white border-brand" : "border-slate-200 text-slate-600 hover:border-brand"
+                        }`}
+                      >
+                        🔢 Nº de vezes
+                      </button>
                     </div>
-                  );
-                })()}
+
+                    {fRecurrenceMode === "times" && (
+                      <div>
+                        <label className="label">Total de cobranças (incluindo esta)</label>
+                        <input
+                          type="number"
+                          min="1"
+                          max="120"
+                          className="input"
+                          value={fRecurrenceTimes}
+                          onChange={(e) => setFRecurrenceTimes(e.target.value)}
+                          placeholder="Ex: 6"
+                        />
+                        <p className="text-xs text-slate-400 mt-1">Ex: 6 = esta + 5 próximas cobranças geradas automaticamente.</p>
+                      </div>
+                    )}
+
+                    {(() => {
+                      const info = getRecurrenceInfo(fDueDate, fRecurrence);
+                      if (!info) return null;
+                      const limit = fRecurrenceMode === "times" ? parseInt(fRecurrenceTimes) || 1 : null;
+                      const previewDates = limit ? info.nextDates.slice(0, limit - 1) : info.nextDates;
+                      return (
+                        <div className="bg-brand-light border border-brand/20 rounded-xl p-3 space-y-2">
+                          <p className="text-sm font-medium text-brand-dark">
+                            🔁 {info.label}{limit ? ` · ${limit}x no total` : " (indefinida)"}
+                          </p>
+                          {previewDates.length > 0 && (
+                            <div className="space-y-1">
+                              <p className="text-xs text-slate-500 font-medium">Próximas cobranças geradas:</p>
+                              <div className="flex flex-wrap gap-1.5">
+                                {previewDates.map((d, i) => (
+                                  <span key={i} className="text-xs bg-white border border-brand/30 text-brand-dark px-2 py-0.5 rounded-full font-mono">
+                                    {d}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          <p className="text-xs text-slate-400">Gerada automaticamente ao marcar cada pagamento como pago.</p>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
               </div>
               <div className="col-span-2 border-t border-slate-100 pt-3">
                 <label className="flex items-center gap-3 cursor-pointer">

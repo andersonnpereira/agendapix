@@ -10,7 +10,18 @@ import {
 } from "@/lib/pix";
 import { CopyLinkButton } from "@/components/CopyLinkButton";
 import { slugify } from "@/lib/format";
-import { DEFAULT_MSG_CONFIRMACAO, DEFAULT_MSG_PIX, DEFAULT_MSG_LEMBRETE } from "@/lib/whatsapp";
+import {
+  DEFAULT_MSG_CONFIRMACAO,
+  DEFAULT_MSG_PIX,
+  DEFAULT_MSG_LEMBRETE,
+  DEFAULT_MSG_LEMBRETE_HOJE,
+  DEFAULT_MSG_LEMBRETE_AMANHA,
+} from "@/lib/whatsapp";
+
+// Rodar no Supabase SQL Editor se as colunas ainda não existirem:
+// ALTER TABLE public.profiles
+//   ADD COLUMN IF NOT EXISTS msg_lembrete_hoje text,
+//   ADD COLUMN IF NOT EXISTS msg_lembrete_amanha text;
 
 const KEY_TYPES: { value: PixKeyType; label: string }[] = [
   { value: "celular", label: "Celular" },
@@ -49,6 +60,8 @@ export default function ConfiguracoesPage() {
   const [msgConfirmacao, setMsgConfirmacao] = useState("");
   const [msgPix, setMsgPix] = useState("");
   const [msgLembrete, setMsgLembrete] = useState("");
+  const [msgLembreteHoje, setMsgLembreteHoje] = useState("");
+  const [msgLembreteAmanha, setMsgLembreteAmanha] = useState("");
 
   // Identidade visual
   const [brandColor, setBrandColor] = useState("#16A34A");
@@ -167,6 +180,8 @@ export default function ConfiguracoesPage() {
       setMsgConfirmacao(p.msg_confirmacao || DEFAULT_MSG_CONFIRMACAO);
       setMsgPix(p.msg_pix || DEFAULT_MSG_PIX);
       setMsgLembrete(p.msg_lembrete || DEFAULT_MSG_LEMBRETE);
+      setMsgLembreteHoje((p as Record<string, unknown>).msg_lembrete_hoje as string || DEFAULT_MSG_LEMBRETE_HOJE);
+      setMsgLembreteAmanha((p as Record<string, unknown>).msg_lembrete_amanha as string || DEFAULT_MSG_LEMBRETE_AMANHA);
       setBrandColor(p.brand_color || "#16A34A");
       setAvatarUrl(p.avatar_url || "");
       setBio(p.bio || "");
@@ -218,6 +233,8 @@ export default function ConfiguracoesPage() {
         msg_confirmacao: msgConfirmacao || null,
         msg_pix: msgPix || null,
         msg_lembrete: msgLembrete || null,
+        msg_lembrete_hoje: msgLembreteHoje || null,
+        msg_lembrete_amanha: msgLembreteAmanha || null,
         brand_color: brandColor || null,
         bio: bio.trim() || null,
         review_link: reviewLink.trim() || null,
@@ -539,110 +556,73 @@ export default function ConfiguracoesPage() {
       </section>
 
       {/* Mensagens customizadas */}
-      <section className="card space-y-5">
+      <section className="space-y-4">
         <div>
-          <h2 className="font-semibold text-slate-900">Mensagens WhatsApp</h2>
-          <p className="text-xs text-slate-400 mt-1">Edite o texto e use as variáveis destacadas para personalizar cada mensagem.</p>
+          <h2 className="text-lg font-bold text-slate-900">Mensagens WhatsApp</h2>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Personalize cada mensagem enviada automaticamente. Clique nas variáveis para inserir no cursor.
+          </p>
         </div>
 
-        {/* Confirmação */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <label className="label mb-0">✅ Confirmação de agendamento</label>
-            <button
-              type="button"
-              className="text-xs text-brand underline"
-              onClick={() => setMsgConfirmacao(DEFAULT_MSG_CONFIRMACAO)}
-            >
-              Restaurar padrão
-            </button>
-          </div>
-          <textarea
-            className="input resize-none text-sm font-mono leading-relaxed"
-            rows={5}
-            value={msgConfirmacao}
-            onChange={(e) => setMsgConfirmacao(e.target.value)}
-          />
-          <div className="flex flex-wrap gap-1.5">
-            {["{nome}", "{servico}", "{data}", "{horario}", "{negocio}"].map((v) => (
-              <button
-                key={v}
-                type="button"
-                className="text-xs bg-brand-light text-brand-dark font-mono px-2 py-0.5 rounded-md hover:bg-brand hover:text-white transition-colors"
-                onClick={() => setMsgConfirmacao((prev) => prev + v)}
-                title={`Inserir ${v}`}
-              >
-                {v}
-              </button>
-            ))}
-          </div>
-        </div>
+        {/* 1 — Confirmação de agendamento */}
+        <MsgCard
+          icon="✅"
+          title="Confirmação de agendamento"
+          description="Enviada quando um novo agendamento é confirmado."
+          value={msgConfirmacao}
+          onChange={setMsgConfirmacao}
+          onReset={() => setMsgConfirmacao(DEFAULT_MSG_CONFIRMACAO)}
+          vars={["{nome}", "{servico}", "{data}", "{horario}", "{negocio}"]}
+          varLabels={{ "{nome}": "Nome do cliente", "{servico}": "Serviço", "{data}": "Data", "{horario}": "Horário", "{negocio}": "Nome do negócio" }}
+        />
 
-        {/* Pix */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <label className="label mb-0">💳 Envio de cobrança Pix</label>
-            <button
-              type="button"
-              className="text-xs text-brand underline"
-              onClick={() => setMsgPix(DEFAULT_MSG_PIX)}
-            >
-              Restaurar padrão
-            </button>
-          </div>
-          <textarea
-            className="input resize-none text-sm font-mono leading-relaxed"
-            rows={5}
-            value={msgPix}
-            onChange={(e) => setMsgPix(e.target.value)}
-          />
-          <div className="flex flex-wrap gap-1.5">
-            {["{nome}", "{servico}", "{valor}", "{pix}"].map((v) => (
-              <button
-                key={v}
-                type="button"
-                className="text-xs bg-brand-light text-brand-dark font-mono px-2 py-0.5 rounded-md hover:bg-brand hover:text-white transition-colors"
-                onClick={() => setMsgPix((prev) => prev + v)}
-                title={`Inserir ${v}`}
-              >
-                {v}
-              </button>
-            ))}
-          </div>
-        </div>
+        {/* 2 — Lembrete de agenda (amanhã) */}
+        <MsgCard
+          icon="📅"
+          title="Lembrete de agenda — amanhã"
+          description="Enviada automaticamente no dia anterior ao agendamento, no horário configurado em Regras."
+          value={msgLembreteAmanha}
+          onChange={setMsgLembreteAmanha}
+          onReset={() => setMsgLembreteAmanha(DEFAULT_MSG_LEMBRETE_AMANHA)}
+          vars={["{nome}", "{servico}", "{data}", "{horario}", "{negocio}"]}
+          varLabels={{ "{nome}": "Nome do cliente", "{servico}": "Serviço", "{data}": "Data", "{horario}": "Horário", "{negocio}": "Nome do negócio" }}
+        />
 
-        {/* Lembrete */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <label className="label mb-0">🔔 Lembrete de pagamento</label>
-            <button
-              type="button"
-              className="text-xs text-brand underline"
-              onClick={() => setMsgLembrete(DEFAULT_MSG_LEMBRETE)}
-            >
-              Restaurar padrão
-            </button>
-          </div>
-          <textarea
-            className="input resize-none text-sm font-mono leading-relaxed"
-            rows={5}
-            value={msgLembrete}
-            onChange={(e) => setMsgLembrete(e.target.value)}
-          />
-          <div className="flex flex-wrap gap-1.5">
-            {["{nome}", "{servico}", "{valor}", "{pix}", "{data}"].map((v) => (
-              <button
-                key={v}
-                type="button"
-                className="text-xs bg-brand-light text-brand-dark font-mono px-2 py-0.5 rounded-md hover:bg-brand hover:text-white transition-colors"
-                onClick={() => setMsgLembrete((prev) => prev + v)}
-                title={`Inserir ${v}`}
-              >
-                {v}
-              </button>
-            ))}
-          </div>
-        </div>
+        {/* 3 — Envio de cobrança Pix */}
+        <MsgCard
+          icon="💳"
+          title="Envio de cobrança Pix"
+          description="Enviada ao clicar em 'Enviar cobrança' na tela de Cobranças."
+          value={msgPix}
+          onChange={setMsgPix}
+          onReset={() => setMsgPix(DEFAULT_MSG_PIX)}
+          vars={["{nome}", "{servico}", "{valor}", "{pix}"]}
+          varLabels={{ "{nome}": "Nome do cliente", "{servico}": "Serviço", "{valor}": "Valor (R$)", "{pix}": "Chave Pix" }}
+        />
+
+        {/* 4 — Lembrete de pagamento agendado */}
+        <MsgCard
+          icon="🔔"
+          title="Lembrete de pagamento"
+          description="Enviada ao clicar em 'Lembrete' ou pelo lembrete automático agendado antes do vencimento."
+          value={msgLembrete}
+          onChange={setMsgLembrete}
+          onReset={() => setMsgLembrete(DEFAULT_MSG_LEMBRETE)}
+          vars={["{nome}", "{servico}", "{valor}", "{pix}", "{data}"]}
+          varLabels={{ "{nome}": "Nome do cliente", "{servico}": "Serviço", "{valor}": "Valor (R$)", "{pix}": "Chave Pix", "{data}": "Vencimento" }}
+        />
+
+        {/* 5 — Cobrança vence hoje */}
+        <MsgCard
+          icon="⏰"
+          title="Cobrança vence hoje"
+          description="Enviada automaticamente no dia do vencimento da cobrança (cron diário)."
+          value={msgLembreteHoje}
+          onChange={setMsgLembreteHoje}
+          onReset={() => setMsgLembreteHoje(DEFAULT_MSG_LEMBRETE_HOJE)}
+          vars={["{nome}", "{servico}", "{valor}", "{pix}", "{data}"]}
+          varLabels={{ "{nome}": "Nome do cliente", "{servico}": "Serviço", "{valor}": "Valor (R$)", "{pix}": "Chave Pix", "{data}": "Vencimento" }}
+        />
       </section>
 
 
@@ -727,6 +707,116 @@ export default function ConfiguracoesPage() {
       >
         {saving ? "Salvando..." : saved ? "✓ Salvo!" : "Salvar configurações"}
       </button>
+    </div>
+  );
+}
+
+// ── Componente reutilizável de card de mensagem ──────────────────────────────
+function MsgCard({
+  icon,
+  title,
+  description,
+  value,
+  onChange,
+  onReset,
+  vars,
+  varLabels,
+}: {
+  icon: string;
+  title: string;
+  description: string;
+  value: string;
+  onChange: (v: string) => void;
+  onReset: () => void;
+  vars: string[];
+  varLabels: Record<string, string>;
+}) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  function insertVar(v: string) {
+    const el = textareaRef.current;
+    if (!el) { onChange(value + v); return; }
+    const start = el.selectionStart ?? value.length;
+    const end   = el.selectionEnd   ?? value.length;
+    const next  = value.slice(0, start) + v + value.slice(end);
+    onChange(next);
+    // restaura cursor após a variável inserida
+    requestAnimationFrame(() => {
+      el.focus();
+      el.setSelectionRange(start + v.length, start + v.length);
+    });
+  }
+
+  return (
+    <div className="card space-y-3">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-xl shrink-0">{icon}</span>
+          <div className="min-w-0">
+            <p className="font-semibold text-slate-900 text-sm leading-tight">{title}</p>
+            <p className="text-xs text-slate-400 mt-0.5 leading-snug">{description}</p>
+          </div>
+        </div>
+        <button
+          type="button"
+          className="text-xs text-brand underline shrink-0 mt-0.5"
+          onClick={onReset}
+        >
+          Restaurar padrão
+        </button>
+      </div>
+
+      {/* Textarea */}
+      <textarea
+        ref={textareaRef}
+        className="input resize-none text-sm font-mono leading-relaxed w-full"
+        rows={6}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
+
+      {/* Variáveis */}
+      <div>
+        <p className="text-[11px] text-slate-400 mb-1.5 font-medium uppercase tracking-wide">Variáveis disponíveis</p>
+        <div className="flex flex-wrap gap-1.5">
+          {vars.map((v) => (
+            <button
+              key={v}
+              type="button"
+              title={varLabels[v] || v}
+              className="group relative text-xs bg-brand-light text-brand-dark font-mono px-2 py-1 rounded-lg border border-brand/20 hover:bg-brand hover:text-white hover:border-brand transition-colors"
+              onClick={() => insertVar(v)}
+            >
+              {v}
+              <span className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 whitespace-nowrap rounded-lg bg-slate-800 px-2 py-1 text-[10px] text-white opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                {varLabels[v]}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Preview */}
+      {value && (
+        <details className="group">
+          <summary className="text-xs text-slate-400 cursor-pointer hover:text-slate-600 select-none list-none flex items-center gap-1">
+            <span className="group-open:hidden">▶ Ver prévia</span>
+            <span className="hidden group-open:inline">▼ Ocultar prévia</span>
+          </summary>
+          <pre className="mt-2 text-xs bg-green-50 border border-green-200 rounded-xl p-3 whitespace-pre-wrap font-sans leading-relaxed text-slate-700 max-h-44 overflow-y-auto">
+            {value
+              .replace(/\{nome\}/g, "João Silva")
+              .replace(/\{servico\}/g, "Corte + Barba")
+              .replace(/\{data\}/g, "02/07/2026")
+              .replace(/\{horario\}/g, "14:00")
+              .replace(/\{negocio\}/g, "Studio do Max")
+              .replace(/\{valor\}/g, "R$ 80,00")
+              .replace(/\{pix\}/g, "11999998888")
+            }
+          </pre>
+        </details>
+      )}
     </div>
   );
 }

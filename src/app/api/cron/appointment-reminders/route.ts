@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { sendWhatsApp } from "@/lib/whatsapp";
+import { sendWhatsApp, formatTemplate, DEFAULT_MSG_LEMBRETE_AMANHA } from "@/lib/whatsapp";
 import { sendEmail, htmlLembreteCliente } from "@/lib/email";
 
 export async function GET(req: NextRequest) {
@@ -59,7 +59,7 @@ export async function GET(req: NextRequest) {
   const uniqueProfileIds = [...new Set(bookings.map((b) => b.profile_id))];
   const { data: profiles } = await supabase
     .from("profiles")
-    .select("id, business_name, name, whatsapp_provider, whatsapp_token, whatsapp_instance_id")
+    .select("id, business_name, name, whatsapp_provider, whatsapp_token, whatsapp_instance_id, msg_lembrete_amanha")
     .in("id", uniqueProfileIds);
 
   const profileMap = new Map((profiles || []).map((p) => [p.id, p]));
@@ -78,12 +78,15 @@ export async function GET(req: NextRequest) {
     const timeStr = (booking.time as string)?.slice(0, 5) ?? "";
     const businessName = profile.business_name || profile.name || "seu profissional";
 
-    const message =
-      `Olá, ${booking.client_name}! 👋\n\n` +
-      `Lembrando que você tem *${serviceName}* amanhã:\n` +
-      `📅 *${dateFormatted}* às *${timeStr}*\n` +
-      `📍 *${businessName}*\n\n` +
-      `Qualquer dúvida é só chamar. Te esperamos! 😊`;
+    const p = profile as Record<string, unknown>;
+    const tpl = (p.msg_lembrete_amanha as string | null) || DEFAULT_MSG_LEMBRETE_AMANHA;
+    const message = formatTemplate(tpl, {
+      nome:    booking.client_name || "Cliente",
+      servico: serviceName,
+      data:    dateFormatted,
+      horario: timeStr,
+      negocio: businessName,
+    });
 
     let notified = false;
 

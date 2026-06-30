@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase-admin";
-import { sendWhatsApp, msgLembrete, formatTemplate } from "@/lib/whatsapp";
+import { sendWhatsApp, msgLembrete, formatTemplate, DEFAULT_MSG_LEMBRETE_HOJE } from "@/lib/whatsapp";
 import { formatBRL } from "@/lib/format";
 
 export async function GET(req: NextRequest) {
@@ -28,6 +28,7 @@ export async function GET(req: NextRequest) {
       whatsapp_token: string | null;
       whatsapp_instance_id: string | null;
       msg_lembrete: string | null;
+      msg_lembrete_hoje: string | null;
       pix_key: string | null;
     };
 
@@ -35,7 +36,7 @@ export async function GET(req: NextRequest) {
     // Condição: data agendada já chegou E ainda não enviou hoje
     const { data: advanceCharges, error } = await admin
       .from("charges")
-      .select("*, profiles!inner(whatsapp_provider, whatsapp_token, whatsapp_instance_id, msg_lembrete, pix_key)")
+      .select("*, profiles!inner(whatsapp_provider, whatsapp_token, whatsapp_instance_id, msg_lembrete, msg_lembrete_hoje, pix_key)")
       .eq("auto_reminder", true)
       .eq("status", "pendente")
       .lte("scheduled_reminder_at", now)
@@ -47,7 +48,7 @@ export async function GET(req: NextRequest) {
     // Envia para charges com due_date = hoje que ainda não receberam lembrete hoje
     const { data: dueTodayCharges } = await admin
       .from("charges")
-      .select("*, profiles!inner(whatsapp_provider, whatsapp_token, whatsapp_instance_id, msg_lembrete, pix_key)")
+      .select("*, profiles!inner(whatsapp_provider, whatsapp_token, whatsapp_instance_id, msg_lembrete, msg_lembrete_hoje, pix_key)")
       .eq("auto_reminder", true)
       .eq("status", "pendente")
       .eq("due_date", todayDate)
@@ -80,26 +81,14 @@ export async function GET(req: NextRequest) {
 
       if (type === "due_today") {
         // Mensagem específica para o dia do vencimento
-        message = profile.msg_lembrete
-          ? formatTemplate(profile.msg_lembrete, {
-              nome: charge.client_name || "Cliente",
-              servico: charge.description || "Serviço",
-              valor: amount,
-              pix: profile.pix_key || "",
-              data: dueDateFormatted,
-            })
-          : [
-              `Olá, ${charge.client_name || "Cliente"}! ⏰`,
-              ``,
-              `Lembrete: sua cobrança vence *HOJE*!`,
-              ``,
-              `📋 ${charge.description || "Serviço"}`,
-              `💰 Valor: *${amount}*`,
-              `📅 Vencimento: *${dueDateFormatted}*`,
-              profile.pix_key ? `\n🔑 Chave Pix:\n${profile.pix_key}` : "",
-              ``,
-              `Contamos com você! 🙏`,
-            ].filter((l) => l !== undefined).join("\n");
+        const tplHoje = profile.msg_lembrete_hoje || profile.msg_lembrete || DEFAULT_MSG_LEMBRETE_HOJE;
+        message = formatTemplate(tplHoje, {
+          nome:    charge.client_name || "Cliente",
+          servico: charge.description || "Serviço",
+          valor:   amount,
+          pix:     profile.pix_key || "",
+          data:    dueDateFormatted,
+        });
       } else {
         if (profile.msg_lembrete) {
           message = formatTemplate(profile.msg_lembrete, {

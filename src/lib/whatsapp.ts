@@ -9,6 +9,12 @@ export const DEFAULT_MSG_PIX =
 export const DEFAULT_MSG_LEMBRETE =
   `Olá, {nome}! 👋\n\nPassando para lembrar que o pagamento do serviço *{servico}* no valor de *{valor}* vence em *{data}*.\n\n🔑 *Chave Pix:*\n{pix}\n\nSe já pagou, desconsidere. Obrigado! 😊`;
 
+export const DEFAULT_MSG_LEMBRETE_HOJE =
+  `Olá, {nome}! ⏰\n\nLembrete: sua cobrança referente a *{servico}* vence *HOJE*!\n\n💰 Valor: *{valor}*\n📅 Vencimento: *{data}*\n\n🔑 *Chave Pix:*\n{pix}\n\nContamos com você! 🙏`;
+
+export const DEFAULT_MSG_LEMBRETE_AMANHA =
+  `Olá, {nome}! 👋\n\nLembrando que você tem *{servico}* amanhã:\n📅 *{data}* às *{horario}*\n📍 *{negocio}*\n\nQualquer dúvida é só chamar. Te esperamos! 😊`;
+
 export interface SendWhatsAppParams {
   to: string; // apenas dígitos, com DDI: "5511999998888"
   message: string;

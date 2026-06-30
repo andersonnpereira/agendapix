@@ -850,7 +850,7 @@ export default function CobrancasPage() {
 
       {/* ── Modal: editar cobrança ─────────────────────────────────── */}
       {editModal && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-2xl w-full max-w-md p-5 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between">
               <h3 className="font-bold text-slate-900">✏️ Editar cobrança</h3>
@@ -1056,7 +1056,7 @@ export default function CobrancasPage() {
 
       {/* ── Modal: enviar cobrança ──────────────────────────────────── */}
       {pixModal && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-2xl w-full max-w-md p-5 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between">
               <h3 className="font-bold text-slate-900">📲 Enviar cobrança</h3>
@@ -1130,7 +1130,7 @@ export default function CobrancasPage() {
 
       {/* ── Modal: nova cobrança ──────────────────────────────────── */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-2xl w-full max-w-md flex flex-col max-h-[92vh]">
             {/* Header fixo */}
             <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-slate-100 shrink-0">
@@ -1141,29 +1141,7 @@ export default function CobrancasPage() {
             <div className="overflow-y-auto px-5 py-4 flex-1">
             <div className="grid grid-cols-2 gap-3">
               <div className="col-span-2 relative">
-                <div className="flex items-center justify-between mb-1">
-                  <label className="label mb-0">Nome do cliente</label>
-                  <button
-                    type="button"
-                    className="text-xs text-brand underline"
-                    onClick={async () => {
-                      if (!("contacts" in navigator)) {
-                        alert("Seu navegador não suporta busca de contatos. No iOS, use os campos normalmente.");
-                        return;
-                      }
-                      try {
-                        // @ts-expect-error Contact Picker API
-                        const contacts = await navigator.contacts.select(["name", "tel"], { multiple: false });
-                        if (contacts.length > 0) {
-                          setFClientName(contacts[0].name?.[0] || "");
-                          setFClientPhone(contacts[0].tel?.[0] || "");
-                        }
-                      } catch { /* cancelado */ }
-                    }}
-                  >
-                    📞 Buscar contato
-                  </button>
-                </div>
+                <label className="label">Nome do cliente</label>
                 <input
                   className="input"
                   value={fClientName}

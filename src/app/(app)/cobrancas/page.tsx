@@ -135,6 +135,7 @@ export default function CobrancasPage() {
   const [pixOptKey, setPixOptKey] = useState(true);
   const [pixOptLink, setPixOptLink] = useState(false);
   const [flashSent, setFlashSent] = useState<string | null>(null);
+  const [bulkSending, setBulkSending] = useState(false);
 
   // Form nova cobrança
   const [fClientName, setFClientName] = useState("");
@@ -365,6 +366,49 @@ export default function CobrancasPage() {
     } finally {
       setActionId(null);
     }
+  }
+
+  // ─── Cobrar todos os atrasados ───────────────────────────────────────────
+  async function cobrarTodosAtrasados() {
+    const targets = charges.filter((c) => isOverdue(c) && c.client_phone);
+    if (targets.length === 0) {
+      showToast("Nenhuma cobrança atrasada com telefone cadastrado.");
+      return;
+    }
+    setBulkSending(true);
+    let sent = 0;
+    let failed = 0;
+    const nowIso = new Date().toISOString();
+    for (const charge of targets) {
+      const message = buildRecoveryMessage(charge);
+      try {
+        const res = await fetch("/api/whatsapp-charge", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ charge_id: charge.id, type: "lembrete", message }),
+        });
+        if (res.ok) {
+          await supabase
+            .from("charges")
+            .update({
+              reminders_sent: charge.reminders_sent + 1,
+              send_history: [...(charge.send_history || []), nowIso],
+            })
+            .eq("id", charge.id);
+          sent++;
+        } else {
+          failed++;
+        }
+      } catch {
+        failed++;
+      }
+    }
+    setBulkSending(false);
+    showToast(
+      `✅ ${sent} enviado${sent !== 1 ? "s" : ""}` +
+        (failed > 0 ? ` · ${failed} falha${failed !== 1 ? "s" : ""}` : "")
+    );
+    load();
   }
 
   // ─── Duplicar cobrança ────────────────────────────────────────────────────
@@ -735,6 +779,21 @@ export default function CobrancasPage() {
           {sortBy === "due_date" ? "📅 Por vencimento" : "🕐 Mais recentes"}
         </button>
       </div>
+
+      {(tabCounts?.atrasado ?? 0) > 0 && (
+        <div className="flex items-center justify-between gap-3 p-3 rounded-xl border border-red-200 bg-red-50">
+          <p className="text-sm text-red-700">
+            <span className="font-semibold">{tabCounts!.atrasado}</span> cobrança{tabCounts!.atrasado > 1 ? "s" : ""} atrasada{tabCounts!.atrasado > 1 ? "s" : ""}
+          </p>
+          <button
+            onClick={cobrarTodosAtrasados}
+            disabled={bulkSending}
+            className="shrink-0 text-sm font-semibold px-3 py-1.5 rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
+          >
+            {bulkSending ? "📤 Enviando..." : "📤 Cobrar todos"}
+          </button>
+        </div>
+      )}
 
       {loading ? (
         <p className="text-slate-400 text-sm">Carregando...</p>

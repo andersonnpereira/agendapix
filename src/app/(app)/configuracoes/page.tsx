@@ -23,7 +23,20 @@ import {
 // ALTER TABLE public.profiles
 //   ADD COLUMN IF NOT EXISTS msg_lembrete_hoje text,
 //   ADD COLUMN IF NOT EXISTS msg_lembrete_amanha text,
-//   ADD COLUMN IF NOT EXISTS msg_cobranca_vencida text;
+//   ADD COLUMN IF NOT EXISTS msg_cobranca_vencida text,
+//   ADD COLUMN IF NOT EXISTS bot_enabled boolean NOT NULL DEFAULT false;
+//
+// CREATE TABLE IF NOT EXISTS public.bot_conversations (
+//   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+//   profile_id uuid NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+//   phone text NOT NULL,
+//   state text NOT NULL DEFAULT 'idle',
+//   last_message_at timestamptz DEFAULT now(),
+//   UNIQUE(profile_id, phone)
+// );
+// ALTER TABLE public.bot_conversations ENABLE ROW LEVEL SECURITY;
+// CREATE POLICY "bot_conv_service" ON public.bot_conversations
+//   USING (auth.role() = 'service_role') WITH CHECK (auth.role() = 'service_role');
 
 const KEY_TYPES: { value: PixKeyType; label: string }[] = [
   { value: "celular", label: "Celular" },
@@ -57,6 +70,10 @@ export default function ConfiguracoesPage() {
 
   // Link de pagamento externo
   const [paymentLink, setPaymentLink] = useState("");
+
+  // Chatbot
+  const [botEnabled, setBotEnabled] = useState(false);
+  const [userId, setUserId] = useState("");
 
   // Mensagens customizadas
   const [msgConfirmacao, setMsgConfirmacao] = useState("");
@@ -163,6 +180,7 @@ export default function ConfiguracoesPage() {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
+      setUserId(user.id);
       const { data: p } = await supabase
         .from("profiles")
         .select("*")
@@ -186,6 +204,7 @@ export default function ConfiguracoesPage() {
       setMsgLembreteHoje((p as Record<string, unknown>).msg_lembrete_hoje as string || DEFAULT_MSG_LEMBRETE_HOJE);
       setMsgLembreteAmanha((p as Record<string, unknown>).msg_lembrete_amanha as string || DEFAULT_MSG_LEMBRETE_AMANHA);
       setMsgCobrancaVencida((p as Record<string, unknown>).msg_cobranca_vencida as string || DEFAULT_MSG_COBRANCA_VENCIDA);
+      setBotEnabled((p as Record<string, unknown>).bot_enabled as boolean ?? false);
       setBrandColor(p.brand_color || "#16A34A");
       setAvatarUrl(p.avatar_url || "");
       setBio(p.bio || "");
@@ -240,6 +259,7 @@ export default function ConfiguracoesPage() {
         msg_lembrete_hoje: msgLembreteHoje || null,
         msg_lembrete_amanha: msgLembreteAmanha || null,
         msg_cobranca_vencida: msgCobrancaVencida || null,
+        bot_enabled: botEnabled,
         brand_color: brandColor || null,
         bio: bio.trim() || null,
         review_link: reviewLink.trim() || null,
@@ -642,6 +662,69 @@ export default function ConfiguracoesPage() {
         />
       </section>
 
+
+      {/* Chatbot WhatsApp */}
+      <section className="card space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="font-semibold text-slate-900">Chatbot WhatsApp</h2>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Responde automaticamente aos clientes que entrarem em contato pelo WhatsApp.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setBotEnabled((v) => !v)}
+            className={`relative w-12 h-6 rounded-full transition-colors ${botEnabled ? "bg-brand" : "bg-slate-300"}`}
+          >
+            <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${botEnabled ? "right-0.5" : "left-0.5"}`} />
+          </button>
+        </div>
+
+        {botEnabled && userId && (
+          <div className="space-y-3">
+            {/* Fluxo do bot */}
+            <div className="bg-slate-50 rounded-xl p-3 text-xs text-slate-500 space-y-1 leading-relaxed">
+              <p className="font-semibold text-slate-700 mb-1.5">Fluxo do bot:</p>
+              <p>1️⃣ <strong>Agendar</strong> → envia o link do seu agendamento</p>
+              <p>2️⃣ <strong>Cobrança</strong> → consulta cobranças em aberto pelo número do cliente</p>
+              <p>3️⃣ <strong>Atendente</strong> → encaminha para atendimento humano</p>
+              <p className="pt-1 text-slate-400">Palavras "oi", "olá", "menu" resetam o bot para o menu principal.</p>
+            </div>
+
+            {/* URL do webhook */}
+            <div>
+              <label className="label">URL do webhook (Evolution API)</label>
+              <div className="flex items-center gap-2">
+                <input
+                  readOnly
+                  value={`${siteUrl}/api/whatsapp-incoming/${userId}`}
+                  className="input text-xs bg-slate-50 flex-1 truncate font-mono"
+                />
+                <CopyLinkButton text={`${siteUrl}/api/whatsapp-incoming/${userId}`} />
+              </div>
+              <p className="text-xs text-slate-400 mt-1.5">
+                Cole esta URL em <strong>Evolution API → Instância → Webhook → URL</strong> e marque o evento <strong>MESSAGES_UPSERT</strong>.
+              </p>
+            </div>
+
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700 space-y-1">
+              <p className="font-semibold">⚙️ Como configurar no Evolution API:</p>
+              <p>1. Acesse o painel do Evolution API</p>
+              <p>2. Vá em <strong>Instances → sua instância → Webhook</strong></p>
+              <p>3. Ative o webhook e cole a URL acima</p>
+              <p>4. Marque o evento <strong>MESSAGES_UPSERT</strong></p>
+              <p>5. Salve e teste enviando "oi" para o número</p>
+            </div>
+          </div>
+        )}
+
+        {!botEnabled && (
+          <p className="text-xs text-slate-400">
+            Ative para configurar e visualizar a URL do webhook.
+          </p>
+        )}
+      </section>
 
       {/* Regras de agendamento */}
       <section className="card space-y-5">

@@ -247,6 +247,7 @@ export default function ClientesPage() {
           <div className="col-span-2">
             <label className="label">WhatsApp</label>
             <input className="input" value={fPhone} onChange={(e) => setFPhone(e.target.value)} placeholder="(11) 99999-8888" inputMode="tel" />
+            <p className="text-xs text-slate-400 mt-1">Internacional: use <span className="font-mono font-medium">+DDI número</span> (ex: <span className="font-mono">+1 212 5550100</span>)</p>
           </div>
           <div className="col-span-2">
             <label className="label">E-mail</label>

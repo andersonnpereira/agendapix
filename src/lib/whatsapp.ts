@@ -46,7 +46,12 @@ export async function sendWhatsApp(
   const token = params.token || process.env.WHATSAPP_TOKEN || "";
   const instanceId =
     params.instanceId || process.env.WHATSAPP_INSTANCE_ID || "";
+  // Se o número original começa com '+', já inclui DDI — usar dígitos como estão.
+  // Caso contrário, tratar como brasileiro e aplicar DDI 55 adiante.
+  const hasPlus = params.to.trim().startsWith("+");
   const phone = params.to.replace(/\D/g, "");
+  // Número normalizado com DDI: se tem '+' usa os dígitos diretamente; senão garante "55"
+  const phoneWithDDI = hasPlus ? phone : (phone.startsWith("55") ? phone : `55${phone}`);
   const { message } = params;
 
   try {
@@ -61,7 +66,7 @@ export async function sendWhatsApp(
               "Content-Type": "application/json",
               "client-token": clientToken,
             },
-            body: JSON.stringify({ phone, message }),
+            body: JSON.stringify({ phone: phoneWithDDI, message }),
           }
         );
         if (!res.ok) {
@@ -74,8 +79,7 @@ export async function sendWhatsApp(
       case "evolution": {
         const baseUrl = (process.env.EVOLUTION_API_URL || "").replace(/\/$/, "");
         const apiKey = token || process.env.EVOLUTION_API_KEY || "";
-        // Evolution API v2: número sem @s.whatsapp.net, com DDI 55
-        const normalized = phone.startsWith("55") ? phone : `55${phone}`;
+        const normalized = phoneWithDDI;
         const res = await fetch(
           `${baseUrl}/message/sendText/${instanceId}`,
           {
@@ -107,7 +111,7 @@ export async function sendWhatsApp(
             },
             body: new URLSearchParams({
               token,
-              to: `+${phone}`,
+              to: `+${phoneWithDDI}`,
               body: message,
             }).toString(),
           }

@@ -861,6 +861,7 @@ export default function CobrancasPage() {
                 <div>
                   <label className="label">WhatsApp</label>
                   <input className="input" type="tel" value={eClientPhone} onChange={(e) => setEClientPhone(e.target.value)} placeholder="(11) 99999-9999" />
+                  <p className="text-xs text-slate-400 mt-1">Internacional: <span className="font-mono">+DDI número</span></p>
                 </div>
               </div>
               <div>
@@ -1179,6 +1180,7 @@ export default function CobrancasPage() {
               <div className="col-span-2">
                 <label className="label">WhatsApp do cliente</label>
                 <input className="input" value={fClientPhone} onChange={(e) => setFClientPhone(e.target.value)} placeholder="(11) 99999-8888" inputMode="tel" autoComplete="tel" />
+                <p className="text-xs text-slate-400 mt-1">Internacional: use <span className="font-mono font-medium">+DDI número</span> (ex: <span className="font-mono">+1 212 5550100</span>)</p>
               </div>
               <div className="col-span-2">
                 <label className="label">Descrição</label>

@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { createClient } from "@/lib/supabase-browser";
+import { ModalPortal } from "@/components/ModalPortal";
 
 type Client = {
   id: string;
@@ -230,6 +231,7 @@ export default function ClientesPage() {
 
   // ─── MODAL create/edit ─────────────────────────────────────────────
   const modal = showModal && (
+    <ModalPortal>
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-4">
       <div className="bg-white rounded-2xl w-full max-w-md p-5 space-y-3 max-h-[92vh] overflow-y-auto">
         <div className="flex items-center justify-between">
@@ -311,10 +313,12 @@ export default function ClientesPage() {
         </button>
       </div>
     </div>
+    </ModalPortal>
   );
 
   // ─── CONFIRM DELETE ────────────────────────────────────────────────
   const confirmDeleteModal = confirmDelete && (
+    <ModalPortal>
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="bg-white rounded-2xl w-full max-w-sm p-5 space-y-4 text-center">
         <p className="text-2xl">🗑️</p>
@@ -332,6 +336,7 @@ export default function ClientesPage() {
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 
   // ─── DETAIL VIEW ───────────────────────────────────────────────────

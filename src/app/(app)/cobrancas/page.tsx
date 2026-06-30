@@ -6,6 +6,7 @@ import { formatBRL, parseToCents, getTodayBR } from "@/lib/format";
 import { generatePixBRCode, normalizePixKey, type PixKeyType } from "@/lib/pix";
 import { PixDisplay } from "@/components/PixDisplay";
 import { msgLembrete } from "@/lib/whatsapp";
+import { ModalPortal } from "@/components/ModalPortal";
 
 // -- ALTER TABLE public.charges ADD COLUMN IF NOT EXISTS send_history text[];
 
@@ -850,6 +851,7 @@ export default function CobrancasPage() {
 
       {/* ── Modal: editar cobrança ─────────────────────────────────── */}
       {editModal && (
+        <ModalPortal>
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-2xl w-full max-w-md p-5 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between">
@@ -891,10 +893,12 @@ export default function CobrancasPage() {
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
 
       {/* ── Modal: excluir ─────────────────────────────────────────── */}
       {confirmDelete && (
+        <ModalPortal>
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-2xl w-full max-w-sm p-5 space-y-4 text-center">
             <p className="text-2xl">🗑️</p>
@@ -912,10 +916,12 @@ export default function CobrancasPage() {
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
 
       {/* ── Modal: lembrete ────────────────────────────────────────── */}
       {reminderModal && (
+        <ModalPortal>
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-2xl w-full max-w-md p-5 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between">
@@ -1052,10 +1058,12 @@ export default function CobrancasPage() {
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
 
       {/* ── Modal: enviar cobrança ──────────────────────────────────── */}
       {pixModal && (
+        <ModalPortal>
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-2xl w-full max-w-md p-5 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between">
@@ -1126,10 +1134,12 @@ export default function CobrancasPage() {
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
 
       {/* ── Modal: nova cobrança ──────────────────────────────────── */}
       {showModal && (
+        <ModalPortal>
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-2xl w-full max-w-md flex flex-col max-h-[92vh]">
             {/* Header fixo */}
@@ -1244,6 +1254,7 @@ export default function CobrancasPage() {
             </div>
           </div>
         </div>
+        </ModalPortal>
       )}
     </div>
   );

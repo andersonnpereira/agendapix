@@ -62,8 +62,8 @@ export default async function AppLayout({
         const warnDays = planType === "annual" ? 15 : 7;
         if (daysLeft !== null && daysLeft <= warnDays && daysLeft >= 0) {
           expiryWarning = daysLeft === 0
-            ? `Seu plano ${PLAN_LABELS[planType] ?? planType} vence hoje!`
-            : `Seu plano ${PLAN_LABELS[planType] ?? planType} vence em ${daysLeft} dia${daysLeft !== 1 ? "s" : ""} (${formatDateBR(planExpiresAt)}).`;
+            ? `Seu plano ${PLAN_LABELS[planType!] ?? planType} vence hoje!`
+            : `Seu plano ${PLAN_LABELS[planType!] ?? planType} vence em ${daysLeft} dia${daysLeft !== 1 ? "s" : ""} (${formatDateBR(planExpiresAt)}).`;
         }
       }
     }

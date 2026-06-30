@@ -62,7 +62,7 @@ export async function activatePlanByEmail(
     {
       email: normalizedEmail,
       plan_type: planType,
-      plan_expires_at: expiresAt,
+      plan_expires_at: calcExpiry(planType),
       source,
       raw_payload: rawPayload ?? null,
     },

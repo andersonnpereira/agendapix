@@ -51,8 +51,7 @@ export default async function DashboardPage() {
     .from("charges")
     .select("*", { count: "exact", head: true })
     .eq("profile_id", user.id)
-    .eq("status", "pendente")
-    .lt("due_date", today);
+    .eq("status", "atrasado");
 
   const { data: paidCharges } = await supabase
     .from("charges")

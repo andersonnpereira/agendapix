@@ -108,7 +108,7 @@ export default async function AppLayout({
       </div>
 
       {/* ── Mobile bottom nav ─────────────────────────────── */}
-      <BottomNav />
+      <BottomNav isAdmin={isAdmin} />
 
     </div>
   );

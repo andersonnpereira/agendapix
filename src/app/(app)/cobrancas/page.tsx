@@ -435,7 +435,7 @@ export default function CobrancasPage() {
         let pix_payload: string | null = null;
         try {
           pix_payload = generatePixBRCode({
-            pixKey: normalizePixKey(profile.pix_key, (profile.pix_key_type as PixKeyType) || "celular"),
+            pixKey: normalizePixKey(profile.pix_key!, (profile.pix_key_type as PixKeyType) || "celular"),
             amount: charge.amount_cents / 100,
             merchantName: profile.pix_merchant_name || "PROFISSIONAL",
             merchantCity: profile.pix_merchant_city || "BR",

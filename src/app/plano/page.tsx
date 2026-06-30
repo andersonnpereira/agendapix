@@ -17,21 +17,25 @@ export default async function PlanoPage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  // Lê URLs de checkout da tabela app_settings (fallback: env vars)
-  const { data: settings } = await supabase
-    .from("app_settings")
-    .select("key, value")
-    .in("key", ["checkout_monthly_url", "checkout_annual_url"]);
+  // Se INFINITPAY_HANDLE estiver configurado, usa API dinâmica (prioridade máxima)
+  const hasInfinitPayApi = !!process.env.INFINITPAY_HANDLE;
 
-  const settingsMap = Object.fromEntries((settings || []).map((s) => [s.key, s.value]));
-  const CHECKOUT_MONTHLY =
-    settingsMap["checkout_monthly_url"] ||
-    process.env.NEXT_PUBLIC_CHECKOUT_MONTHLY ||
-    "";
-  const CHECKOUT_ANNUAL =
-    settingsMap["checkout_annual_url"] ||
-    process.env.NEXT_PUBLIC_CHECKOUT_ANNUAL ||
-    "";
+  // Lê URLs estáticas de checkout como fallback (quando API não está configurada)
+  let CHECKOUT_MONTHLY = "";
+  let CHECKOUT_ANNUAL  = "";
+  if (!hasInfinitPayApi) {
+    const { data: settings } = await supabase
+      .from("app_settings")
+      .select("key, value")
+      .in("key", ["checkout_monthly_url", "checkout_annual_url"]);
+    const settingsMap = Object.fromEntries((settings || []).map((s) => [s.key, s.value]));
+    CHECKOUT_MONTHLY = settingsMap["checkout_monthly_url"] || process.env.NEXT_PUBLIC_CHECKOUT_MONTHLY || "";
+    CHECKOUT_ANNUAL  = settingsMap["checkout_annual_url"]  || process.env.NEXT_PUBLIC_CHECKOUT_ANNUAL  || "";
+  }
+
+  // Link de checkout: API dinâmica > URL estática > WhatsApp
+  const checkoutMonthlyHref = hasInfinitPayApi ? "/api/checkout/start?plan=monthly" : (CHECKOUT_MONTHLY || null);
+  const checkoutAnnualHref  = hasInfinitPayApi ? "/api/checkout/start?plan=annual"  : (CHECKOUT_ANNUAL  || null);
 
   const isAdmin = user.email === process.env.ADMIN_EMAIL;
   const { data: profile } = await supabase
@@ -118,8 +122,8 @@ export default async function PlanoPage() {
 
             {/* Mensal */}
             <a
-              href={CHECKOUT_MONTHLY ? "/api/checkout/start?plan=monthly" : waMensal}
-              target={CHECKOUT_MONTHLY ? "_self" : "_blank"}
+              href={checkoutMonthlyHref || waMensal}
+              target={checkoutMonthlyHref ? "_self" : "_blank"}
               rel="noopener noreferrer"
               className="group block bg-white border-2 border-slate-200 hover:border-brand rounded-2xl p-5 transition-all hover:shadow-md"
             >
@@ -142,14 +146,14 @@ export default async function PlanoPage() {
                 </div>
               </div>
               <div className="mt-4 flex items-center justify-center gap-2 text-sm font-semibold text-brand group-hover:gap-3 transition-all">
-                {CHECKOUT_MONTHLY ? "🛒 Assinar plano mensal →" : "💬 Assinar pelo WhatsApp →"}
+                {checkoutMonthlyHref ? "🛒 Assinar plano mensal →" : "💬 Assinar pelo WhatsApp →"}
               </div>
             </a>
 
             {/* Anual */}
             <a
-              href={CHECKOUT_ANNUAL ? "/api/checkout/start?plan=annual" : waAnual}
-              target={CHECKOUT_ANNUAL ? "_self" : "_blank"}
+              href={checkoutAnnualHref || waAnual}
+              target={checkoutAnnualHref ? "_self" : "_blank"}
               rel="noopener noreferrer"
               className="group block relative bg-brand rounded-2xl p-5 transition-all hover:opacity-95 hover:shadow-lg"
             >
@@ -175,12 +179,12 @@ export default async function PlanoPage() {
                 </div>
               </div>
               <div className="mt-4 flex items-center justify-center gap-2 text-sm font-semibold text-white group-hover:gap-3 transition-all">
-                {CHECKOUT_ANNUAL ? "🛒 Assinar plano anual →" : "💬 Assinar pelo WhatsApp →"}
+                {checkoutAnnualHref ? "🛒 Assinar plano anual →" : "💬 Assinar pelo WhatsApp →"}
               </div>
             </a>
 
             <p className="text-center text-xs text-slate-400 leading-relaxed">
-              {CHECKOUT_MONTHLY || CHECKOUT_ANNUAL
+              {checkoutMonthlyHref || checkoutAnnualHref
                 ? "🔒 Compra segura · Acesso liberado automaticamente após a confirmação."
                 : "Pagamento via Pix. Após o envio, a liberação é feita em até 1 hora útil."}
             </p>

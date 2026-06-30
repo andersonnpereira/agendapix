@@ -2,12 +2,20 @@
 
 import { useState } from "react";
 
-export function AvatarImg({ src, alt }: { src: string; alt: string }) {
+export function AvatarImg({
+  src,
+  alt,
+  className = "w-20 h-20",
+}: {
+  src: string;
+  alt: string;
+  className?: string;
+}) {
   const [failed, setFailed] = useState(false);
 
   if (failed) {
     return (
-      <div className="w-20 h-20 rounded-full bg-brand-light flex items-center justify-center mx-auto text-3xl">
+      <div className={`${className} rounded-full bg-brand-light flex items-center justify-center text-3xl`}>
         ✂️
       </div>
     );
@@ -18,7 +26,7 @@ export function AvatarImg({ src, alt }: { src: string; alt: string }) {
     <img
       src={src}
       alt={alt}
-      className="w-20 h-20 rounded-full object-cover mx-auto border-2 border-white shadow"
+      className={`${className} rounded-full object-cover border-2 border-white shadow`}
       onError={() => setFailed(true)}
     />
   );

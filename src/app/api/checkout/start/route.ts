@@ -8,7 +8,7 @@ const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://agendasj.vercel.app"
 
 // Preços em centavos — ajuste conforme necessário
 const PRICES: Record<string, number> = {
-  monthly: 4700,  // R$ 47,00
+  monthly: 100,   // R$ 1,00 (teste) — voltar para 4700 em produção
   annual:  39700, // R$ 397,00
 };
 

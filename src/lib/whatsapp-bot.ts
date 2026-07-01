@@ -2,15 +2,18 @@ import { createAdminClient } from "@/lib/supabase-admin";
 import { sendWhatsApp } from "@/lib/whatsapp";
 
 export type BotState = "idle" | "menu" | "cobranca_lookup" | "human";
-// "custom" cobre qualquer resposta livre — texto, links, FAQ, preços, endereço, etc.
-// "link" e "message" são aliases legados, tratados como "custom" no motor.
-export type BotMenuAction = "schedule" | "charges" | "human" | "custom";
+
+// Ações integradas opcionais — o item pode ter só texto livre sem nenhuma dessas.
+export type BotSpecialAction = "schedule" | "charges" | "human";
 
 export interface BotMenuItem {
   emoji: string;
   title: string;
-  action: BotMenuAction | "link" | "message"; // legado aceito
-  value?: string; // resposta para ação custom/link/message
+  // Resposta livre enviada ao cliente. Pode conter links, texto, preços, FAQ...
+  value?: string;
+  // Ação especial opcional — se definida, executa integração automática (além do texto).
+  // Legado: "action" era o campo principal; agora é só um override especial.
+  action?: BotSpecialAction | "custom" | "link" | "message";
 }
 
 export const BOT_DEFAULTS = {
@@ -25,12 +28,12 @@ export const BOT_DEFAULTS = {
 };
 
 export const DEFAULT_MENU_ITEMS: BotMenuItem[] = [
-  { emoji: "📅", title: "Agendar horário", action: "schedule" },
-  { emoji: "💳", title: "Consultar cobrança", action: "charges" },
-  { emoji: "👤", title: "Falar com atendente", action: "human" },
+  { emoji: "📅", title: "Agendar horário",    value: "", action: "schedule" },
+  { emoji: "💳", title: "Consultar cobrança", value: "", action: "charges" },
+  { emoji: "👤", title: "Falar com atendente",value: "", action: "human" },
 ];
 
-const MENU_NUMBERS = ["1️⃣","2️⃣","3️⃣","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣"];
+const MENU_NUMBERS = ["1️⃣","2️⃣","3️⃣","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟","1️⃣1️⃣","1️⃣2️⃣","1️⃣3️⃣","1️⃣4️⃣","1️⃣5️⃣"];
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "";
 const GREETING_WORDS = ["oi","olá","ola","hi","hello","menu","início","inicio","start","ajuda","help","ola!","oi!"];
 
@@ -215,17 +218,30 @@ export async function handleBotMessage(profileId: string, phone: string, text: s
       }
     } else {
       newFallbackCount = 0;
+      const specialAction = item.action;
+      const freeText = (item.value || "").trim();
 
-      if (item.action === "schedule") {
+      // Se tem texto livre, envia primeiro
+      if (freeText && specialAction !== "human") {
+        const msg = freeText
+          .replace(/\{negocio\}/g, businessName)
+          .replace(/\{link_agendamento\}/g, p.slug ? `${SITE_URL}/agendar/${p.slug as string}` : "");
+        await reply(msg);
+      }
+
+      if (specialAction === "schedule") {
         const link = p.slug ? `${SITE_URL}/agendar/${p.slug as string}` : null;
-        await reply(
-          link
+        if (!freeText) {
+          await reply(link
             ? `📅 Clique aqui para agendar:\n${link}\n\nQualquer dúvida é só chamar! 😊`
             : `Entre em contato diretamente para agendar. Te aguardamos! 😊`
-        );
+          );
+        } else if (link && !freeText.includes(link)) {
+          await reply(`📅 Link de agendamento:\n${link}`);
+        }
         newState = "idle";
 
-      } else if (item.action === "charges") {
+      } else if (specialAction === "charges") {
         const last8 = phone.replace(/\D/g, "").slice(-8);
         const { data: allCharges } = await admin
           .from("charges")
@@ -245,15 +261,17 @@ export async function handleBotMessage(profileId: string, phone: string, text: s
           newState = "cobranca_lookup";
         }
 
-      } else if (item.action === "human") {
-        await reply(humanMsg);
+      } else if (specialAction === "human") {
+        const msg = freeText || humanMsg;
+        await reply(msg.replace(/\{negocio\}/g, businessName));
         newState = "human";
         await notifyOwner(`Cliente *${phone}* solicitou atendimento humano.`);
 
       } else {
-        // custom / link / message — resposta personalizada livre
-        const msg = (item.value || `Obrigado por entrar em contato com *${businessName}*! 😊`).replace(/\{negocio\}/g, businessName);
-        await reply(msg);
+        // Texto livre puro — sem ação especial
+        if (!freeText) {
+          await reply(`Obrigado por entrar em contato com *${businessName}*! 😊`);
+        }
         newState = "idle";
       }
     }

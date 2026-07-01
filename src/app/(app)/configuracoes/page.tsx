@@ -18,7 +18,7 @@ import {
   DEFAULT_MSG_LEMBRETE_AMANHA,
   DEFAULT_MSG_COBRANCA_VENCIDA,
 } from "@/lib/whatsapp";
-import { type BotMenuItem, type BotMenuAction, BOT_DEFAULTS, DEFAULT_MENU_ITEMS } from "@/lib/whatsapp-bot";
+import { type BotMenuItem, BOT_DEFAULTS, DEFAULT_MENU_ITEMS } from "@/lib/whatsapp-bot";
 
 // Rodar no Supabase SQL Editor se as colunas ainda não existirem:
 // ALTER TABLE public.profiles
@@ -984,12 +984,13 @@ export default function ConfiguracoesPage() {
 }
 
 // ── Editor de menu do bot ────────────────────────────────────────────────────
-const BOT_ACTION_OPTIONS = [
-  { value: "custom",   label: "✏️  Resposta personalizada", hint: "Você escreve o texto que o bot vai enviar (pode incluir links, preços, endereço, FAQ...)" },
-  { value: "schedule", label: "📅  Enviar link de agendamento", hint: null },
-  { value: "charges",  label: "💳  Consultar cobranças",       hint: null },
-  { value: "human",    label: "👤  Encaminhar ao atendente",   hint: null },
+const SPECIAL_ACTIONS = [
+  { value: "schedule", label: "📅 Enviar link de agendamento" },
+  { value: "charges",  label: "💳 Consultar cobranças do cliente" },
+  { value: "human",    label: "👤 Encaminhar ao atendente humano" },
 ] as const;
+
+const MAX_ITEMS = 15;
 
 function BotMenuEditor({ items, onChange }: { items: BotMenuItem[]; onChange: (v: BotMenuItem[]) => void }) {
   function update(index: number, patch: Partial<BotMenuItem>) {
@@ -1000,80 +1001,110 @@ function BotMenuEditor({ items, onChange }: { items: BotMenuItem[]; onChange: (v
   }
   function move(index: number, dir: -1 | 1) {
     const next = [...items];
-    const target = index + dir;
-    if (target < 0 || target >= next.length) return;
-    [next[index], next[target]] = [next[target], next[index]];
+    const t = index + dir;
+    if (t < 0 || t >= next.length) return;
+    [next[index], next[t]] = [next[t], next[index]];
     onChange(next);
   }
   function add() {
-    if (items.length >= 9) return;
-    onChange([...items, { emoji: "✨", title: "Nova opção", action: "custom", value: "" }]);
+    if (items.length >= MAX_ITEMS) return;
+    onChange([...items, { emoji: "💬", title: "", value: "", action: undefined }]);
   }
 
-  const isCustom = (a: string) => a === "custom" || a === "link" || a === "message";
+  const specialOf = (item: BotMenuItem) =>
+    item.action === "schedule" || item.action === "charges" || item.action === "human"
+      ? item.action
+      : "";
 
   return (
     <div className="space-y-2">
       {items.map((item, i) => (
         <div key={i} className="border border-slate-200 rounded-xl bg-white overflow-hidden">
-          {/* Linha do título */}
-          <div className="flex items-center gap-2 p-2.5">
-            <span className="text-xs text-slate-400 font-mono w-5 text-center shrink-0">{i + 1}</span>
+
+          {/* cabeçalho do item */}
+          <div className="flex items-center gap-2 px-2.5 py-2">
+            <span className="text-xs text-slate-400 w-4 shrink-0 text-center">{i + 1}</span>
             <input
-              className="input text-base w-10 text-center px-0 shrink-0"
+              className="w-9 h-9 text-xl text-center rounded-lg border border-slate-200 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-brand/30 shrink-0"
               maxLength={2}
               value={item.emoji}
               onChange={(e) => update(i, { emoji: e.target.value })}
-              placeholder="😊"
-              title="Emoji"
+              placeholder="💬"
             />
             <input
               className="input text-sm flex-1 min-w-0"
               value={item.title}
               onChange={(e) => update(i, { title: e.target.value })}
-              placeholder="Título da opção"
+              placeholder="Nome da opção (ex: Nossos preços, Endereço, FAQ...)"
             />
-            <div className="flex gap-0 shrink-0">
+            <div className="flex shrink-0">
               <button type="button" onClick={() => move(i, -1)} disabled={i === 0}
-                className="p-1.5 text-slate-400 hover:text-slate-700 disabled:opacity-25 text-xs leading-none">▲</button>
+                className="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-slate-700 disabled:opacity-20 text-xs">▲</button>
               <button type="button" onClick={() => move(i, 1)} disabled={i === items.length - 1}
-                className="p-1.5 text-slate-400 hover:text-slate-700 disabled:opacity-25 text-xs leading-none">▼</button>
+                className="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-slate-700 disabled:opacity-20 text-xs">▼</button>
               <button type="button" onClick={() => remove(i)}
-                className="p-1.5 text-red-400 hover:text-red-600 text-xs leading-none ml-0.5">✕</button>
+                className="w-7 h-7 flex items-center justify-center text-red-400 hover:text-red-600 text-sm ml-0.5">✕</button>
             </div>
           </div>
-          {/* Ação */}
-          <div className="border-t border-slate-100 px-2.5 py-2 space-y-2">
-            <select
-              className="input text-xs w-full"
-              value={isCustom(item.action) ? "custom" : item.action}
-              onChange={(e) => update(i, { action: e.target.value as BotMenuAction, value: "" })}
-            >
-              {BOT_ACTION_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-            {/* Resposta personalizada */}
-            {isCustom(item.action) && (
-              <textarea
-                className="input text-sm resize-none w-full"
-                rows={3}
-                value={item.value || ""}
-                onChange={(e) => update(i, { value: e.target.value })}
-                placeholder={"Escreva o que o bot vai responder ao cliente...\n\nPode incluir links, preços, endereço, horários, FAQ — qualquer texto."}
-              />
-            )}
+
+          {/* resposta livre */}
+          <div className="border-t border-slate-100 px-2.5 pb-2.5 pt-2 space-y-2">
+            <textarea
+              className="input text-sm resize-none w-full leading-relaxed"
+              rows={3}
+              value={item.value || ""}
+              onChange={(e) => update(i, { value: e.target.value })}
+              placeholder={
+                specialOf(item) === "schedule"  ? "Opcional — o bot já envia o link de agendamento automaticamente." :
+                specialOf(item) === "charges"   ? "Opcional — o bot já consulta as cobranças automaticamente." :
+                specialOf(item) === "human"     ? "Mensagem enviada antes de encaminhar ao atendente." :
+                "Escreva o que o bot vai responder...\nPode incluir links, preços, endereço, horários de funcionamento, FAQ, promoções — qualquer coisa."
+              }
+            />
+
+            {/* ação especial opcional */}
+            <details className="group">
+              <summary className="flex items-center gap-1.5 text-xs cursor-pointer select-none list-none text-slate-400 hover:text-slate-600">
+                <span>⚡</span>
+                <span>
+                  {specialOf(item)
+                    ? SPECIAL_ACTIONS.find(a => a.value === specialOf(item))?.label
+                    : "Ação integrada (opcional)"}
+                </span>
+                <span className="ml-auto group-open:rotate-180 transition-transform">▾</span>
+              </summary>
+              <div className="mt-2 flex gap-2 flex-wrap">
+                <button type="button"
+                  onClick={() => update(i, { action: undefined })}
+                  className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${!specialOf(item) ? "bg-slate-700 text-white border-slate-700" : "bg-white text-slate-500 border-slate-200 hover:border-slate-400"}`}>
+                  Nenhuma
+                </button>
+                {SPECIAL_ACTIONS.map((a) => (
+                  <button key={a.value} type="button"
+                    onClick={() => update(i, { action: a.value })}
+                    className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${specialOf(item) === a.value ? "bg-brand text-white border-brand" : "bg-white text-slate-500 border-slate-200 hover:border-brand hover:text-brand"}`}>
+                    {a.label}
+                  </button>
+                ))}
+                <p className="w-full text-[11px] text-slate-400 mt-0.5">
+                  {specialOf(item) === "schedule" && "O bot envia o link de agendamento ao cliente — pode combinar com texto acima."}
+                  {specialOf(item) === "charges"  && "O bot consulta cobranças em aberto pelo número do cliente, ou pede o nome."}
+                  {specialOf(item) === "human"    && "O bot transita para modo humano e pode notificar seu WhatsApp de suporte."}
+                  {!specialOf(item)               && "Adicione uma integração automática além do texto acima."}
+                </p>
+              </div>
+            </details>
           </div>
         </div>
       ))}
 
-      {items.length < 9 ? (
+      {items.length < MAX_ITEMS ? (
         <button type="button" onClick={add}
           className="w-full border-2 border-dashed border-slate-200 rounded-xl py-3 text-sm text-slate-400 hover:border-brand hover:text-brand transition-colors">
-          + Adicionar opção ({items.length}/9)
+          + Adicionar opção
         </button>
       ) : (
-        <p className="text-xs text-slate-400 text-center">Máximo de 9 opções atingido.</p>
+        <p className="text-xs text-slate-400 text-center py-1">Limite de {MAX_ITEMS} opções atingido.</p>
       )}
     </div>
   );

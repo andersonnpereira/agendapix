@@ -714,12 +714,11 @@ export default function ConfiguracoesPage() {
 
       {/* Chatbot WhatsApp */}
       <section className="card space-y-4">
-        {/* Header + toggle */}
         <div className="flex items-center justify-between">
           <div>
             <h2 className="font-semibold text-slate-900">Chatbot WhatsApp</h2>
             <p className="text-xs text-slate-400 mt-0.5">
-              Responde automaticamente a clientes que entrarem em contato pelo WhatsApp.
+              Responde automaticamente quando o cliente envia qualquer mensagem.
             </p>
           </div>
           <button
@@ -738,186 +737,162 @@ export default function ConfiguracoesPage() {
         )}
 
         {botEnabled && (
-          <div className="space-y-5 pt-1">
+          <div className="space-y-3 pt-1">
 
-            {/* ── Menu interativo ── */}
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <span className="text-base">📋</span>
-                <h3 className="font-semibold text-slate-800 text-sm">Menu interativo</h3>
-              </div>
-              <p className="text-xs text-slate-400 -mt-1">Até 9 opções. O cliente digita o número para escolher.</p>
+            {/* Fluxo visual */}
+            <div className="flex items-center gap-1.5 text-xs text-slate-500 bg-slate-50 rounded-xl px-3 py-2 flex-wrap">
+              <span className="font-medium text-slate-700">Cliente escreve</span>
+              <span>→</span>
+              <span>Bot envia boas‑vindas + menu</span>
+              <span>→</span>
+              <span>Cliente digita o número</span>
+              <span>→</span>
+              <span>Bot executa a ação</span>
+            </div>
+
+            {/* ── Menu ── sempre visível */}
+            <div className="space-y-2">
+              <p className="text-sm font-semibold text-slate-800">📋 Opções do menu</p>
+              <p className="text-xs text-slate-400">Adicione quantas quiser (máx. 9). O cliente digita o número para escolher.</p>
               <BotMenuEditor items={botMenuItems} onChange={setBotMenuItems} />
             </div>
 
-            {/* ── Mensagens ── */}
-            <div className="space-y-3 border-t border-slate-100 pt-4">
-              <div className="flex items-center gap-2">
-                <span className="text-base">💬</span>
-                <h3 className="font-semibold text-slate-800 text-sm">Mensagens</h3>
+            {/* ── Mensagens — colapsável ── */}
+            <details className="group border border-slate-200 rounded-xl overflow-hidden">
+              <summary className="flex items-center justify-between px-4 py-3 cursor-pointer select-none list-none bg-white hover:bg-slate-50 transition-colors">
+                <span className="text-sm font-semibold text-slate-800">💬 Mensagens</span>
+                <span className="text-slate-400 text-xs group-open:hidden">▶ expandir</span>
+                <span className="text-slate-400 text-xs hidden group-open:inline">▼ recolher</span>
+              </summary>
+              <div className="px-4 pb-4 pt-3 space-y-4 border-t border-slate-100">
+                <div>
+                  <label className="label">Boas-vindas <span className="text-slate-400 font-normal">— use <code className="bg-slate-100 px-1 rounded">{"{negocio}"}</code> para o nome do negócio</span></label>
+                  <textarea className="input resize-none text-sm font-mono" rows={3} value={botWelcomeMessage} onChange={(e) => setBotWelcomeMessage(e.target.value)} />
+                  <button type="button" className="text-xs text-brand underline mt-1" onClick={() => setBotWelcomeMessage(BOT_DEFAULTS.welcome)}>Restaurar padrão</button>
+                </div>
+                <div>
+                  <label className="label">Cabeçalho do menu</label>
+                  <input className="input text-sm" value={botMenuHeader} onChange={(e) => setBotMenuHeader(e.target.value)} />
+                  <button type="button" className="text-xs text-brand underline mt-1" onClick={() => setBotMenuHeader(BOT_DEFAULTS.menuHeader)}>Restaurar padrão</button>
+                </div>
+                <div>
+                  <label className="label">Opção inválida</label>
+                  <input className="input text-sm" value={botFallbackMessage} onChange={(e) => setBotFallbackMessage(e.target.value)} />
+                  <button type="button" className="text-xs text-brand underline mt-1" onClick={() => setBotFallbackMessage(BOT_DEFAULTS.fallback)}>Restaurar padrão</button>
+                </div>
+                <div>
+                  <label className="label">Atendimento humano</label>
+                  <textarea className="input resize-none text-sm" rows={2} value={botHumanMessage} onChange={(e) => setBotHumanMessage(e.target.value)} />
+                  <button type="button" className="text-xs text-brand underline mt-1" onClick={() => setBotHumanMessage(BOT_DEFAULTS.human)}>Restaurar padrão</button>
+                </div>
               </div>
-              <div>
-                <label className="label">Boas-vindas <span className="text-slate-400 font-normal">(use {"{negocio}"} para o nome do negócio)</span></label>
-                <textarea
-                  className="input resize-none text-sm"
-                  rows={2}
-                  value={botWelcomeMessage}
-                  onChange={(e) => setBotWelcomeMessage(e.target.value)}
-                />
-                <button type="button" className="text-xs text-brand underline mt-1" onClick={() => setBotWelcomeMessage(BOT_DEFAULTS.welcome)}>Restaurar padrão</button>
-              </div>
-              <div>
-                <label className="label">Cabeçalho do menu</label>
-                <input className="input text-sm" value={botMenuHeader} onChange={(e) => setBotMenuHeader(e.target.value)} />
-                <button type="button" className="text-xs text-brand underline mt-1" onClick={() => setBotMenuHeader(BOT_DEFAULTS.menuHeader)}>Restaurar padrão</button>
-              </div>
-              <div>
-                <label className="label">Resposta inválida (fallback)</label>
-                <input className="input text-sm" value={botFallbackMessage} onChange={(e) => setBotFallbackMessage(e.target.value)} />
-                <button type="button" className="text-xs text-brand underline mt-1" onClick={() => setBotFallbackMessage(BOT_DEFAULTS.fallback)}>Restaurar padrão</button>
-              </div>
-              <div>
-                <label className="label">Encaminhar ao atendente</label>
-                <textarea
-                  className="input resize-none text-sm"
-                  rows={2}
-                  value={botHumanMessage}
-                  onChange={(e) => setBotHumanMessage(e.target.value)}
-                />
-                <button type="button" className="text-xs text-brand underline mt-1" onClick={() => setBotHumanMessage(BOT_DEFAULTS.human)}>Restaurar padrão</button>
-              </div>
-            </div>
+            </details>
 
-            {/* ── Horário de atendimento ── */}
-            <div className="space-y-3 border-t border-slate-100 pt-4">
-              <div className="flex items-center justify-between">
+            {/* ── Horário — colapsável ── */}
+            <details className="group border border-slate-200 rounded-xl overflow-hidden">
+              <summary className="flex items-center justify-between px-4 py-3 cursor-pointer select-none list-none bg-white hover:bg-slate-50 transition-colors">
                 <div className="flex items-center gap-2">
-                  <span className="text-base">🕐</span>
-                  <h3 className="font-semibold text-slate-800 text-sm">Horário de atendimento</h3>
+                  <span className="text-sm font-semibold text-slate-800">🕐 Horário de atendimento</span>
+                  {botBusinessHoursEnabled && <span className="text-[10px] bg-brand text-white px-1.5 py-0.5 rounded-full font-semibold">ATIVO</span>}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setBotBusinessHoursEnabled((v) => !v)}
-                  className={`relative w-10 h-5 rounded-full transition-colors shrink-0 ${botBusinessHoursEnabled ? "bg-brand" : "bg-slate-300"}`}
-                >
-                  <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all ${botBusinessHoursEnabled ? "right-0.5" : "left-0.5"}`} />
-                </button>
-              </div>
-              <p className="text-xs text-slate-400 -mt-1">Fora do expediente, o bot envia a mensagem de ausência e encerra.</p>
-
-              {botBusinessHoursEnabled && (
-                <div className="space-y-3 bg-slate-50 rounded-xl p-3">
-                  <div>
-                    <label className="label text-xs">Dias da semana</label>
-                    <div className="flex flex-wrap gap-1.5 mt-1">
-                      {[["seg","Seg"],["ter","Ter"],["qua","Qua"],["qui","Qui"],["sex","Sex"],["sab","Sáb"],["dom","Dom"]].map(([val, label]) => (
-                        <button
-                          key={val}
-                          type="button"
-                          onClick={() => setBotBusinessDays((d) => d.includes(val) ? d.filter((x) => x !== val) : [...d, val])}
-                          className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors ${botBusinessDays.includes(val) ? "bg-brand text-white border-brand" : "bg-white text-slate-600 border-slate-200"}`}
-                        >
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
+                <span className="text-slate-400 text-xs group-open:hidden">▶ expandir</span>
+                <span className="text-slate-400 text-xs hidden group-open:inline">▼ recolher</span>
+              </summary>
+              <div className="px-4 pb-4 pt-3 space-y-4 border-t border-slate-100">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-slate-700">Fora do horário, enviar mensagem de ausência</p>
+                  <button type="button" onClick={() => setBotBusinessHoursEnabled((v) => !v)}
+                    className={`relative w-10 h-5 rounded-full transition-colors shrink-0 ${botBusinessHoursEnabled ? "bg-brand" : "bg-slate-300"}`}>
+                    <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all ${botBusinessHoursEnabled ? "right-0.5" : "left-0.5"}`} />
+                  </button>
+                </div>
+                {botBusinessHoursEnabled && (
+                  <div className="space-y-3">
                     <div>
-                      <label className="label text-xs">Abertura</label>
-                      <select className="input text-sm" value={botHoursStart} onChange={(e) => setBotHoursStart(parseInt(e.target.value))}>
-                        {Array.from({length: 24}, (_, i) => (
-                          <option key={i} value={i}>{String(i).padStart(2,"0")}:00</option>
+                      <label className="label text-xs">Dias</label>
+                      <div className="flex flex-wrap gap-1.5 mt-1">
+                        {[["seg","Seg"],["ter","Ter"],["qua","Qua"],["qui","Qui"],["sex","Sex"],["sab","Sáb"],["dom","Dom"]].map(([val, lbl]) => (
+                          <button key={val} type="button"
+                            onClick={() => setBotBusinessDays((d) => d.includes(val) ? d.filter((x) => x !== val) : [...d, val])}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors ${botBusinessDays.includes(val) ? "bg-brand text-white border-brand" : "bg-white text-slate-600 border-slate-200"}`}>
+                            {lbl}
+                          </button>
                         ))}
-                      </select>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="label text-xs">Abertura</label>
+                        <select className="input text-sm" value={botHoursStart} onChange={(e) => setBotHoursStart(parseInt(e.target.value))}>
+                          {Array.from({length: 24}, (_, i) => <option key={i} value={i}>{String(i).padStart(2,"0")}:00</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="label text-xs">Fechamento</label>
+                        <select className="input text-sm" value={botHoursEnd} onChange={(e) => setBotHoursEnd(parseInt(e.target.value))}>
+                          {Array.from({length: 24}, (_, i) => <option key={i} value={i}>{String(i).padStart(2,"0")}:00</option>)}
+                        </select>
+                      </div>
                     </div>
                     <div>
-                      <label className="label text-xs">Fechamento</label>
-                      <select className="input text-sm" value={botHoursEnd} onChange={(e) => setBotHoursEnd(parseInt(e.target.value))}>
-                        {Array.from({length: 24}, (_, i) => (
-                          <option key={i} value={i}>{String(i).padStart(2,"0")}:00</option>
-                        ))}
-                      </select>
+                      <label className="label text-xs">Mensagem fora do horário</label>
+                      <textarea className="input resize-none text-sm" rows={3} value={botAwayMessage} onChange={(e) => setBotAwayMessage(e.target.value)} />
+                      <button type="button" className="text-xs text-brand underline mt-1" onClick={() => setBotAwayMessage(BOT_DEFAULTS.away)}>Restaurar padrão</button>
                     </div>
                   </div>
-                  <div>
-                    <label className="label text-xs">Mensagem fora do horário</label>
-                    <textarea
-                      className="input resize-none text-sm"
-                      rows={3}
-                      value={botAwayMessage}
-                      onChange={(e) => setBotAwayMessage(e.target.value)}
-                    />
-                    <button type="button" className="text-xs text-brand underline mt-1" onClick={() => setBotAwayMessage(BOT_DEFAULTS.away)}>Restaurar padrão</button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* ── Comportamento ── */}
-            <div className="space-y-3 border-t border-slate-100 pt-4">
-              <div className="flex items-center gap-2">
-                <span className="text-base">⚙️</span>
-                <h3 className="font-semibold text-slate-800 text-sm">Comportamento</h3>
+                )}
               </div>
+            </details>
 
-              <div>
-                <label className="label">Simulação de digitação</label>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="range" min={0} max={4000} step={200}
-                    value={botTypingDelayMs}
-                    onChange={(e) => setBotTypingDelayMs(parseInt(e.target.value))}
-                    className="flex-1"
-                  />
-                  <span className="text-sm font-mono text-slate-700 w-16 text-right shrink-0">
-                    {botTypingDelayMs === 0 ? "Desligado" : `${(botTypingDelayMs / 1000).toFixed(1)}s`}
-                  </span>
-                </div>
-                <p className="text-xs text-slate-400 mt-1">Aparência de "digitando..." antes de responder (Evolution API).</p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
+            {/* ── Avançado — colapsável ── */}
+            <details className="group border border-slate-200 rounded-xl overflow-hidden">
+              <summary className="flex items-center justify-between px-4 py-3 cursor-pointer select-none list-none bg-white hover:bg-slate-50 transition-colors">
+                <span className="text-sm font-semibold text-slate-800">⚙️ Configurações avançadas</span>
+                <span className="text-slate-400 text-xs group-open:hidden">▶ expandir</span>
+                <span className="text-slate-400 text-xs hidden group-open:inline">▼ recolher</span>
+              </summary>
+              <div className="px-4 pb-4 pt-3 space-y-4 border-t border-slate-100">
                 <div>
-                  <label className="label">Timeout de sessão</label>
-                  <select className="input text-sm" value={botSessionTimeoutMin} onChange={(e) => setBotSessionTimeoutMin(parseInt(e.target.value))}>
-                    {[5,10,15,30,60,120].map((m) => (
-                      <option key={m} value={m}>{m} min</option>
-                    ))}
-                  </select>
-                  <p className="text-xs text-slate-400 mt-1">Inatividade reinicia ao menu</p>
+                  <label className="label">Simulação de digitação</label>
+                  <div className="flex items-center gap-3">
+                    <input type="range" min={0} max={4000} step={200} value={botTypingDelayMs}
+                      onChange={(e) => setBotTypingDelayMs(parseInt(e.target.value))} className="flex-1" />
+                    <span className="text-sm font-mono text-slate-700 w-16 text-right shrink-0">
+                      {botTypingDelayMs === 0 ? "Desligado" : `${(botTypingDelayMs / 1000).toFixed(1)}s`}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-1">Aparece como "digitando..." antes de cada resposta.</p>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="label">Timeout de sessão</label>
+                    <select className="input text-sm" value={botSessionTimeoutMin} onChange={(e) => setBotSessionTimeoutMin(parseInt(e.target.value))}>
+                      {[5,10,15,30,60,120].map((m) => <option key={m} value={m}>{m} min</option>)}
+                    </select>
+                    <p className="text-xs text-slate-400 mt-1">Inatividade reinicia o menu</p>
+                  </div>
+                  <div>
+                    <label className="label">Erros antes de escalar</label>
+                    <select className="input text-sm" value={botFallbackMaxTries} onChange={(e) => setBotFallbackMaxTries(parseInt(e.target.value))}>
+                      {[1,2,3,4,5].map((n) => <option key={n} value={n}>{n}x</option>)}
+                    </select>
+                    <p className="text-xs text-slate-400 mt-1">Opções inválidas até atendente</p>
+                  </div>
                 </div>
                 <div>
-                  <label className="label">Tentativas antes de escalar</label>
-                  <select className="input text-sm" value={botFallbackMaxTries} onChange={(e) => setBotFallbackMaxTries(parseInt(e.target.value))}>
-                    {[1,2,3,4,5].map((n) => (
-                      <option key={n} value={n}>{n}x</option>
-                    ))}
-                  </select>
-                  <p className="text-xs text-slate-400 mt-1">Respostas inválidas até encaminhar</p>
+                  <label className="label">WhatsApp para notificações</label>
+                  <input className="input text-sm" type="tel" inputMode="tel" value={botNotifyPhone}
+                    onChange={(e) => setBotNotifyPhone(e.target.value)}
+                    placeholder="5511999998888 (DDI+DDD, sem espaços)" />
+                  <p className="text-xs text-slate-400 mt-1">
+                    Avisa esse número quando um cliente pede atendente. Use um número <strong>diferente</strong> do conectado.
+                  </p>
                 </div>
               </div>
-
-              <div className="border-t border-slate-100 pt-3 space-y-1.5">
-                <label className="label">WhatsApp para notificações de atendimento humano</label>
-                <input
-                  className="input text-sm"
-                  type="tel"
-                  inputMode="tel"
-                  value={botNotifyPhone}
-                  onChange={(e) => setBotNotifyPhone(e.target.value)}
-                  placeholder="5511999998888 (com DDI e DDD, sem espaços)"
-                />
-                <p className="text-xs text-slate-400">
-                  Quando um cliente pedir atendente ou mandar mensagem no estado humano, o bot avisa esse número.
-                  Deve ser um WhatsApp <strong>diferente</strong> do conectado — mensagem para o próprio número não gera notificação.
-                  Deixe em branco para desativar.
-                </p>
-              </div>
-            </div>
+            </details>
 
             <p className="text-xs text-brand-dark font-semibold bg-brand-light px-3 py-2 rounded-xl border border-brand/20">
-              ✅ Ao salvar, o webhook é configurado automaticamente na sua conexão WhatsApp.
+              ✅ Ao salvar, o webhook é configurado automaticamente.
             </p>
           </div>
         )}
@@ -1009,18 +984,16 @@ export default function ConfiguracoesPage() {
 }
 
 // ── Editor de menu do bot ────────────────────────────────────────────────────
-const BOT_ACTION_LABELS: Record<BotMenuAction, string> = {
-  schedule: "📅 Agendar",
-  charges:  "💳 Cobranças",
-  human:    "👤 Atendente",
-  link:     "🔗 Link externo",
-  message:  "💬 Mensagem fixa",
-};
+const BOT_ACTION_OPTIONS = [
+  { value: "custom",   label: "✏️  Resposta personalizada", hint: "Você escreve o texto que o bot vai enviar (pode incluir links, preços, endereço, FAQ...)" },
+  { value: "schedule", label: "📅  Enviar link de agendamento", hint: null },
+  { value: "charges",  label: "💳  Consultar cobranças",       hint: null },
+  { value: "human",    label: "👤  Encaminhar ao atendente",   hint: null },
+] as const;
 
 function BotMenuEditor({ items, onChange }: { items: BotMenuItem[]; onChange: (v: BotMenuItem[]) => void }) {
   function update(index: number, patch: Partial<BotMenuItem>) {
-    const next = items.map((item, i) => (i === index ? { ...item, ...patch } : item));
-    onChange(next);
+    onChange(items.map((item, i) => (i === index ? { ...item, ...patch } : item)));
   }
   function remove(index: number) {
     onChange(items.filter((_, i) => i !== index));
@@ -1034,69 +1007,72 @@ function BotMenuEditor({ items, onChange }: { items: BotMenuItem[]; onChange: (v
   }
   function add() {
     if (items.length >= 9) return;
-    onChange([...items, { emoji: "✨", title: "Nova opção", action: "message", value: "" }]);
+    onChange([...items, { emoji: "✨", title: "Nova opção", action: "custom", value: "" }]);
   }
 
-  const needsValue = (a: BotMenuAction) => a === "link" || a === "message";
+  const isCustom = (a: string) => a === "custom" || a === "link" || a === "message";
 
   return (
     <div className="space-y-2">
       {items.map((item, i) => (
-        <div key={i} className="border border-slate-200 rounded-xl p-3 space-y-2 bg-white">
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-400 font-mono w-4 shrink-0">{i + 1}.</span>
+        <div key={i} className="border border-slate-200 rounded-xl bg-white overflow-hidden">
+          {/* Linha do título */}
+          <div className="flex items-center gap-2 p-2.5">
+            <span className="text-xs text-slate-400 font-mono w-5 text-center shrink-0">{i + 1}</span>
             <input
-              className="input text-sm w-12 text-center px-1 shrink-0"
+              className="input text-base w-10 text-center px-0 shrink-0"
               maxLength={2}
               value={item.emoji}
               onChange={(e) => update(i, { emoji: e.target.value })}
               placeholder="😊"
+              title="Emoji"
             />
             <input
-              className="input text-sm flex-1"
+              className="input text-sm flex-1 min-w-0"
               value={item.title}
               onChange={(e) => update(i, { title: e.target.value })}
               placeholder="Título da opção"
             />
-            <div className="flex gap-0.5 shrink-0">
-              <button type="button" onClick={() => move(i, -1)} disabled={i === 0} className="p-1 rounded text-slate-400 hover:text-slate-700 disabled:opacity-30">▲</button>
-              <button type="button" onClick={() => move(i, 1)} disabled={i === items.length - 1} className="p-1 rounded text-slate-400 hover:text-slate-700 disabled:opacity-30">▼</button>
-              <button type="button" onClick={() => remove(i)} className="p-1 rounded text-red-400 hover:text-red-600 ml-0.5">✕</button>
+            <div className="flex gap-0 shrink-0">
+              <button type="button" onClick={() => move(i, -1)} disabled={i === 0}
+                className="p-1.5 text-slate-400 hover:text-slate-700 disabled:opacity-25 text-xs leading-none">▲</button>
+              <button type="button" onClick={() => move(i, 1)} disabled={i === items.length - 1}
+                className="p-1.5 text-slate-400 hover:text-slate-700 disabled:opacity-25 text-xs leading-none">▼</button>
+              <button type="button" onClick={() => remove(i)}
+                className="p-1.5 text-red-400 hover:text-red-600 text-xs leading-none ml-0.5">✕</button>
             </div>
           </div>
-          <div className="flex items-center gap-2 pl-6">
+          {/* Ação */}
+          <div className="border-t border-slate-100 px-2.5 py-2 space-y-2">
             <select
-              className="input text-xs flex-1"
-              value={item.action}
+              className="input text-xs w-full"
+              value={isCustom(item.action) ? "custom" : item.action}
               onChange={(e) => update(i, { action: e.target.value as BotMenuAction, value: "" })}
             >
-              {(Object.entries(BOT_ACTION_LABELS) as [BotMenuAction, string][]).map(([val, label]) => (
-                <option key={val} value={val}>{label}</option>
+              {BOT_ACTION_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
               ))}
             </select>
-          </div>
-          {needsValue(item.action) && (
-            <div className="pl-6">
-              <input
-                className="input text-xs w-full"
+            {/* Resposta personalizada */}
+            {isCustom(item.action) && (
+              <textarea
+                className="input text-sm resize-none w-full"
+                rows={3}
                 value={item.value || ""}
                 onChange={(e) => update(i, { value: e.target.value })}
-                placeholder={item.action === "link" ? "https://..." : "Digite o texto que será enviado ao cliente..."}
+                placeholder={"Escreva o que o bot vai responder ao cliente...\n\nPode incluir links, preços, endereço, horários, FAQ — qualquer texto."}
               />
-            </div>
-          )}
+            )}
+          </div>
         </div>
       ))}
-      {items.length < 9 && (
-        <button
-          type="button"
-          onClick={add}
-          className="w-full border-2 border-dashed border-slate-200 rounded-xl py-2.5 text-sm text-slate-400 hover:border-brand hover:text-brand transition-colors"
-        >
-          + Adicionar opção {items.length}/9
+
+      {items.length < 9 ? (
+        <button type="button" onClick={add}
+          className="w-full border-2 border-dashed border-slate-200 rounded-xl py-3 text-sm text-slate-400 hover:border-brand hover:text-brand transition-colors">
+          + Adicionar opção ({items.length}/9)
         </button>
-      )}
-      {items.length === 9 && (
+      ) : (
         <p className="text-xs text-slate-400 text-center">Máximo de 9 opções atingido.</p>
       )}
     </div>

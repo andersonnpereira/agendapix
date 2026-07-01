@@ -2,13 +2,15 @@ import { createAdminClient } from "@/lib/supabase-admin";
 import { sendWhatsApp } from "@/lib/whatsapp";
 
 export type BotState = "idle" | "menu" | "cobranca_lookup" | "human";
-export type BotMenuAction = "schedule" | "charges" | "human" | "link" | "message";
+// "custom" cobre qualquer resposta livre — texto, links, FAQ, preços, endereço, etc.
+// "link" e "message" são aliases legados, tratados como "custom" no motor.
+export type BotMenuAction = "schedule" | "charges" | "human" | "custom";
 
 export interface BotMenuItem {
   emoji: string;
   title: string;
-  action: BotMenuAction;
-  value?: string;
+  action: BotMenuAction | "link" | "message"; // legado aceito
+  value?: string; // resposta para ação custom/link/message
 }
 
 export const BOT_DEFAULTS = {
@@ -248,12 +250,8 @@ export async function handleBotMessage(profileId: string, phone: string, text: s
         newState = "human";
         await notifyOwner(`Cliente *${phone}* solicitou atendimento humano.`);
 
-      } else if (item.action === "link") {
-        const url = item.value || "";
-        await reply(url ? `🔗 ${item.title}:\n${url}` : `Não há link configurado para esta opção. 😕`);
-        newState = "idle";
-
-      } else if (item.action === "message") {
+      } else {
+        // custom / link / message — resposta personalizada livre
         const msg = (item.value || `Obrigado por entrar em contato com *${businessName}*! 😊`).replace(/\{negocio\}/g, businessName);
         await reply(msg);
         newState = "idle";

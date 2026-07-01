@@ -33,7 +33,7 @@ import { handleBotMessage } from "@/lib/whatsapp-bot";
 //   ADD COLUMN IF NOT EXISTS bot_trigger_mode text DEFAULT 'keywords',
 //   ADD COLUMN IF NOT EXISTS bot_trigger_keywords text[] DEFAULT ARRAY['oi','olá','ola','hi','menu'],
 //   ADD COLUMN IF NOT EXISTS bot_trigger_new_conv_hours int DEFAULT 24,
-  ADD COLUMN IF NOT EXISTS bot_human_timeout_hours int DEFAULT 24;
+//   ADD COLUMN IF NOT EXISTS bot_human_timeout_hours int DEFAULT 24;
 
 export async function POST(
   req: NextRequest,

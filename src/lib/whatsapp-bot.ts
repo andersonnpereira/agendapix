@@ -145,9 +145,9 @@ function buildFlowText(flow: BotFlow, businessName: string): string {
 export async function handleBotMessage(profileId: string, phone: string, text: string): Promise<void> {
   const admin = createAdminClient();
   const { data: _raw } = await admin.from("profiles").select("*").eq("id", profileId).single();
-  if (!_raw) return;
+  if (!_raw) { console.warn("[whatsapp-bot] perfil não encontrado:", profileId); return; }
   const p = _raw as unknown as Record<string, unknown>;
-  if (!p.bot_enabled) return;
+  if (!p.bot_enabled) { console.log("[whatsapp-bot] bot desativado para perfil:", profileId); return; }
 
   const provider = ((p.whatsapp_provider as string) || "evolution") as "mock"|"zapi"|"evolution"|"ultramsg";
   const instanceName = (p.whatsapp_instance_id as string) || "";
@@ -161,7 +161,8 @@ export async function handleBotMessage(profileId: string, phone: string, text: s
 
   async function reply(message: string) {
     await simulateTyping(instanceName, apiKey, phone, typingDelay);
-    await sendWhatsApp({ to: phone, message, provider, token: (p.whatsapp_token as string) || undefined, instanceId: (p.whatsapp_instance_id as string) || undefined });
+    const result = await sendWhatsApp({ to: phone, message, provider, token: (p.whatsapp_token as string) || undefined, instanceId: (p.whatsapp_instance_id as string) || undefined });
+    if (!result.ok) console.error("[whatsapp-bot] falha ao enviar:", result.error, { phone, provider, instanceName });
   }
   async function notifyOwner(msg: string) {
     const notifyPhone = (p.bot_notify_phone as string | null)?.trim();
@@ -236,7 +237,10 @@ export async function handleBotMessage(profileId: string, phone: string, text: s
     else if (triggerMode === "new_session") activate = isNewSession();
     else if (triggerMode === "keywords_or_new") activate = keywordMatch() || isNewSession();
 
-    if (!activate) return;
+    if (!activate) {
+      console.log("[whatsapp-bot] gatilho não ativado:", { triggerMode, normalized, firstWord });
+      return;
+    }
   }
 
   let newState: BotState = state;

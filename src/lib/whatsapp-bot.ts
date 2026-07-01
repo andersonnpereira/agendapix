@@ -217,24 +217,24 @@ export async function handleBotMessage(profileId: string, phone: string, text: s
   const firstWord = normalized.split(/[\s!?,.:;]+/)[0] || normalized;
   const isGreeting = GREETING_WORDS.includes(firstWord) || GREETING_WORDS.includes(normalized);
 
-  // Em modo humano, saudações NÃO reiniciam o bot automaticamente
-  // O cliente precisar ser liberado manualmente — caso queira reiniciar digita "menu" ou "0" explicitamente
   const RESTART_WORDS = ["menu", "0", "reiniciar", "restart", "inicio", "início"];
   const isExplicitRestart = RESTART_WORDS.includes(normalized) || RESTART_WORDS.includes(firstWord);
 
   if (state === "human") {
     if (isExplicitRestart) {
-      // Reinício explícito — libera o cliente do modo humano
       state = "idle";
       fallbackCount = 0;
       currentFlowId = "main";
     }
-    // Caso contrário: permanece em modo humano (não deixa isGreeting fazer reset)
-  } else if (isGreeting && state !== "cobranca_lookup") {
+    // Saudações em modo humano NÃO reiniciam — bot permanece silencioso
+  } else if (isExplicitRestart && state !== "idle") {
+    // Restart explícito ("menu", "0", etc.) de qualquer estado ativo → volta ao início
     state = "idle";
     fallbackCount = 0;
     currentFlowId = "main";
   }
+  // Saudações ("oi", "olá"…) SÓ reiniciam quando state já é "idle"
+  // Se state === "menu", saudação vira entrada inválida → fallback (bot não reinicia no meio da conversa)
 
   // Gatilho: só bloqueia ativações frias (state === idle, não saudação, não modo humano)
   // Sessões ativas (menu, cobranca, human) e saudações sempre continuam

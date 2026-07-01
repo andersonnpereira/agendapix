@@ -18,7 +18,7 @@ import {
   DEFAULT_MSG_LEMBRETE_AMANHA,
   DEFAULT_MSG_COBRANCA_VENCIDA,
 } from "@/lib/whatsapp";
-import { type BotFlow, type BotFlowItem, type BotSpecialAction, BOT_DEFAULTS, DEFAULT_FLOWS } from "@/lib/whatsapp-bot";
+import { type BotFlow, type BotFlowItem, type BotSpecialAction, type BotTriggerMode, BOT_DEFAULTS, DEFAULT_FLOWS } from "@/lib/whatsapp-bot";
 
 // Rodar no Supabase SQL Editor se as colunas ainda não existirem:
 // ALTER TABLE public.profiles
@@ -88,6 +88,10 @@ export default function ConfiguracoesPage() {
   const [botAwayMessage, setBotAwayMessage] = useState(BOT_DEFAULTS.away);
   const [botHumanMessage, setBotHumanMessage] = useState(BOT_DEFAULTS.human);
   const [botNotifyPhone, setBotNotifyPhone] = useState("");
+  // Gatilho de ativação
+  const [botTriggerMode, setBotTriggerMode] = useState<BotTriggerMode>(BOT_DEFAULTS.triggerMode);
+  const [botTriggerKeywords, setBotTriggerKeywords] = useState<string[]>(BOT_DEFAULTS.triggerKeywords);
+  const [botTriggerNewConvHours, setBotTriggerNewConvHours] = useState(BOT_DEFAULTS.triggerNewConvHours);
 
   // Mensagens customizadas
   const [msgConfirmacao, setMsgConfirmacao] = useState("");
@@ -230,6 +234,10 @@ export default function ConfiguracoesPage() {
       setBotAwayMessage((p as Record<string, unknown>).bot_away_message as string || BOT_DEFAULTS.away);
       setBotHumanMessage((p as Record<string, unknown>).bot_human_message as string || BOT_DEFAULTS.human);
       setBotNotifyPhone((p as Record<string, unknown>).bot_notify_phone as string || "");
+      setBotTriggerMode(((p as Record<string, unknown>).bot_trigger_mode as BotTriggerMode) || BOT_DEFAULTS.triggerMode);
+      const rawKw = (p as Record<string, unknown>).bot_trigger_keywords;
+      setBotTriggerKeywords(Array.isArray(rawKw) && rawKw.length > 0 ? rawKw as string[] : BOT_DEFAULTS.triggerKeywords);
+      setBotTriggerNewConvHours((p as Record<string, unknown>).bot_trigger_new_conv_hours as number ?? BOT_DEFAULTS.triggerNewConvHours);
       const rawFlows = (p as Record<string, unknown>).bot_flows;
       setBotFlows(Array.isArray(rawFlows) && (rawFlows as BotFlow[]).length > 0 ? rawFlows as BotFlow[] : DEFAULT_FLOWS);
       setBrandColor(p.brand_color || "#16A34A");
@@ -299,6 +307,9 @@ export default function ConfiguracoesPage() {
         bot_away_message: botAwayMessage || null,
         bot_human_message: botHumanMessage || null,
         bot_notify_phone: botNotifyPhone.trim() || null,
+        bot_trigger_mode: botTriggerMode,
+        bot_trigger_keywords: botTriggerKeywords.length > 0 ? botTriggerKeywords : null,
+        bot_trigger_new_conv_hours: botTriggerNewConvHours,
         brand_color: brandColor || null,
         bio: bio.trim() || null,
         review_link: reviewLink.trim() || null,
@@ -751,6 +762,69 @@ export default function ConfiguracoesPage() {
               <BotFlowEditor flows={botFlows} onChange={setBotFlows} />
             </div>
 
+            {/* ── Gatilho de ativação — colapsável ── */}
+            <details className="group border border-slate-200 rounded-xl overflow-hidden">
+              <summary className="flex items-center justify-between px-4 py-3 cursor-pointer select-none list-none bg-white hover:bg-slate-50 transition-colors">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-slate-800">🎯 Gatilho de ativação</span>
+                  <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full font-medium">
+                    {botTriggerMode === "always" ? "Sempre" : botTriggerMode === "keywords" ? "Palavras-chave" : botTriggerMode === "new_session" ? "Nova conversa" : "Palavras-chave ou nova"}
+                  </span>
+                </div>
+                <span className="text-slate-400 text-xs group-open:hidden">▶ expandir</span>
+                <span className="text-slate-400 text-xs hidden group-open:inline">▼ recolher</span>
+              </summary>
+              <div className="px-4 pb-4 pt-3 space-y-4 border-t border-slate-100">
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  Saudações (<em>oi, olá, menu…</em>) sempre ativam o bot. Configure abaixo quando mais responder.
+                </p>
+
+                {/* Modo */}
+                <div>
+                  <label className="label">Quando ativar</label>
+                  <select className="input text-sm" value={botTriggerMode}
+                    onChange={(e) => setBotTriggerMode(e.target.value as BotTriggerMode)}>
+                    <option value="keywords">Palavras-chave (recomendado)</option>
+                    <option value="new_session">Nova conversa — após X horas de silêncio</option>
+                    <option value="keywords_or_new">Palavras-chave ou nova conversa</option>
+                    <option value="always">Sempre — qualquer mensagem ativa o bot</option>
+                  </select>
+                  <p className="text-xs text-slate-400 mt-1.5 leading-relaxed">
+                    {botTriggerMode === "keywords" && "Bot só reage quando a mensagem começa com uma das palavras abaixo. Ignora 'obrigado', 'até logo' e mensagens casuais."}
+                    {botTriggerMode === "new_session" && "Bot reage à primeira mensagem de um contato novo, ou após X horas de silêncio completo."}
+                    {botTriggerMode === "keywords_or_new" && "Bot reage se for contato novo/inativo ou se a mensagem contiver uma palavra-chave."}
+                    {botTriggerMode === "always" && "Bot responde a absolutamente qualquer mensagem de um contato inativo. Ideal para número exclusivo do bot."}
+                  </p>
+                </div>
+
+                {/* Palavras-chave */}
+                {(botTriggerMode === "keywords" || botTriggerMode === "keywords_or_new") && (
+                  <div>
+                    <label className="label">Palavras-chave</label>
+                    <p className="text-xs text-slate-400 mb-2">A primeira palavra da mensagem deve corresponder. Ex: "oi tudo bem" ativa se "oi" estiver na lista.</p>
+                    <BotKeywordEditor keywords={botTriggerKeywords} onChange={setBotTriggerKeywords} />
+                  </div>
+                )}
+
+                {/* Horas de silêncio */}
+                {(botTriggerMode === "new_session" || botTriggerMode === "keywords_or_new") && (
+                  <div>
+                    <label className="label">Horas de silêncio para considerar nova conversa</label>
+                    <div className="flex items-center gap-3">
+                      <input type="range" min={1} max={168} step={1} value={botTriggerNewConvHours}
+                        onChange={(e) => setBotTriggerNewConvHours(parseInt(e.target.value))} className="flex-1" />
+                      <span className="text-sm font-mono text-slate-700 w-20 text-right shrink-0">
+                        {botTriggerNewConvHours < 24 ? `${botTriggerNewConvHours}h` : `${Math.round(botTriggerNewConvHours / 24)}d`}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Se o contato não enviar nada em {botTriggerNewConvHours}h ({botTriggerNewConvHours < 24 ? `${botTriggerNewConvHours} horas` : `${Math.round(botTriggerNewConvHours / 24)} dia(s)`}), a próxima mensagem ativa o bot novamente.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </details>
+
             {/* ── Mensagens globais — colapsável ── */}
             <details className="group border border-slate-200 rounded-xl overflow-hidden">
               <summary className="flex items-center justify-between px-4 py-3 cursor-pointer select-none list-none bg-white hover:bg-slate-50 transition-colors">
@@ -962,6 +1036,50 @@ export default function ConfiguracoesPage() {
         disabled={saving}
       >
         {saving ? "Salvando..." : saved ? "✓ Salvo!" : "Salvar configurações"}
+      </button>
+    </div>
+  );
+}
+
+// ── Editor de palavras-chave ─────────────────────────────────────────────────
+function BotKeywordEditor({ keywords, onChange }: { keywords: string[]; onChange: (v: string[]) => void }) {
+  const [input, setInput] = useState("");
+
+  function add() {
+    const kw = input.trim().toLowerCase().replace(/\s+/g, " ");
+    if (!kw || keywords.includes(kw)) { setInput(""); return; }
+    onChange([...keywords, kw]);
+    setInput("");
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-1.5 min-h-[32px]">
+        {keywords.map((kw, i) => (
+          <span key={i} className="inline-flex items-center gap-1 bg-brand/10 text-brand text-xs font-medium px-2.5 py-1 rounded-full">
+            {kw}
+            <button type="button" onClick={() => onChange(keywords.filter((_, j) => j !== i))}
+              className="text-brand/60 hover:text-brand ml-0.5 leading-none">✕</button>
+          </span>
+        ))}
+        {keywords.length === 0 && <span className="text-xs text-slate-400 italic">Nenhuma palavra-chave configurada.</span>}
+      </div>
+      <div className="flex gap-2">
+        <input
+          className="input text-sm flex-1"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } }}
+          placeholder="Digite uma palavra e pressione Enter"
+        />
+        <button type="button" onClick={add}
+          className="btn text-sm border border-slate-200 shrink-0 px-3">
+          Adicionar
+        </button>
+      </div>
+      <button type="button" className="text-xs text-brand underline"
+        onClick={() => onChange(BOT_DEFAULTS.triggerKeywords)}>
+        Restaurar padrão
       </button>
     </div>
   );

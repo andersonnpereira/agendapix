@@ -3,6 +3,7 @@ import { sendWhatsApp } from "@/lib/whatsapp";
 
 export type BotState = "idle" | "menu" | "cobranca_lookup" | "human";
 export type BotSpecialAction = "schedule" | "charges" | "human";
+export type BotTriggerMode = "always" | "keywords" | "new_session" | "keywords_or_new";
 
 // Um item dentro de um fluxo
 export interface BotFlowItem {
@@ -36,6 +37,9 @@ export const BOT_DEFAULTS = {
   fallbackMaxTries: 2,
   typingDelayMs: 1200,
   sessionTimeoutMin: 30,
+  triggerMode: "keywords" as BotTriggerMode,
+  triggerKeywords: ["oi","olá","ola","hi","hello","menu","início","inicio","start","ajuda","help","info","informações"],
+  triggerNewConvHours: 24,
 };
 
 export const DEFAULT_FLOWS: BotFlow[] = [
@@ -198,12 +202,41 @@ export async function handleBotMessage(profileId: string, phone: string, text: s
   }
 
   const normalized = text.trim().toLowerCase();
-  const isGreeting = GREETING_WORDS.includes(normalized);
+  const firstWord = normalized.split(/[\s!?,.:;]+/)[0] || normalized;
+  const isGreeting = GREETING_WORDS.includes(firstWord) || GREETING_WORDS.includes(normalized);
 
   if (isGreeting && state !== "cobranca_lookup") {
     state = "idle";
     fallbackCount = 0;
     currentFlowId = "main";
+  }
+
+  // Gatilho: só bloqueia ativações frias (state === idle, não saudação)
+  // Sessões ativas (menu, cobranca, human) e saudações sempre continuam
+  if (state === "idle" && !isGreeting) {
+    const triggerMode = (p.bot_trigger_mode as BotTriggerMode | null) || BOT_DEFAULTS.triggerMode;
+    const triggerKeywords: string[] = (p.bot_trigger_keywords as string[] | null) || BOT_DEFAULTS.triggerKeywords;
+    const triggerNewConvHours = (p.bot_trigger_new_conv_hours as number | null) ?? BOT_DEFAULTS.triggerNewConvHours;
+
+    function keywordMatch(): boolean {
+      return triggerKeywords.some((kw) => {
+        const k = kw.toLowerCase().trim();
+        return firstWord === k || normalized === k;
+      });
+    }
+    function isNewSession(): boolean {
+      if (!conv) return true;
+      const hoursSince = (now.getTime() - new Date(conv.last_message_at).getTime()) / 3600000;
+      return hoursSince > triggerNewConvHours;
+    }
+
+    let activate = false;
+    if (triggerMode === "always") activate = true;
+    else if (triggerMode === "keywords") activate = keywordMatch();
+    else if (triggerMode === "new_session") activate = isNewSession();
+    else if (triggerMode === "keywords_or_new") activate = keywordMatch() || isNewSession();
+
+    if (!activate) return;
   }
 
   let newState: BotState = state;

@@ -29,7 +29,7 @@ import { handleBotMessage } from "@/lib/whatsapp-bot";
 //   ADD COLUMN IF NOT EXISTS bot_business_days text[] DEFAULT ARRAY['seg','ter','qua','qui','sex'],
 //   ADD COLUMN IF NOT EXISTS bot_away_message text,
 //   ADD COLUMN IF NOT EXISTS bot_human_message text,
-//   ADD COLUMN IF NOT EXISTS bot_human_notify boolean DEFAULT false,
+//   ADD COLUMN IF NOT EXISTS bot_notify_phone text,
 //   ADD COLUMN IF NOT EXISTS bot_menu_items jsonb DEFAULT '[]';
 // ALTER TABLE public.bot_conversations ADD COLUMN IF NOT EXISTS fallback_count int DEFAULT 0;
 

@@ -88,7 +88,7 @@ export default function ConfiguracoesPage() {
   const [botBusinessDays, setBotBusinessDays] = useState<string[]>(["seg","ter","qua","qui","sex"]);
   const [botAwayMessage, setBotAwayMessage] = useState(BOT_DEFAULTS.away);
   const [botHumanMessage, setBotHumanMessage] = useState(BOT_DEFAULTS.human);
-  const [botHumanNotify, setBotHumanNotify] = useState(false);
+  const [botNotifyPhone, setBotNotifyPhone] = useState("");
   const [botMenuItems, setBotMenuItems] = useState<BotMenuItem[]>(DEFAULT_MENU_ITEMS);
 
   // Mensagens customizadas
@@ -233,7 +233,7 @@ export default function ConfiguracoesPage() {
       setBotBusinessDays((p as Record<string, unknown>).bot_business_days as string[] || ["seg","ter","qua","qui","sex"]);
       setBotAwayMessage((p as Record<string, unknown>).bot_away_message as string || BOT_DEFAULTS.away);
       setBotHumanMessage((p as Record<string, unknown>).bot_human_message as string || BOT_DEFAULTS.human);
-      setBotHumanNotify((p as Record<string, unknown>).bot_human_notify as boolean ?? false);
+      setBotNotifyPhone((p as Record<string, unknown>).bot_notify_phone as string || "");
       const rawMenu = (p as Record<string, unknown>).bot_menu_items;
       setBotMenuItems(Array.isArray(rawMenu) && (rawMenu as BotMenuItem[]).length > 0 ? rawMenu as BotMenuItem[] : DEFAULT_MENU_ITEMS);
       setBrandColor(p.brand_color || "#16A34A");
@@ -303,7 +303,7 @@ export default function ConfiguracoesPage() {
         bot_business_days: botBusinessDays,
         bot_away_message: botAwayMessage || null,
         bot_human_message: botHumanMessage || null,
-        bot_human_notify: botHumanNotify,
+        bot_notify_phone: botNotifyPhone.trim() || null,
         bot_menu_items: botMenuItems,
         brand_color: brandColor || null,
         bio: bio.trim() || null,
@@ -898,18 +898,21 @@ export default function ConfiguracoesPage() {
                 </div>
               </div>
 
-              <div className="flex items-center justify-between py-3 border-t border-slate-100">
-                <div>
-                  <p className="text-sm font-medium text-slate-900">Notificar quando pedir atendente</p>
-                  <p className="text-xs text-slate-400">Envia mensagem no seu WhatsApp quando um cliente solicitar atendimento humano</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setBotHumanNotify((v) => !v)}
-                  className={`relative w-10 h-5 rounded-full transition-colors shrink-0 ${botHumanNotify ? "bg-brand" : "bg-slate-300"}`}
-                >
-                  <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all ${botHumanNotify ? "right-0.5" : "left-0.5"}`} />
-                </button>
+              <div className="border-t border-slate-100 pt-3 space-y-1.5">
+                <label className="label">WhatsApp para notificações de atendimento humano</label>
+                <input
+                  className="input text-sm"
+                  type="tel"
+                  inputMode="tel"
+                  value={botNotifyPhone}
+                  onChange={(e) => setBotNotifyPhone(e.target.value)}
+                  placeholder="5511999998888 (com DDI e DDD, sem espaços)"
+                />
+                <p className="text-xs text-slate-400">
+                  Quando um cliente pedir atendente ou mandar mensagem no estado humano, o bot avisa esse número.
+                  Deve ser um WhatsApp <strong>diferente</strong> do conectado — mensagem para o próprio número não gera notificação.
+                  Deixe em branco para desativar.
+                </p>
               </div>
             </div>
 

@@ -125,10 +125,10 @@ export async function handleBotMessage(profileId: string, phone: string, text: s
   }
 
   async function notifyOwner(msg: string) {
-    const ownerPhone = p.phone as string | null;
-    if (!(p.bot_human_notify as boolean) || !ownerPhone) return;
+    const notifyPhone = (p.bot_notify_phone as string | null)?.trim();
+    if (!notifyPhone) return;
     await sendWhatsApp({
-      to: ownerPhone,
+      to: notifyPhone,
       message: `🤖 *Bot AgendaPix*\n${msg}`,
       provider,
       token: (p.whatsapp_token as string) || undefined,

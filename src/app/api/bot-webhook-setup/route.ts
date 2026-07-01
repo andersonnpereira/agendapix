@@ -35,11 +35,13 @@ export async function POST(req: NextRequest) {
         method: "POST",
         headers: { "Content-Type": "application/json", apikey: apiKey },
         body: JSON.stringify({
-          url: webhookUrl,
-          enabled: true,
-          webhookByEvents: false,
-          webhookBase64: false,
-          events: ["MESSAGES_UPSERT"],
+          webhook: {
+            url: webhookUrl,
+            enabled: true,
+            webhookByEvents: false,
+            webhookBase64: false,
+            events: ["MESSAGES_UPSERT"],
+          },
         }),
       });
 
@@ -63,7 +65,7 @@ export async function POST(req: NextRequest) {
       const res = await fetch(`${baseUrl}/webhook/set/${instanceName}`, {
         method: "POST",
         headers: { "Content-Type": "application/json", apikey: apiKey },
-        body: JSON.stringify({ url: "", enabled: false, webhookByEvents: false, webhookBase64: false, events: [] }),
+        body: JSON.stringify({ webhook: { url: "", enabled: false, webhookByEvents: false, webhookBase64: false, events: [] } }),
       });
 
       const resText = await res.text();

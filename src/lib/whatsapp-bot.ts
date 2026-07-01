@@ -197,7 +197,9 @@ export async function handleBotMessage(profileId: string, phone: string, text: s
 
   if (conv) {
     const minutesSince = (now.getTime() - new Date(conv.last_message_at).getTime()) / 60000;
-    state = minutesSince > sessionTimeout ? "idle" : (conv.state as BotState);
+    const convState = conv.state as BotState;
+    // Modo humano nunca expira por timeout — persiste até reinício explícito
+    state = (convState === "human") ? "human" : (minutesSince > sessionTimeout ? "idle" : convState);
     fallbackCount = (conv.fallback_count as number) ?? 0;
     currentFlowId = (conv.current_flow as string) || "main";
   }
@@ -206,13 +208,26 @@ export async function handleBotMessage(profileId: string, phone: string, text: s
   const firstWord = normalized.split(/[\s!?,.:;]+/)[0] || normalized;
   const isGreeting = GREETING_WORDS.includes(firstWord) || GREETING_WORDS.includes(normalized);
 
-  if (isGreeting && state !== "cobranca_lookup") {
+  // Em modo humano, saudações NÃO reiniciam o bot automaticamente
+  // O cliente precisar ser liberado manualmente — caso queira reiniciar digita "menu" ou "0" explicitamente
+  const RESTART_WORDS = ["menu", "0", "reiniciar", "restart", "inicio", "início"];
+  const isExplicitRestart = RESTART_WORDS.includes(normalized) || RESTART_WORDS.includes(firstWord);
+
+  if (state === "human") {
+    if (isExplicitRestart) {
+      // Reinício explícito — libera o cliente do modo humano
+      state = "idle";
+      fallbackCount = 0;
+      currentFlowId = "main";
+    }
+    // Caso contrário: permanece em modo humano (não deixa isGreeting fazer reset)
+  } else if (isGreeting && state !== "cobranca_lookup") {
     state = "idle";
     fallbackCount = 0;
     currentFlowId = "main";
   }
 
-  // Gatilho: só bloqueia ativações frias (state === idle, não saudação)
+  // Gatilho: só bloqueia ativações frias (state === idle, não saudação, não modo humano)
   // Sessões ativas (menu, cobranca, human) e saudações sempre continuam
   if (state === "idle" && !isGreeting) {
     const triggerMode = (p.bot_trigger_mode as BotTriggerMode | null) || BOT_DEFAULTS.triggerMode;
@@ -354,9 +369,10 @@ export async function handleBotMessage(profileId: string, phone: string, text: s
     newCurrentFlowId = "main";
 
   } else if (state === "human") {
-    await reply("Mensagem recebida! Em breve nossa equipe retornará. 🙏");
+    // Bot desativado — apenas encaminha mensagem ao atendente, sem responder ao cliente
+    await notifyOwner(`💬 *${phone}*:\n"${text.slice(0, 300)}"`);
     newState = "human";
-    await notifyOwner(`Nova mensagem de *${phone}*:\n"${text.slice(0, 200)}"`);
+    newCurrentFlowId = currentFlowId;
   }
 
   await admin.from("bot_conversations").upsert(

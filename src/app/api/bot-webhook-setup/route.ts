@@ -15,12 +15,12 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (!profile?.whatsapp_instance_id) {
-    return NextResponse.json({ error: "WhatsApp não configurado" }, { status: 400 });
+    return NextResponse.json({ error: "WhatsApp não configurado — conecte o WhatsApp primeiro." }, { status: 400 });
   }
 
   const baseUrl = (process.env.EVOLUTION_API_URL || "").replace(/\/$/, "");
   if (!baseUrl) {
-    return NextResponse.json({ error: "EVOLUTION_API_URL não configurado" }, { status: 500 });
+    return NextResponse.json({ error: "EVOLUTION_API_URL não configurado no servidor." }, { status: 500 });
   }
 
   const apiKey = profile.whatsapp_token || process.env.EVOLUTION_API_KEY || "";
@@ -29,35 +29,53 @@ export async function POST(req: NextRequest) {
 
   try {
     if (profile.bot_enabled) {
-      // Ativa o webhook apontando para o endpoint do bot deste usuário
       const webhookUrl = `${siteUrl}/api/whatsapp-incoming/${user.id}`;
+
       const res = await fetch(`${baseUrl}/webhook/set/${instanceName}`, {
         method: "POST",
         headers: { "Content-Type": "application/json", apikey: apiKey },
         body: JSON.stringify({
           url: webhookUrl,
-          webhook_by_events: false,
-          webhook_base64: false,
-          events: ["MESSAGES_UPSERT"],
           enabled: true,
+          webhookByEvents: false,
+          webhookBase64: false,
+          events: ["MESSAGES_UPSERT"],
         }),
       });
-      const data = await res.json().catch(() => ({}));
-      console.log("[bot-webhook-setup] ativado:", data);
-      return NextResponse.json({ ok: true, enabled: true, webhookUrl });
+
+      const resText = await res.text();
+      let resData: unknown;
+      try { resData = JSON.parse(resText); } catch { resData = resText; }
+
+      console.log("[bot-webhook-setup] ativado — HTTP", res.status, JSON.stringify(resData).slice(0, 300));
+
+      if (!res.ok) {
+        return NextResponse.json({
+          error: `Evolution API retornou ${res.status}`,
+          detail: resData,
+          webhookUrl,
+        }, { status: 502 });
+      }
+
+      return NextResponse.json({ ok: true, enabled: true, webhookUrl, evolutionResponse: resData });
+
     } else {
-      // Desativa o webhook
       const res = await fetch(`${baseUrl}/webhook/set/${instanceName}`, {
         method: "POST",
         headers: { "Content-Type": "application/json", apikey: apiKey },
-        body: JSON.stringify({ url: "", enabled: false, events: [] }),
+        body: JSON.stringify({ url: "", enabled: false, webhookByEvents: false, webhookBase64: false, events: [] }),
       });
-      const data = await res.json().catch(() => ({}));
-      console.log("[bot-webhook-setup] desativado:", data);
-      return NextResponse.json({ ok: true, enabled: false });
+
+      const resText = await res.text();
+      let resData: unknown;
+      try { resData = JSON.parse(resText); } catch { resData = resText; }
+
+      console.log("[bot-webhook-setup] desativado — HTTP", res.status, JSON.stringify(resData).slice(0, 300));
+
+      return NextResponse.json({ ok: true, enabled: false, evolutionResponse: resData });
     }
   } catch (e) {
-    console.error("[bot-webhook-setup]", e);
+    console.error("[bot-webhook-setup] erro:", e);
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }
 }

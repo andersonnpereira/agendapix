@@ -120,6 +120,10 @@ export default function ConfiguracoesPage() {
   const [autoConfirm, setAutoConfirm] = useState(false);
   const [cancelMinHours, setCancelMinHours] = useState(0);
 
+  // Webhook status
+  const [webhookMsg, setWebhookMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [webhookLoading, setWebhookLoading] = useState(false);
+
   // QR Code WhatsApp
   const [qrStatus, setQrStatus] = useState<"idle" | "loading" | "connected" | "disconnected">("loading");
   const [qrBase64, setQrBase64] = useState("");
@@ -157,6 +161,24 @@ export default function ConfiguracoesPage() {
     setAvatarUrl("");
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);
+  }
+
+  async function setupWebhook() {
+    setWebhookLoading(true);
+    setWebhookMsg(null);
+    try {
+      const res = await fetch("/api/bot-webhook-setup", { method: "POST" });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        setWebhookMsg({ ok: true, text: `✅ Webhook registrado: ${data.webhookUrl || ""}` });
+      } else {
+        setWebhookMsg({ ok: false, text: `⚠️ Falha no webhook: ${data.error || ""}${data.detail ? " — " + JSON.stringify(data.detail).slice(0, 120) : ""}` });
+      }
+    } catch (e) {
+      setWebhookMsg({ ok: false, text: `⚠️ Erro ao configurar webhook: ${String(e)}` });
+    } finally {
+      setWebhookLoading(false);
+    }
   }
 
   const fetchQrRef = useRef(fetchQr);
@@ -330,8 +352,10 @@ export default function ConfiguracoesPage() {
       return;
     }
 
-    // Configura/remove webhook no Evolution API automaticamente (não bloqueia o save)
-    fetch("/api/bot-webhook-setup", { method: "POST" }).catch(() => {});
+    // Configura webhook no Evolution API e mostra resultado
+    if (botEnabled) {
+      await setupWebhook();
+    }
 
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);
@@ -949,9 +973,25 @@ export default function ConfiguracoesPage() {
               </div>
             </details>
 
-            <p className="text-xs text-brand-dark font-semibold bg-brand-light px-3 py-2 rounded-xl border border-brand/20">
-              ✅ Ao salvar, o webhook é configurado automaticamente.
-            </p>
+            {/* Webhook status + botão manual */}
+            <div className="space-y-2">
+              {webhookMsg && (
+                <div className={`text-xs px-3 py-2 rounded-xl border ${webhookMsg.ok ? "bg-green-50 border-green-200 text-green-800" : "bg-amber-50 border-amber-200 text-amber-800"}`}>
+                  {webhookMsg.text}
+                </div>
+              )}
+              <button
+                type="button"
+                disabled={webhookLoading}
+                onClick={setupWebhook}
+                className="w-full border border-slate-200 rounded-xl py-2.5 text-sm text-slate-600 hover:border-brand hover:text-brand transition-colors disabled:opacity-50"
+              >
+                {webhookLoading ? "Configurando webhook…" : "🔗 Registrar webhook na Evolution API"}
+              </button>
+              <p className="text-xs text-slate-400 text-center">
+                Clique após salvar ou ao trocar de instância. Necessário para o bot funcionar.
+              </p>
+            </div>
           </div>
         )}
       </section>

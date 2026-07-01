@@ -18,7 +18,7 @@ import {
   DEFAULT_MSG_LEMBRETE_AMANHA,
   DEFAULT_MSG_COBRANCA_VENCIDA,
 } from "@/lib/whatsapp";
-import { type BotMenuItem, BOT_DEFAULTS, DEFAULT_MENU_ITEMS } from "@/lib/whatsapp-bot";
+import { type BotFlow, type BotFlowItem, type BotSpecialAction, BOT_DEFAULTS, DEFAULT_FLOWS } from "@/lib/whatsapp-bot";
 
 // Rodar no Supabase SQL Editor se as colunas ainda não existirem:
 // ALTER TABLE public.profiles
@@ -76,8 +76,7 @@ export default function ConfiguracoesPage() {
   const [botEnabled, setBotEnabled] = useState(false);
   const [userId, setUserId] = useState("");
   // Chatbot — avançado
-  const [botWelcomeMessage, setBotWelcomeMessage] = useState(BOT_DEFAULTS.welcome);
-  const [botMenuHeader, setBotMenuHeader] = useState(BOT_DEFAULTS.menuHeader);
+  const [botFlows, setBotFlows] = useState<BotFlow[]>(DEFAULT_FLOWS);
   const [botFallbackMessage, setBotFallbackMessage] = useState(BOT_DEFAULTS.fallback);
   const [botFallbackMaxTries, setBotFallbackMaxTries] = useState(BOT_DEFAULTS.fallbackMaxTries);
   const [botTypingDelayMs, setBotTypingDelayMs] = useState(BOT_DEFAULTS.typingDelayMs);
@@ -89,7 +88,6 @@ export default function ConfiguracoesPage() {
   const [botAwayMessage, setBotAwayMessage] = useState(BOT_DEFAULTS.away);
   const [botHumanMessage, setBotHumanMessage] = useState(BOT_DEFAULTS.human);
   const [botNotifyPhone, setBotNotifyPhone] = useState("");
-  const [botMenuItems, setBotMenuItems] = useState<BotMenuItem[]>(DEFAULT_MENU_ITEMS);
 
   // Mensagens customizadas
   const [msgConfirmacao, setMsgConfirmacao] = useState("");
@@ -221,8 +219,6 @@ export default function ConfiguracoesPage() {
       setMsgLembreteAmanha((p as Record<string, unknown>).msg_lembrete_amanha as string || DEFAULT_MSG_LEMBRETE_AMANHA);
       setMsgCobrancaVencida((p as Record<string, unknown>).msg_cobranca_vencida as string || DEFAULT_MSG_COBRANCA_VENCIDA);
       setBotEnabled((p as Record<string, unknown>).bot_enabled as boolean ?? false);
-      setBotWelcomeMessage((p as Record<string, unknown>).bot_welcome_message as string || BOT_DEFAULTS.welcome);
-      setBotMenuHeader((p as Record<string, unknown>).bot_menu_header as string || BOT_DEFAULTS.menuHeader);
       setBotFallbackMessage((p as Record<string, unknown>).bot_fallback_message as string || BOT_DEFAULTS.fallback);
       setBotFallbackMaxTries((p as Record<string, unknown>).bot_fallback_max_tries as number ?? BOT_DEFAULTS.fallbackMaxTries);
       setBotTypingDelayMs((p as Record<string, unknown>).bot_typing_delay_ms as number ?? BOT_DEFAULTS.typingDelayMs);
@@ -234,8 +230,8 @@ export default function ConfiguracoesPage() {
       setBotAwayMessage((p as Record<string, unknown>).bot_away_message as string || BOT_DEFAULTS.away);
       setBotHumanMessage((p as Record<string, unknown>).bot_human_message as string || BOT_DEFAULTS.human);
       setBotNotifyPhone((p as Record<string, unknown>).bot_notify_phone as string || "");
-      const rawMenu = (p as Record<string, unknown>).bot_menu_items;
-      setBotMenuItems(Array.isArray(rawMenu) && (rawMenu as BotMenuItem[]).length > 0 ? rawMenu as BotMenuItem[] : DEFAULT_MENU_ITEMS);
+      const rawFlows = (p as Record<string, unknown>).bot_flows;
+      setBotFlows(Array.isArray(rawFlows) && (rawFlows as BotFlow[]).length > 0 ? rawFlows as BotFlow[] : DEFAULT_FLOWS);
       setBrandColor(p.brand_color || "#16A34A");
       setAvatarUrl(p.avatar_url || "");
       setBio(p.bio || "");
@@ -291,8 +287,7 @@ export default function ConfiguracoesPage() {
         msg_lembrete_amanha: msgLembreteAmanha || null,
         msg_cobranca_vencida: msgCobrancaVencida || null,
         bot_enabled: botEnabled,
-        bot_welcome_message: botWelcomeMessage || null,
-        bot_menu_header: botMenuHeader || null,
+        bot_flows: botFlows,
         bot_fallback_message: botFallbackMessage || null,
         bot_fallback_max_tries: botFallbackMaxTries,
         bot_typing_delay_ms: botTypingDelayMs,
@@ -304,7 +299,6 @@ export default function ConfiguracoesPage() {
         bot_away_message: botAwayMessage || null,
         bot_human_message: botHumanMessage || null,
         bot_notify_phone: botNotifyPhone.trim() || null,
-        bot_menu_items: botMenuItems,
         brand_color: brandColor || null,
         bio: bio.trim() || null,
         review_link: reviewLink.trim() || null,
@@ -750,39 +744,29 @@ export default function ConfiguracoesPage() {
               <span>Bot executa a ação</span>
             </div>
 
-            {/* ── Menu ── sempre visível */}
+            {/* ── Fluxos (editor principal) ── */}
             <div className="space-y-2">
-              <p className="text-sm font-semibold text-slate-800">📋 Opções do menu</p>
-              <p className="text-xs text-slate-400">Adicione quantas quiser (máx. 9). O cliente digita o número para escolher.</p>
-              <BotMenuEditor items={botMenuItems} onChange={setBotMenuItems} />
+              <p className="text-sm font-semibold text-slate-800">📋 Fluxos de atendimento</p>
+              <p className="text-xs text-slate-400">Monte o fluxo em quantos níveis precisar. Cada fluxo tem uma mensagem e opções que podem levar a outros fluxos.</p>
+              <BotFlowEditor flows={botFlows} onChange={setBotFlows} />
             </div>
 
-            {/* ── Mensagens — colapsável ── */}
+            {/* ── Mensagens globais — colapsável ── */}
             <details className="group border border-slate-200 rounded-xl overflow-hidden">
               <summary className="flex items-center justify-between px-4 py-3 cursor-pointer select-none list-none bg-white hover:bg-slate-50 transition-colors">
-                <span className="text-sm font-semibold text-slate-800">💬 Mensagens</span>
+                <span className="text-sm font-semibold text-slate-800">💬 Mensagens globais</span>
                 <span className="text-slate-400 text-xs group-open:hidden">▶ expandir</span>
                 <span className="text-slate-400 text-xs hidden group-open:inline">▼ recolher</span>
               </summary>
               <div className="px-4 pb-4 pt-3 space-y-4 border-t border-slate-100">
                 <div>
-                  <label className="label">Boas-vindas <span className="text-slate-400 font-normal">— use <code className="bg-slate-100 px-1 rounded">{"{negocio}"}</code> para o nome do negócio</span></label>
-                  <textarea className="input resize-none text-sm font-mono" rows={3} value={botWelcomeMessage} onChange={(e) => setBotWelcomeMessage(e.target.value)} />
-                  <button type="button" className="text-xs text-brand underline mt-1" onClick={() => setBotWelcomeMessage(BOT_DEFAULTS.welcome)}>Restaurar padrão</button>
-                </div>
-                <div>
-                  <label className="label">Cabeçalho do menu</label>
-                  <input className="input text-sm" value={botMenuHeader} onChange={(e) => setBotMenuHeader(e.target.value)} />
-                  <button type="button" className="text-xs text-brand underline mt-1" onClick={() => setBotMenuHeader(BOT_DEFAULTS.menuHeader)}>Restaurar padrão</button>
-                </div>
-                <div>
-                  <label className="label">Opção inválida</label>
-                  <input className="input text-sm" value={botFallbackMessage} onChange={(e) => setBotFallbackMessage(e.target.value)} />
+                  <label className="label">Opção inválida (fallback)</label>
+                  <textarea className="input resize-y text-sm" rows={2} value={botFallbackMessage} onChange={(e) => setBotFallbackMessage(e.target.value)} />
                   <button type="button" className="text-xs text-brand underline mt-1" onClick={() => setBotFallbackMessage(BOT_DEFAULTS.fallback)}>Restaurar padrão</button>
                 </div>
                 <div>
-                  <label className="label">Atendimento humano</label>
-                  <textarea className="input resize-none text-sm" rows={2} value={botHumanMessage} onChange={(e) => setBotHumanMessage(e.target.value)} />
+                  <label className="label">Encaminhado ao atendente</label>
+                  <textarea className="input resize-y text-sm" rows={2} value={botHumanMessage} onChange={(e) => setBotHumanMessage(e.target.value)} />
                   <button type="button" className="text-xs text-brand underline mt-1" onClick={() => setBotHumanMessage(BOT_DEFAULTS.human)}>Restaurar padrão</button>
                 </div>
               </div>
@@ -983,128 +967,230 @@ export default function ConfiguracoesPage() {
   );
 }
 
-// ── Editor de menu do bot ────────────────────────────────────────────────────
+// ── Editor de fluxos do bot ──────────────────────────────────────────────────
 const SPECIAL_ACTIONS = [
   { value: "schedule", label: "📅 Enviar link de agendamento" },
   { value: "charges",  label: "💳 Consultar cobranças do cliente" },
   { value: "human",    label: "👤 Encaminhar ao atendente humano" },
 ] as const;
 
+const MAX_FLOWS = 20;
 const MAX_ITEMS = 15;
+const MENU_NUMS = Array.from({ length: 15 }, (_, i) => String(i + 1));
 
-function BotMenuEditor({ items, onChange }: { items: BotMenuItem[]; onChange: (v: BotMenuItem[]) => void }) {
-  function update(index: number, patch: Partial<BotMenuItem>) {
-    onChange(items.map((item, i) => (i === index ? { ...item, ...patch } : item)));
+function slugifyFlow(name: string): string {
+  return (
+    name.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || "fluxo"
+  );
+}
+
+function BotFlowEditor({ flows, onChange }: { flows: BotFlow[]; onChange: (v: BotFlow[]) => void }) {
+  const [previewFlow, setPreviewFlow] = useState<string | null>(null);
+
+  function updateFlow(index: number, patch: Partial<BotFlow>) {
+    onChange(flows.map((f, i) => (i === index ? { ...f, ...patch } : f)));
   }
-  function remove(index: number) {
-    onChange(items.filter((_, i) => i !== index));
-  }
-  function move(index: number, dir: -1 | 1) {
-    const next = [...items];
-    const t = index + dir;
+  function removeFlow(index: number) { onChange(flows.filter((_, i) => i !== index)); }
+  function moveFlow(index: number, dir: -1 | 1) {
+    const next = [...flows]; const t = index + dir;
     if (t < 0 || t >= next.length) return;
-    [next[index], next[t]] = [next[t], next[index]];
-    onChange(next);
+    [next[index], next[t]] = [next[t], next[index]]; onChange(next);
   }
-  function add() {
-    if (items.length >= MAX_ITEMS) return;
-    onChange([...items, { emoji: "💬", title: "", value: "", action: undefined }]);
+  function addFlow() {
+    if (flows.length >= MAX_FLOWS) return;
+    const id = `fluxo_${flows.length + 1}`;
+    onChange([...flows, { id, name: `Novo fluxo ${flows.length + 1}`, message: "Escolha uma opção:", items: [] }]);
   }
-
-  const specialOf = (item: BotMenuItem) =>
-    item.action === "schedule" || item.action === "charges" || item.action === "human"
-      ? item.action
-      : "";
+  function updateItem(fi: number, ii: number, patch: Partial<BotFlowItem>) {
+    const newItems = flows[fi].items.map((item, i) => (i === ii ? { ...item, ...patch } : item));
+    updateFlow(fi, { items: newItems });
+  }
+  function removeItem(fi: number, ii: number) { updateFlow(fi, { items: flows[fi].items.filter((_, i) => i !== ii) }); }
+  function moveItem(fi: number, ii: number, dir: -1 | 1) {
+    const next = [...flows[fi].items]; const t = ii + dir;
+    if (t < 0 || t >= next.length) return;
+    [next[ii], next[t]] = [next[t], next[ii]]; updateFlow(fi, { items: next });
+  }
+  function addItem(fi: number) {
+    if (flows[fi].items.length >= MAX_ITEMS) return;
+    updateFlow(fi, { items: [...flows[fi].items, { emoji: "💬", title: "", value: "" }] });
+  }
 
   return (
-    <div className="space-y-2">
-      {items.map((item, i) => (
-        <div key={i} className="border border-slate-200 rounded-xl bg-white overflow-hidden">
+    <div className="space-y-3">
+      <div className="text-xs text-slate-500 bg-blue-50 border border-blue-100 rounded-xl px-3 py-2 leading-relaxed">
+        <strong>Como funciona:</strong> Cada fluxo tem uma mensagem de entrada e opções numeradas. Uma opção pode <em>responder texto livre</em>, <em>navegar para outro fluxo</em> (sub-menu) e/ou <em>executar uma ação integrada</em>.
+        Use <code className="bg-white px-0.5 rounded">{"{negocio}"}</code> e <code className="bg-white px-0.5 rounded">{"{link_agendamento}"}</code> em qualquer texto.
+      </div>
 
-          {/* cabeçalho do item */}
-          <div className="flex items-center gap-2 px-2.5 py-2">
-            <span className="text-xs text-slate-400 w-4 shrink-0 text-center">{i + 1}</span>
-            <input
-              className="w-9 h-9 text-xl text-center rounded-lg border border-slate-200 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-brand/30 shrink-0"
-              maxLength={2}
-              value={item.emoji}
-              onChange={(e) => update(i, { emoji: e.target.value })}
-              placeholder="💬"
-            />
-            <input
-              className="input text-sm flex-1 min-w-0"
-              value={item.title}
-              onChange={(e) => update(i, { title: e.target.value })}
-              placeholder="Nome da opção (ex: Nossos preços, Endereço, FAQ...)"
-            />
-            <div className="flex shrink-0">
-              <button type="button" onClick={() => move(i, -1)} disabled={i === 0}
-                className="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-slate-700 disabled:opacity-20 text-xs">▲</button>
-              <button type="button" onClick={() => move(i, 1)} disabled={i === items.length - 1}
-                className="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-slate-700 disabled:opacity-20 text-xs">▼</button>
-              <button type="button" onClick={() => remove(i)}
-                className="w-7 h-7 flex items-center justify-center text-red-400 hover:text-red-600 text-sm ml-0.5">✕</button>
+      {flows.map((flow, fi) => (
+        <details key={fi} className="group border border-slate-200 rounded-xl overflow-hidden bg-white" open={fi === 0}>
+          <summary className="flex items-center gap-2 px-3 py-2.5 cursor-pointer select-none list-none bg-white hover:bg-slate-50 transition-colors">
+            <span className="text-xs text-slate-400 w-4 shrink-0 text-center font-mono">{fi + 1}</span>
+            <span className={`text-xs font-mono px-1.5 py-0.5 rounded shrink-0 ${flow.id === "main" ? "bg-brand/10 text-brand font-semibold" : "bg-slate-100 text-slate-500"}`}>{flow.id}</span>
+            <span className="text-sm font-semibold text-slate-800 flex-1 truncate min-w-0">{flow.name || "(sem nome)"}</span>
+            <span className="text-xs text-slate-400 shrink-0">{flow.items.length} opç.</span>
+            {fi > 0 && (
+              <div className="flex shrink-0 gap-0.5 ml-1" onClick={(e) => e.preventDefault()}>
+                <button type="button" onClick={() => moveFlow(fi, -1)} disabled={fi === 0}
+                  className="w-6 h-6 flex items-center justify-center text-slate-400 hover:text-slate-700 disabled:opacity-20 text-xs">▲</button>
+                <button type="button" onClick={() => moveFlow(fi, 1)} disabled={fi === flows.length - 1}
+                  className="w-6 h-6 flex items-center justify-center text-slate-400 hover:text-slate-700 disabled:opacity-20 text-xs">▼</button>
+                <button type="button" onClick={() => removeFlow(fi)}
+                  className="w-6 h-6 flex items-center justify-center text-red-400 hover:text-red-600 text-sm">✕</button>
+              </div>
+            )}
+          </summary>
+
+          <div className="border-t border-slate-100 px-3 pb-3 pt-2.5 space-y-3">
+            {/* Nome e ID */}
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="label text-xs">Nome do fluxo</label>
+                <input className="input text-sm" value={flow.name} placeholder="Menu Principal"
+                  onChange={(e) => {
+                    const newName = e.target.value;
+                    updateFlow(fi, { name: newName, id: fi === 0 ? "main" : slugifyFlow(newName) });
+                  }} />
+              </div>
+              <div>
+                <label className="label text-xs">ID (slug)</label>
+                <input className={`input text-sm font-mono ${fi === 0 ? "bg-slate-50 text-slate-400" : ""}`}
+                  value={flow.id} readOnly={fi === 0}
+                  onChange={(e) => updateFlow(fi, { id: e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_") })}
+                  placeholder="id_do_fluxo" />
+                {fi === 0 && <p className="text-[11px] text-slate-400 mt-0.5">O fluxo principal é sempre "main".</p>}
+              </div>
+            </div>
+
+            {/* Mensagem de entrada */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="label text-xs mb-0">Mensagem de entrada</label>
+                <button type="button" onClick={() => setPreviewFlow(previewFlow === flow.id ? null : flow.id)}
+                  className="text-xs text-brand underline">
+                  {previewFlow === flow.id ? "Ocultar prévia" : "Ver prévia"}
+                </button>
+              </div>
+              <textarea
+                className="input resize-y text-sm font-mono leading-relaxed w-full"
+                rows={5}
+                value={flow.message}
+                onChange={(e) => updateFlow(fi, { message: e.target.value })}
+                placeholder={"Olá! 👋 Bem-vindo(a) a *{negocio}*!\n\nComo posso ajudar? Escolha uma opção:"}
+              />
+              {previewFlow === flow.id && (
+                <div className="mt-2 bg-[#e8fdd4] border border-[#b7e8a0] rounded-xl px-3.5 py-2.5 text-sm text-slate-800 whitespace-pre-line leading-relaxed">
+                  <p className="text-[10px] text-slate-500 mb-1.5 font-semibold uppercase tracking-wide">Prévia WhatsApp</p>
+                  {flow.message}
+                  {flow.items.length > 0 && (
+                    <div className="mt-2 space-y-0.5">
+                      {flow.items.map((item, ii) => (
+                        <p key={ii}>{MENU_NUMS[ii]}. {item.emoji} {item.title}</p>
+                      ))}
+                      <p className="text-[11px] text-slate-500 mt-1.5 italic">_Digite o número da opção._</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Itens */}
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-slate-600">Opções deste fluxo</p>
+              {flow.items.map((item, ii) => (
+                <div key={ii} className="border border-slate-200 rounded-xl bg-slate-50 overflow-hidden">
+                  {/* cabeçalho item */}
+                  <div className="flex items-center gap-2 px-2.5 py-2 bg-white">
+                    <span className="text-xs text-slate-400 w-4 shrink-0 text-center font-mono">{ii + 1}</span>
+                    <input
+                      className="w-9 h-9 text-xl text-center rounded-lg border border-slate-200 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-brand/30 shrink-0"
+                      maxLength={2} value={item.emoji}
+                      onChange={(e) => updateItem(fi, ii, { emoji: e.target.value })} placeholder="💬"
+                    />
+                    <input className="input text-sm flex-1 min-w-0" value={item.title}
+                      onChange={(e) => updateItem(fi, ii, { title: e.target.value })}
+                      placeholder="Título da opção (ex: Nossos preços, Suporte...)" />
+                    <div className="flex shrink-0">
+                      <button type="button" onClick={() => moveItem(fi, ii, -1)} disabled={ii === 0}
+                        className="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-slate-700 disabled:opacity-20 text-xs">▲</button>
+                      <button type="button" onClick={() => moveItem(fi, ii, 1)} disabled={ii === flow.items.length - 1}
+                        className="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-slate-700 disabled:opacity-20 text-xs">▼</button>
+                      <button type="button" onClick={() => removeItem(fi, ii)}
+                        className="w-7 h-7 flex items-center justify-center text-red-400 hover:text-red-600 text-sm ml-0.5">✕</button>
+                    </div>
+                  </div>
+
+                  {/* corpo item */}
+                  <div className="px-2.5 pb-2.5 pt-2 space-y-2">
+                    <textarea
+                      className="input text-sm resize-y w-full leading-relaxed"
+                      rows={4}
+                      value={item.value || ""}
+                      onChange={(e) => updateItem(fi, ii, { value: e.target.value })}
+                      placeholder={
+                        item.action === "schedule" ? "Opcional — o bot já envia o link automaticamente.\nEx: Veja nossos horários disponíveis 👇" :
+                        item.action === "charges"  ? "Opcional — o bot já consulta as cobranças.\nEx: Aguarde, vou verificar sua situação..." :
+                        item.action === "human"    ? "Mensagem enviada antes de encaminhar.\nEx: Um momento! Vou te conectar com nosso suporte 🙏" :
+                        "O que o bot responde ao selecionar esta opção...\n\nEx: Nossos preços são:\n• Corte: R$ 40\n• Coloração: R$ 80\n\nAceitamos Pix e cartão. 💳"
+                      }
+                    />
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[11px] text-slate-500 font-medium">→ Ir para outro fluxo</label>
+                        <select className="input text-xs mt-0.5"
+                          value={item.nextFlow || ""}
+                          onChange={(e) => updateItem(fi, ii, { nextFlow: e.target.value || undefined })}>
+                          <option value="">Fim do fluxo (volta ao início)</option>
+                          {flows.filter((f) => f.id !== flow.id).map((f) => (
+                            <option key={f.id} value={f.id}>{f.name} ({f.id})</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[11px] text-slate-500 font-medium">⚡ Ação integrada</label>
+                        <select className="input text-xs mt-0.5"
+                          value={item.action && ["schedule","charges","human"].includes(item.action) ? item.action : ""}
+                          onChange={(e) => updateItem(fi, ii, { action: (e.target.value as BotSpecialAction) || undefined })}>
+                          <option value="">Nenhuma</option>
+                          {SPECIAL_ACTIONS.map((a) => (
+                            <option key={a.value} value={a.value}>{a.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    {item.action && (
+                      <p className="text-[11px] text-slate-400 leading-snug">
+                        {item.action === "schedule" && "O bot envia o link de agendamento ao cliente — pode combinar com texto acima."}
+                        {item.action === "charges"  && "O bot consulta cobranças em aberto pelo número do cliente; se não encontrar, pede o nome."}
+                        {item.action === "human"    && "O bot entra em modo humano e notifica o WhatsApp de suporte configurado."}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ))}
+
+              {flow.items.length < MAX_ITEMS ? (
+                <button type="button" onClick={() => addItem(fi)}
+                  className="w-full border-2 border-dashed border-slate-200 rounded-xl py-2.5 text-sm text-slate-400 hover:border-brand hover:text-brand transition-colors">
+                  + Adicionar opção
+                </button>
+              ) : (
+                <p className="text-xs text-slate-400 text-center py-1">Limite de {MAX_ITEMS} opções por fluxo.</p>
+              )}
             </div>
           </div>
-
-          {/* resposta livre */}
-          <div className="border-t border-slate-100 px-2.5 pb-2.5 pt-2 space-y-2">
-            <textarea
-              className="input text-sm resize-none w-full leading-relaxed"
-              rows={3}
-              value={item.value || ""}
-              onChange={(e) => update(i, { value: e.target.value })}
-              placeholder={
-                specialOf(item) === "schedule"  ? "Opcional — o bot já envia o link de agendamento automaticamente." :
-                specialOf(item) === "charges"   ? "Opcional — o bot já consulta as cobranças automaticamente." :
-                specialOf(item) === "human"     ? "Mensagem enviada antes de encaminhar ao atendente." :
-                "Escreva o que o bot vai responder...\nPode incluir links, preços, endereço, horários de funcionamento, FAQ, promoções — qualquer coisa."
-              }
-            />
-
-            {/* ação especial opcional */}
-            <details className="group">
-              <summary className="flex items-center gap-1.5 text-xs cursor-pointer select-none list-none text-slate-400 hover:text-slate-600">
-                <span>⚡</span>
-                <span>
-                  {specialOf(item)
-                    ? SPECIAL_ACTIONS.find(a => a.value === specialOf(item))?.label
-                    : "Ação integrada (opcional)"}
-                </span>
-                <span className="ml-auto group-open:rotate-180 transition-transform">▾</span>
-              </summary>
-              <div className="mt-2 flex gap-2 flex-wrap">
-                <button type="button"
-                  onClick={() => update(i, { action: undefined })}
-                  className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${!specialOf(item) ? "bg-slate-700 text-white border-slate-700" : "bg-white text-slate-500 border-slate-200 hover:border-slate-400"}`}>
-                  Nenhuma
-                </button>
-                {SPECIAL_ACTIONS.map((a) => (
-                  <button key={a.value} type="button"
-                    onClick={() => update(i, { action: a.value })}
-                    className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${specialOf(item) === a.value ? "bg-brand text-white border-brand" : "bg-white text-slate-500 border-slate-200 hover:border-brand hover:text-brand"}`}>
-                    {a.label}
-                  </button>
-                ))}
-                <p className="w-full text-[11px] text-slate-400 mt-0.5">
-                  {specialOf(item) === "schedule" && "O bot envia o link de agendamento ao cliente — pode combinar com texto acima."}
-                  {specialOf(item) === "charges"  && "O bot consulta cobranças em aberto pelo número do cliente, ou pede o nome."}
-                  {specialOf(item) === "human"    && "O bot transita para modo humano e pode notificar seu WhatsApp de suporte."}
-                  {!specialOf(item)               && "Adicione uma integração automática além do texto acima."}
-                </p>
-              </div>
-            </details>
-          </div>
-        </div>
+        </details>
       ))}
 
-      {items.length < MAX_ITEMS ? (
-        <button type="button" onClick={add}
-          className="w-full border-2 border-dashed border-slate-200 rounded-xl py-3 text-sm text-slate-400 hover:border-brand hover:text-brand transition-colors">
-          + Adicionar opção
+      {flows.length < MAX_FLOWS ? (
+        <button type="button" onClick={addFlow}
+          className="w-full border-2 border-dashed border-slate-200 rounded-xl py-3 text-sm text-slate-400 hover:border-brand hover:text-brand transition-colors font-medium">
+          + Adicionar novo fluxo / sub-menu
         </button>
       ) : (
-        <p className="text-xs text-slate-400 text-center py-1">Limite de {MAX_ITEMS} opções atingido.</p>
+        <p className="text-xs text-slate-400 text-center py-1">Limite de {MAX_FLOWS} fluxos atingido.</p>
       )}
     </div>
   );

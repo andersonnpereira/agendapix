@@ -18,6 +18,7 @@ import {
   DEFAULT_MSG_LEMBRETE_AMANHA,
   DEFAULT_MSG_COBRANCA_VENCIDA,
 } from "@/lib/whatsapp";
+import { type BotMenuItem, type BotMenuAction, BOT_DEFAULTS, DEFAULT_MENU_ITEMS } from "@/lib/whatsapp-bot";
 
 // Rodar no Supabase SQL Editor se as colunas ainda não existirem:
 // ALTER TABLE public.profiles
@@ -71,9 +72,24 @@ export default function ConfiguracoesPage() {
   // Link de pagamento externo
   const [paymentLink, setPaymentLink] = useState("");
 
-  // Chatbot
+  // Chatbot — básico
   const [botEnabled, setBotEnabled] = useState(false);
   const [userId, setUserId] = useState("");
+  // Chatbot — avançado
+  const [botWelcomeMessage, setBotWelcomeMessage] = useState(BOT_DEFAULTS.welcome);
+  const [botMenuHeader, setBotMenuHeader] = useState(BOT_DEFAULTS.menuHeader);
+  const [botFallbackMessage, setBotFallbackMessage] = useState(BOT_DEFAULTS.fallback);
+  const [botFallbackMaxTries, setBotFallbackMaxTries] = useState(BOT_DEFAULTS.fallbackMaxTries);
+  const [botTypingDelayMs, setBotTypingDelayMs] = useState(BOT_DEFAULTS.typingDelayMs);
+  const [botSessionTimeoutMin, setBotSessionTimeoutMin] = useState(BOT_DEFAULTS.sessionTimeoutMin);
+  const [botBusinessHoursEnabled, setBotBusinessHoursEnabled] = useState(false);
+  const [botHoursStart, setBotHoursStart] = useState(8);
+  const [botHoursEnd, setBotHoursEnd] = useState(18);
+  const [botBusinessDays, setBotBusinessDays] = useState<string[]>(["seg","ter","qua","qui","sex"]);
+  const [botAwayMessage, setBotAwayMessage] = useState(BOT_DEFAULTS.away);
+  const [botHumanMessage, setBotHumanMessage] = useState(BOT_DEFAULTS.human);
+  const [botHumanNotify, setBotHumanNotify] = useState(false);
+  const [botMenuItems, setBotMenuItems] = useState<BotMenuItem[]>(DEFAULT_MENU_ITEMS);
 
   // Mensagens customizadas
   const [msgConfirmacao, setMsgConfirmacao] = useState("");
@@ -205,6 +221,21 @@ export default function ConfiguracoesPage() {
       setMsgLembreteAmanha((p as Record<string, unknown>).msg_lembrete_amanha as string || DEFAULT_MSG_LEMBRETE_AMANHA);
       setMsgCobrancaVencida((p as Record<string, unknown>).msg_cobranca_vencida as string || DEFAULT_MSG_COBRANCA_VENCIDA);
       setBotEnabled((p as Record<string, unknown>).bot_enabled as boolean ?? false);
+      setBotWelcomeMessage((p as Record<string, unknown>).bot_welcome_message as string || BOT_DEFAULTS.welcome);
+      setBotMenuHeader((p as Record<string, unknown>).bot_menu_header as string || BOT_DEFAULTS.menuHeader);
+      setBotFallbackMessage((p as Record<string, unknown>).bot_fallback_message as string || BOT_DEFAULTS.fallback);
+      setBotFallbackMaxTries((p as Record<string, unknown>).bot_fallback_max_tries as number ?? BOT_DEFAULTS.fallbackMaxTries);
+      setBotTypingDelayMs((p as Record<string, unknown>).bot_typing_delay_ms as number ?? BOT_DEFAULTS.typingDelayMs);
+      setBotSessionTimeoutMin((p as Record<string, unknown>).bot_session_timeout_min as number ?? BOT_DEFAULTS.sessionTimeoutMin);
+      setBotBusinessHoursEnabled((p as Record<string, unknown>).bot_business_hours_enabled as boolean ?? false);
+      setBotHoursStart((p as Record<string, unknown>).bot_hours_start as number ?? 8);
+      setBotHoursEnd((p as Record<string, unknown>).bot_hours_end as number ?? 18);
+      setBotBusinessDays((p as Record<string, unknown>).bot_business_days as string[] || ["seg","ter","qua","qui","sex"]);
+      setBotAwayMessage((p as Record<string, unknown>).bot_away_message as string || BOT_DEFAULTS.away);
+      setBotHumanMessage((p as Record<string, unknown>).bot_human_message as string || BOT_DEFAULTS.human);
+      setBotHumanNotify((p as Record<string, unknown>).bot_human_notify as boolean ?? false);
+      const rawMenu = (p as Record<string, unknown>).bot_menu_items;
+      setBotMenuItems(Array.isArray(rawMenu) && (rawMenu as BotMenuItem[]).length > 0 ? rawMenu as BotMenuItem[] : DEFAULT_MENU_ITEMS);
       setBrandColor(p.brand_color || "#16A34A");
       setAvatarUrl(p.avatar_url || "");
       setBio(p.bio || "");
@@ -260,6 +291,20 @@ export default function ConfiguracoesPage() {
         msg_lembrete_amanha: msgLembreteAmanha || null,
         msg_cobranca_vencida: msgCobrancaVencida || null,
         bot_enabled: botEnabled,
+        bot_welcome_message: botWelcomeMessage || null,
+        bot_menu_header: botMenuHeader || null,
+        bot_fallback_message: botFallbackMessage || null,
+        bot_fallback_max_tries: botFallbackMaxTries,
+        bot_typing_delay_ms: botTypingDelayMs,
+        bot_session_timeout_min: botSessionTimeoutMin,
+        bot_business_hours_enabled: botBusinessHoursEnabled,
+        bot_hours_start: botHoursStart,
+        bot_hours_end: botHoursEnd,
+        bot_business_days: botBusinessDays,
+        bot_away_message: botAwayMessage || null,
+        bot_human_message: botHumanMessage || null,
+        bot_human_notify: botHumanNotify,
+        bot_menu_items: botMenuItems,
         brand_color: brandColor || null,
         bio: bio.trim() || null,
         review_link: reviewLink.trim() || null,
@@ -669,35 +714,209 @@ export default function ConfiguracoesPage() {
 
       {/* Chatbot WhatsApp */}
       <section className="card space-y-4">
+        {/* Header + toggle */}
         <div className="flex items-center justify-between">
           <div>
             <h2 className="font-semibold text-slate-900">Chatbot WhatsApp</h2>
             <p className="text-xs text-slate-400 mt-0.5">
-              Responde automaticamente aos clientes que entrarem em contato pelo WhatsApp.
+              Responde automaticamente a clientes que entrarem em contato pelo WhatsApp.
             </p>
           </div>
           <button
             type="button"
             onClick={() => setBotEnabled((v) => !v)}
-            className={`relative w-12 h-6 rounded-full transition-colors ${botEnabled ? "bg-brand" : "bg-slate-300"}`}
+            className={`relative w-12 h-6 rounded-full transition-colors shrink-0 ${botEnabled ? "bg-brand" : "bg-slate-300"}`}
           >
             <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${botEnabled ? "right-0.5" : "left-0.5"}`} />
           </button>
         </div>
 
-        {botEnabled ? (
-          <div className="bg-slate-50 rounded-xl p-3 text-xs text-slate-600 space-y-1.5 leading-relaxed">
-            <p className="font-semibold text-slate-700">Fluxo automático ao receber mensagem:</p>
-            <p>1️⃣ <strong>Agendar</strong> — envia o link do seu agendamento</p>
-            <p>2️⃣ <strong>Cobrança</strong> — consulta cobranças em aberto pelo número do cliente</p>
-            <p>3️⃣ <strong>Atendente</strong> — encaminha para atendimento humano</p>
-            <p className="text-slate-400 pt-0.5">"oi", "olá" ou "menu" sempre abrem o menu principal.</p>
-            <p className="text-brand-dark font-semibold pt-1">✅ Ao salvar, o webhook é configurado automaticamente na sua conexão WhatsApp.</p>
-          </div>
-        ) : (
+        {!botEnabled && (
           <p className="text-xs text-slate-400">
             Ative e salve — o webhook é configurado automaticamente na conexão WhatsApp existente.
           </p>
+        )}
+
+        {botEnabled && (
+          <div className="space-y-5 pt-1">
+
+            {/* ── Menu interativo ── */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <span className="text-base">📋</span>
+                <h3 className="font-semibold text-slate-800 text-sm">Menu interativo</h3>
+              </div>
+              <p className="text-xs text-slate-400 -mt-1">Até 9 opções. O cliente digita o número para escolher.</p>
+              <BotMenuEditor items={botMenuItems} onChange={setBotMenuItems} />
+            </div>
+
+            {/* ── Mensagens ── */}
+            <div className="space-y-3 border-t border-slate-100 pt-4">
+              <div className="flex items-center gap-2">
+                <span className="text-base">💬</span>
+                <h3 className="font-semibold text-slate-800 text-sm">Mensagens</h3>
+              </div>
+              <div>
+                <label className="label">Boas-vindas <span className="text-slate-400 font-normal">(use {"{negocio}"} para o nome do negócio)</span></label>
+                <textarea
+                  className="input resize-none text-sm"
+                  rows={2}
+                  value={botWelcomeMessage}
+                  onChange={(e) => setBotWelcomeMessage(e.target.value)}
+                />
+                <button type="button" className="text-xs text-brand underline mt-1" onClick={() => setBotWelcomeMessage(BOT_DEFAULTS.welcome)}>Restaurar padrão</button>
+              </div>
+              <div>
+                <label className="label">Cabeçalho do menu</label>
+                <input className="input text-sm" value={botMenuHeader} onChange={(e) => setBotMenuHeader(e.target.value)} />
+                <button type="button" className="text-xs text-brand underline mt-1" onClick={() => setBotMenuHeader(BOT_DEFAULTS.menuHeader)}>Restaurar padrão</button>
+              </div>
+              <div>
+                <label className="label">Resposta inválida (fallback)</label>
+                <input className="input text-sm" value={botFallbackMessage} onChange={(e) => setBotFallbackMessage(e.target.value)} />
+                <button type="button" className="text-xs text-brand underline mt-1" onClick={() => setBotFallbackMessage(BOT_DEFAULTS.fallback)}>Restaurar padrão</button>
+              </div>
+              <div>
+                <label className="label">Encaminhar ao atendente</label>
+                <textarea
+                  className="input resize-none text-sm"
+                  rows={2}
+                  value={botHumanMessage}
+                  onChange={(e) => setBotHumanMessage(e.target.value)}
+                />
+                <button type="button" className="text-xs text-brand underline mt-1" onClick={() => setBotHumanMessage(BOT_DEFAULTS.human)}>Restaurar padrão</button>
+              </div>
+            </div>
+
+            {/* ── Horário de atendimento ── */}
+            <div className="space-y-3 border-t border-slate-100 pt-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-base">🕐</span>
+                  <h3 className="font-semibold text-slate-800 text-sm">Horário de atendimento</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setBotBusinessHoursEnabled((v) => !v)}
+                  className={`relative w-10 h-5 rounded-full transition-colors shrink-0 ${botBusinessHoursEnabled ? "bg-brand" : "bg-slate-300"}`}
+                >
+                  <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all ${botBusinessHoursEnabled ? "right-0.5" : "left-0.5"}`} />
+                </button>
+              </div>
+              <p className="text-xs text-slate-400 -mt-1">Fora do expediente, o bot envia a mensagem de ausência e encerra.</p>
+
+              {botBusinessHoursEnabled && (
+                <div className="space-y-3 bg-slate-50 rounded-xl p-3">
+                  <div>
+                    <label className="label text-xs">Dias da semana</label>
+                    <div className="flex flex-wrap gap-1.5 mt-1">
+                      {[["seg","Seg"],["ter","Ter"],["qua","Qua"],["qui","Qui"],["sex","Sex"],["sab","Sáb"],["dom","Dom"]].map(([val, label]) => (
+                        <button
+                          key={val}
+                          type="button"
+                          onClick={() => setBotBusinessDays((d) => d.includes(val) ? d.filter((x) => x !== val) : [...d, val])}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors ${botBusinessDays.includes(val) ? "bg-brand text-white border-brand" : "bg-white text-slate-600 border-slate-200"}`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="label text-xs">Abertura</label>
+                      <select className="input text-sm" value={botHoursStart} onChange={(e) => setBotHoursStart(parseInt(e.target.value))}>
+                        {Array.from({length: 24}, (_, i) => (
+                          <option key={i} value={i}>{String(i).padStart(2,"0")}:00</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="label text-xs">Fechamento</label>
+                      <select className="input text-sm" value={botHoursEnd} onChange={(e) => setBotHoursEnd(parseInt(e.target.value))}>
+                        {Array.from({length: 24}, (_, i) => (
+                          <option key={i} value={i}>{String(i).padStart(2,"0")}:00</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="label text-xs">Mensagem fora do horário</label>
+                    <textarea
+                      className="input resize-none text-sm"
+                      rows={3}
+                      value={botAwayMessage}
+                      onChange={(e) => setBotAwayMessage(e.target.value)}
+                    />
+                    <button type="button" className="text-xs text-brand underline mt-1" onClick={() => setBotAwayMessage(BOT_DEFAULTS.away)}>Restaurar padrão</button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ── Comportamento ── */}
+            <div className="space-y-3 border-t border-slate-100 pt-4">
+              <div className="flex items-center gap-2">
+                <span className="text-base">⚙️</span>
+                <h3 className="font-semibold text-slate-800 text-sm">Comportamento</h3>
+              </div>
+
+              <div>
+                <label className="label">Simulação de digitação</label>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="range" min={0} max={4000} step={200}
+                    value={botTypingDelayMs}
+                    onChange={(e) => setBotTypingDelayMs(parseInt(e.target.value))}
+                    className="flex-1"
+                  />
+                  <span className="text-sm font-mono text-slate-700 w-16 text-right shrink-0">
+                    {botTypingDelayMs === 0 ? "Desligado" : `${(botTypingDelayMs / 1000).toFixed(1)}s`}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400 mt-1">Aparência de "digitando..." antes de responder (Evolution API).</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label">Timeout de sessão</label>
+                  <select className="input text-sm" value={botSessionTimeoutMin} onChange={(e) => setBotSessionTimeoutMin(parseInt(e.target.value))}>
+                    {[5,10,15,30,60,120].map((m) => (
+                      <option key={m} value={m}>{m} min</option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-slate-400 mt-1">Inatividade reinicia ao menu</p>
+                </div>
+                <div>
+                  <label className="label">Tentativas antes de escalar</label>
+                  <select className="input text-sm" value={botFallbackMaxTries} onChange={(e) => setBotFallbackMaxTries(parseInt(e.target.value))}>
+                    {[1,2,3,4,5].map((n) => (
+                      <option key={n} value={n}>{n}x</option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-slate-400 mt-1">Respostas inválidas até encaminhar</p>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between py-3 border-t border-slate-100">
+                <div>
+                  <p className="text-sm font-medium text-slate-900">Notificar quando pedir atendente</p>
+                  <p className="text-xs text-slate-400">Envia mensagem no seu WhatsApp quando um cliente solicitar atendimento humano</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setBotHumanNotify((v) => !v)}
+                  className={`relative w-10 h-5 rounded-full transition-colors shrink-0 ${botHumanNotify ? "bg-brand" : "bg-slate-300"}`}
+                >
+                  <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all ${botHumanNotify ? "right-0.5" : "left-0.5"}`} />
+                </button>
+              </div>
+            </div>
+
+            <p className="text-xs text-brand-dark font-semibold bg-brand-light px-3 py-2 rounded-xl border border-brand/20">
+              ✅ Ao salvar, o webhook é configurado automaticamente na sua conexão WhatsApp.
+            </p>
+          </div>
         )}
       </section>
 
@@ -782,6 +1001,101 @@ export default function ConfiguracoesPage() {
       >
         {saving ? "Salvando..." : saved ? "✓ Salvo!" : "Salvar configurações"}
       </button>
+    </div>
+  );
+}
+
+// ── Editor de menu do bot ────────────────────────────────────────────────────
+const BOT_ACTION_LABELS: Record<BotMenuAction, string> = {
+  schedule: "📅 Agendar",
+  charges:  "💳 Cobranças",
+  human:    "👤 Atendente",
+  link:     "🔗 Link externo",
+  message:  "💬 Mensagem fixa",
+};
+
+function BotMenuEditor({ items, onChange }: { items: BotMenuItem[]; onChange: (v: BotMenuItem[]) => void }) {
+  function update(index: number, patch: Partial<BotMenuItem>) {
+    const next = items.map((item, i) => (i === index ? { ...item, ...patch } : item));
+    onChange(next);
+  }
+  function remove(index: number) {
+    onChange(items.filter((_, i) => i !== index));
+  }
+  function move(index: number, dir: -1 | 1) {
+    const next = [...items];
+    const target = index + dir;
+    if (target < 0 || target >= next.length) return;
+    [next[index], next[target]] = [next[target], next[index]];
+    onChange(next);
+  }
+  function add() {
+    if (items.length >= 9) return;
+    onChange([...items, { emoji: "✨", title: "Nova opção", action: "message", value: "" }]);
+  }
+
+  const needsValue = (a: BotMenuAction) => a === "link" || a === "message";
+
+  return (
+    <div className="space-y-2">
+      {items.map((item, i) => (
+        <div key={i} className="border border-slate-200 rounded-xl p-3 space-y-2 bg-white">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-400 font-mono w-4 shrink-0">{i + 1}.</span>
+            <input
+              className="input text-sm w-12 text-center px-1 shrink-0"
+              maxLength={2}
+              value={item.emoji}
+              onChange={(e) => update(i, { emoji: e.target.value })}
+              placeholder="😊"
+            />
+            <input
+              className="input text-sm flex-1"
+              value={item.title}
+              onChange={(e) => update(i, { title: e.target.value })}
+              placeholder="Título da opção"
+            />
+            <div className="flex gap-0.5 shrink-0">
+              <button type="button" onClick={() => move(i, -1)} disabled={i === 0} className="p-1 rounded text-slate-400 hover:text-slate-700 disabled:opacity-30">▲</button>
+              <button type="button" onClick={() => move(i, 1)} disabled={i === items.length - 1} className="p-1 rounded text-slate-400 hover:text-slate-700 disabled:opacity-30">▼</button>
+              <button type="button" onClick={() => remove(i)} className="p-1 rounded text-red-400 hover:text-red-600 ml-0.5">✕</button>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 pl-6">
+            <select
+              className="input text-xs flex-1"
+              value={item.action}
+              onChange={(e) => update(i, { action: e.target.value as BotMenuAction, value: "" })}
+            >
+              {(Object.entries(BOT_ACTION_LABELS) as [BotMenuAction, string][]).map(([val, label]) => (
+                <option key={val} value={val}>{label}</option>
+              ))}
+            </select>
+          </div>
+          {needsValue(item.action) && (
+            <div className="pl-6">
+              <input
+                className="input text-xs w-full"
+                value={item.value || ""}
+                onChange={(e) => update(i, { value: e.target.value })}
+                placeholder={item.action === "link" ? "https://..." : "Digite o texto que será enviado ao cliente..."}
+              />
+            </div>
+          )}
+        </div>
+      ))}
+      {items.length < 9 && (
+        <button
+          type="button"
+          onClick={add}
+          className="w-full border-2 border-dashed border-slate-200 rounded-xl py-2.5 text-sm text-slate-400 hover:border-brand hover:text-brand transition-colors"
+        >
+          + Adicionar opção {items.length}/9
+        </button>
+      )}
+      {items.length === 9 && (
+        <p className="text-xs text-slate-400 text-center">Máximo de 9 opções atingido.</p>
+      )}
     </div>
   );
 }

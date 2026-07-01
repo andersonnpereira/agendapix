@@ -14,6 +14,24 @@ import { handleBotMessage } from "@/lib/whatsapp-bot";
 // CREATE POLICY "bot_conv_service" ON public.bot_conversations
 //   USING (auth.role() = 'service_role') WITH CHECK (auth.role() = 'service_role');
 // ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS bot_enabled boolean NOT NULL DEFAULT false;
+//
+// -- Colunas para o bot profissional (rodar uma vez no Supabase SQL Editor):
+// ALTER TABLE public.profiles
+//   ADD COLUMN IF NOT EXISTS bot_welcome_message text,
+//   ADD COLUMN IF NOT EXISTS bot_menu_header text,
+//   ADD COLUMN IF NOT EXISTS bot_fallback_message text,
+//   ADD COLUMN IF NOT EXISTS bot_fallback_max_tries int DEFAULT 2,
+//   ADD COLUMN IF NOT EXISTS bot_typing_delay_ms int DEFAULT 1200,
+//   ADD COLUMN IF NOT EXISTS bot_session_timeout_min int DEFAULT 30,
+//   ADD COLUMN IF NOT EXISTS bot_business_hours_enabled boolean DEFAULT false,
+//   ADD COLUMN IF NOT EXISTS bot_hours_start int DEFAULT 8,
+//   ADD COLUMN IF NOT EXISTS bot_hours_end int DEFAULT 18,
+//   ADD COLUMN IF NOT EXISTS bot_business_days text[] DEFAULT ARRAY['seg','ter','qua','qui','sex'],
+//   ADD COLUMN IF NOT EXISTS bot_away_message text,
+//   ADD COLUMN IF NOT EXISTS bot_human_message text,
+//   ADD COLUMN IF NOT EXISTS bot_human_notify boolean DEFAULT false,
+//   ADD COLUMN IF NOT EXISTS bot_menu_items jsonb DEFAULT '[]';
+// ALTER TABLE public.bot_conversations ADD COLUMN IF NOT EXISTS fallback_count int DEFAULT 0;
 
 export async function POST(
   req: NextRequest,

@@ -92,6 +92,7 @@ export default function ConfiguracoesPage() {
   const [botTriggerMode, setBotTriggerMode] = useState<BotTriggerMode>(BOT_DEFAULTS.triggerMode);
   const [botTriggerKeywords, setBotTriggerKeywords] = useState<string[]>(BOT_DEFAULTS.triggerKeywords);
   const [botTriggerNewConvHours, setBotTriggerNewConvHours] = useState(BOT_DEFAULTS.triggerNewConvHours);
+  const [botHumanTimeoutHours, setBotHumanTimeoutHours] = useState(BOT_DEFAULTS.humanTimeoutHours);
 
   // Mensagens customizadas
   const [msgConfirmacao, setMsgConfirmacao] = useState("");
@@ -260,6 +261,7 @@ export default function ConfiguracoesPage() {
       const rawKw = (p as Record<string, unknown>).bot_trigger_keywords;
       setBotTriggerKeywords(Array.isArray(rawKw) && rawKw.length > 0 ? rawKw as string[] : BOT_DEFAULTS.triggerKeywords);
       setBotTriggerNewConvHours((p as Record<string, unknown>).bot_trigger_new_conv_hours as number ?? BOT_DEFAULTS.triggerNewConvHours);
+      setBotHumanTimeoutHours((p as Record<string, unknown>).bot_human_timeout_hours as number ?? BOT_DEFAULTS.humanTimeoutHours);
       const rawFlows = (p as Record<string, unknown>).bot_flows;
       setBotFlows(Array.isArray(rawFlows) && (rawFlows as BotFlow[]).length > 0 ? rawFlows as BotFlow[] : DEFAULT_FLOWS);
       setBrandColor(p.brand_color || "#16A34A");
@@ -332,6 +334,7 @@ export default function ConfiguracoesPage() {
         bot_trigger_mode: botTriggerMode,
         bot_trigger_keywords: botTriggerKeywords.length > 0 ? botTriggerKeywords : null,
         bot_trigger_new_conv_hours: botTriggerNewConvHours,
+        bot_human_timeout_hours: botHumanTimeoutHours,
         brand_color: brandColor || null,
         bio: bio.trim() || null,
         review_link: reviewLink.trim() || null,
@@ -960,6 +963,21 @@ export default function ConfiguracoesPage() {
                     </select>
                     <p className="text-xs text-slate-400 mt-1">Opções inválidas até atendente</p>
                   </div>
+                </div>
+                <div>
+                  <label className="label">Reativar bot após atendimento humano</label>
+                  <select className="input text-sm" value={botHumanTimeoutHours} onChange={(e) => setBotHumanTimeoutHours(parseInt(e.target.value))}>
+                    <option value={0}>Nunca — cliente digita "menu" para reativar</option>
+                    <option value={4}>4 horas de inatividade</option>
+                    <option value={8}>8 horas de inatividade</option>
+                    <option value={12}>12 horas de inatividade</option>
+                    <option value={24}>24 horas de inatividade (padrão)</option>
+                    <option value={48}>48 horas de inatividade</option>
+                    <option value={72}>72 horas de inatividade</option>
+                  </select>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Após o atendente encerrar e o cliente ficar inativo por este tempo, o bot volta a responder normalmente.
+                  </p>
                 </div>
                 <div>
                   <label className="label">WhatsApp para notificações</label>

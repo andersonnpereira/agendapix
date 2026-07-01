@@ -37,6 +37,7 @@ export const BOT_DEFAULTS = {
   fallbackMaxTries: 2,
   typingDelayMs: 1200,
   sessionTimeoutMin: 30,
+  humanTimeoutHours: 24,
   triggerMode: "keywords" as BotTriggerMode,
   triggerKeywords: ["oi","olá","ola","hi","hello","menu","início","inicio","start","ajuda","help","info","informações"],
   triggerNewConvHours: 24,
@@ -195,11 +196,19 @@ export async function handleBotMessage(profileId: string, phone: string, text: s
   let fallbackCount = 0;
   let currentFlowId = "main";
 
+  const humanTimeoutHours = (p.bot_human_timeout_hours as number | null) ?? BOT_DEFAULTS.humanTimeoutHours;
+
   if (conv) {
     const minutesSince = (now.getTime() - new Date(conv.last_message_at).getTime()) / 60000;
+    const hoursSince = minutesSince / 60;
     const convState = conv.state as BotState;
-    // Modo humano nunca expira por timeout — persiste até reinício explícito
-    state = (convState === "human") ? "human" : (minutesSince > sessionTimeout ? "idle" : convState);
+    if (convState === "human") {
+      // Modo humano expira após humanTimeoutHours horas de inatividade do cliente
+      // 0 = nunca expira (persiste até "menu" / "0" explícito)
+      state = (humanTimeoutHours > 0 && hoursSince > humanTimeoutHours) ? "idle" : "human";
+    } else {
+      state = minutesSince > sessionTimeout ? "idle" : convState;
+    }
     fallbackCount = (conv.fallback_count as number) ?? 0;
     currentFlowId = (conv.current_flow as string) || "main";
   }

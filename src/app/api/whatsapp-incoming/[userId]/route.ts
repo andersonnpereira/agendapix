@@ -70,9 +70,12 @@ export async function POST(
 
   const remoteJid = (key.remoteJid as string) || "";
 
-  // Ignora grupos
-  if (remoteJid.includes("@g.us")) {
-    return NextResponse.json({ ok: true, skipped: "group" });
+  // Bot SÓ responde conversa individual (@s.whatsapp.net).
+  // Exclui grupos (@g.us), comunidades, newsletters (@newsletter),
+  // status (status@broadcast) e o formato @lid — jamais ativar em grupo.
+  if (!remoteJid.endsWith("@s.whatsapp.net")) {
+    console.log("[bot-incoming] ignorado — não é conversa individual:", remoteJid);
+    return NextResponse.json({ ok: true, skipped: "notIndividualChat", remoteJid });
   }
 
   const phone = remoteJid.replace("@s.whatsapp.net", "").replace(/\D/g, "");

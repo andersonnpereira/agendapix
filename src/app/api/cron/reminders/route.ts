@@ -84,12 +84,13 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ ok: true, sent: 0 });
     }
 
-    // Modo diagnóstico: ?dry=1 lista o que seria enviado, sem enviar nada
+    // Modo diagnóstico: ?dry=1 lista o que seria enviado, sem enviar nada.
+    // ?dry=1&fix=1 também executa o update anti-reenvio e retorna as linhas afetadas.
     if (req.nextUrl.searchParams.get("dry") === "1") {
-      return NextResponse.json({
-        ok: true,
-        dry: true,
-        matched: allToProcess.map(({ charge, type }) => ({
+      const fix = req.nextUrl.searchParams.get("fix") === "1";
+      const matched: Array<Record<string, unknown>> = [];
+      for (const { charge, type } of allToProcess) {
+        const entry: Record<string, unknown> = {
           id: charge.id,
           client: charge.client_name,
           due_date: charge.due_date,
@@ -98,8 +99,21 @@ export async function GET(req: NextRequest) {
           reminders_sent: charge.reminders_sent,
           status: charge.status,
           type,
-        })),
-      });
+        };
+        if (fix) {
+          const { data: upData, error: upErr } = await admin
+            .from("charges")
+            .update({
+              last_auto_reminder_at: now,
+              reminders_sent: (charge.reminders_sent || 0) + 1,
+            })
+            .eq("id", charge.id)
+            .select("id, last_auto_reminder_at, reminders_sent");
+          entry.update = { error: upErr?.message || null, affectedRows: upData };
+        }
+        matched.push(entry);
+      }
+      return NextResponse.json({ ok: true, dry: true, matched });
     }
 
     let sent = 0;

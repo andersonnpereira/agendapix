@@ -6,6 +6,10 @@ import {
 } from "@/lib/whatsapp";
 import { formatBRL } from "@/lib/format";
 
+// Sem isso o Next.js trata a rota como estática e o Vercel cacheia a resposta
+// no CDN — o cron "roda" mas a função nunca executa (X-Vercel-Cache: HIT)
+export const dynamic = "force-dynamic";
+
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET;
   if (secret) {

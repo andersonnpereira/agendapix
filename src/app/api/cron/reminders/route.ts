@@ -84,7 +84,26 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ ok: true, sent: 0 });
     }
 
+    // Modo diagnóstico: ?dry=1 lista o que seria enviado, sem enviar nada
+    if (req.nextUrl.searchParams.get("dry") === "1") {
+      return NextResponse.json({
+        ok: true,
+        dry: true,
+        matched: allToProcess.map(({ charge, type }) => ({
+          id: charge.id,
+          client: charge.client_name,
+          due_date: charge.due_date,
+          scheduled_reminder_at: charge.scheduled_reminder_at,
+          last_auto_reminder_at: charge.last_auto_reminder_at,
+          reminders_sent: charge.reminders_sent,
+          status: charge.status,
+          type,
+        })),
+      });
+    }
+
     let sent = 0;
+    const details: Array<Record<string, unknown>> = [];
     for (const { charge, type } of allToProcess) {
       const profile = charge.profiles as ProfileJoin;
       if (!charge.client_phone) continue;
@@ -137,21 +156,27 @@ export async function GET(req: NextRequest) {
       });
 
       if (result.ok) {
-        await admin
+        const { error: upErr } = await admin
           .from("charges")
           .update({
             last_auto_reminder_at: now,
             reminders_sent: (charge.reminders_sent || 0) + 1,
           })
           .eq("id", charge.id);
+        if (upErr) {
+          // CRÍTICO: sem esse update a cobrança fica elegível para sempre e o cliente recebe spam a cada execução
+          console.error("[cron/reminders] UPDATE FALHOU:", { id: charge.id, error: upErr.message });
+        }
         sent++;
+        details.push({ id: charge.id, client: charge.client_name, type, sendOk: true, updateError: upErr?.message || null });
         console.log("[cron/reminders] enviado:", { id: charge.id, client: charge.client_name, type, due: charge.due_date });
       } else {
+        details.push({ id: charge.id, client: charge.client_name, type, sendOk: false, sendError: result.error });
         console.error("[cron/reminders] FALHA:", { id: charge.id, client: charge.client_name, result });
       }
     }
 
-    return NextResponse.json({ ok: true, sent });
+    return NextResponse.json({ ok: true, sent, details });
   } catch (e) {
     console.error("[cron/reminders]", e);
     return NextResponse.json({ error: String(e) }, { status: 500 });

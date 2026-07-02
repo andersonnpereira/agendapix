@@ -1,5 +1,5 @@
 import { createAdminClient } from "@/lib/supabase-admin";
-import { sendWhatsApp } from "@/lib/whatsapp";
+import { sendWhatsApp, sendWhatsAppImage } from "@/lib/whatsapp";
 
 export type BotState = "idle" | "menu" | "cobranca_lookup" | "human";
 export type BotSpecialAction = "schedule" | "charges" | "human";
@@ -10,6 +10,7 @@ export interface BotFlowItem {
   emoji: string;
   title: string;
   value?: string;              // texto livre enviado ao cliente
+  imageUrl?: string;           // imagem opcional enviada junto (texto vira legenda)
   nextFlow?: string;           // ID do próximo fluxo (sub-menu)
   action?: BotSpecialAction | "custom" | "link" | "message"; // legado ou ação especial
 }
@@ -19,6 +20,7 @@ export interface BotFlow {
   id: string;         // slug único, ex: "main", "suporte", "como_funciona"
   name: string;       // nome exibido no editor
   message: string;    // mensagem enviada ao entrar nesse fluxo (antes de listar as opções)
+  imageUrl?: string;  // imagem opcional enviada com a mensagem de entrada (vira legenda)
   items: BotFlowItem[];
 }
 
@@ -160,10 +162,17 @@ export async function handleBotMessage(profileId: string, phone: string, text: s
 
   const flows = resolveFlows(p);
 
-  async function reply(message: string) {
+  async function reply(message: string, imageUrl?: string) {
     await simulateTyping(instanceName, apiKey, phone, typingDelay);
-    const result = await sendWhatsApp({ to: phone, message, provider, token: (p.whatsapp_token as string) || undefined, instanceId: (p.whatsapp_instance_id as string) || undefined });
-    if (!result.ok) console.error("[whatsapp-bot] falha ao enviar:", result.error, { phone, provider, instanceName });
+    const common = { to: phone, provider, token: (p.whatsapp_token as string) || undefined, instanceId: (p.whatsapp_instance_id as string) || undefined };
+    const result = imageUrl
+      ? await sendWhatsAppImage({ ...common, imageUrl, caption: message })
+      : await sendWhatsApp({ ...common, message });
+    if (!result.ok) {
+      console.error("[whatsapp-bot] falha ao enviar:", result.error, { phone, provider, instanceName, comImagem: !!imageUrl });
+      // Fallback: se a imagem falhou, garante que o texto chegue
+      if (imageUrl && message) await sendWhatsApp({ ...common, message });
+    }
   }
   async function notifyOwner(msg: string) {
     const notifyPhone = (p.bot_notify_phone as string | null)?.trim();
@@ -277,7 +286,7 @@ export async function handleBotMessage(profileId: string, phone: string, text: s
   // Estado idle → mostrar menu principal
   if (state === "idle") {
     const mainFlow = flows.find((f) => f.id === "main") || flows[0];
-    await reply(buildFlowText(mainFlow, businessName));
+    await reply(buildFlowText(mainFlow, businessName), mainFlow.imageUrl);
     newState = "menu";
     newCurrentFlowId = mainFlow.id;
 
@@ -310,19 +319,19 @@ export async function handleBotMessage(profileId: string, phone: string, text: s
         // Navegar para sub-fluxo
         const nextFlow = flows.find((f) => f.id === item.nextFlow);
         if (nextFlow) {
-          if (freeText) await reply(freeText);
-          await reply(buildFlowText(nextFlow, businessName));
+          if (freeText || item.imageUrl) await reply(freeText, item.imageUrl);
+          await reply(buildFlowText(nextFlow, businessName), nextFlow.imageUrl);
           newState = "menu";
           newCurrentFlowId = nextFlow.id;
         } else {
-          await reply(freeText || `Obrigado por entrar em contato com *${businessName}*! 😊`);
+          await reply(freeText || `Obrigado por entrar em contato com *${businessName}*! 😊`, item.imageUrl);
           newState = "idle";
           newCurrentFlowId = "main";
         }
 
       } else if (item.action === "schedule") {
         const link = p.slug ? `${SITE_URL}/agendar/${p.slug as string}` : null;
-        if (freeText) await reply(freeText);
+        if (freeText || item.imageUrl) await reply(freeText, item.imageUrl);
         if (!freeText || !freeText.includes(link || "")) {
           await reply(link
             ? `📅 Clique aqui para agendar:\n${link}\n\nQualquer dúvida é só chamar! 😊`
@@ -340,7 +349,7 @@ export async function handleBotMessage(profileId: string, phone: string, text: s
         const byPhone = (allCharges || []).filter(
           (c) => c.client_phone && c.client_phone.replace(/\D/g, "").slice(-8) === last8
         );
-        if (freeText) await reply(freeText);
+        if (freeText || item.imageUrl) await reply(freeText, item.imageUrl);
         if (byPhone.length > 0) {
           await replyCharges(byPhone, byPhone[0].client_name || "Cliente", p.pix_key as string | null, reply);
           newState = "idle";
@@ -351,14 +360,14 @@ export async function handleBotMessage(profileId: string, phone: string, text: s
         newCurrentFlowId = "main";
 
       } else if (item.action === "human") {
-        await reply(freeText || humanMsg);
+        await reply(freeText || humanMsg, item.imageUrl);
         newState = "human";
         newCurrentFlowId = "main";
         await notifyOwner(`Cliente *${phone}* solicitou atendimento humano.`);
 
       } else {
         // Resposta livre pura
-        await reply(freeText || `Obrigado por entrar em contato com *${businessName}*! 😊`);
+        await reply(freeText || `Obrigado por entrar em contato com *${businessName}*! 😊`, item.imageUrl);
         newState = "idle";
         newCurrentFlowId = "main";
       }

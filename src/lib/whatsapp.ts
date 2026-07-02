@@ -133,6 +133,95 @@ export async function sendWhatsApp(
   }
 }
 
+export interface SendWhatsAppImageParams {
+  to: string;
+  imageUrl: string;   // URL pública da imagem
+  caption?: string;   // texto que acompanha a imagem
+  provider?: WhatsAppProvider;
+  token?: string;
+  instanceId?: string;
+}
+
+/** Envia imagem (com legenda opcional) via provedor configurado. */
+export async function sendWhatsAppImage(
+  params: SendWhatsAppImageParams
+): Promise<{ ok: boolean; error?: string }> {
+  const provider =
+    params.provider ||
+    (process.env.WHATSAPP_PROVIDER as WhatsAppProvider) ||
+    "mock";
+  const token = params.token || process.env.WHATSAPP_TOKEN || "";
+  const instanceId =
+    params.instanceId || process.env.WHATSAPP_INSTANCE_ID || "";
+  const hasPlus = params.to.trim().startsWith("+");
+  const phone = params.to.replace(/\D/g, "");
+  const phoneWithDDI = hasPlus ? phone : (phone.startsWith("55") ? phone : `55${phone}`);
+  const { imageUrl, caption } = params;
+
+  try {
+    switch (provider) {
+      case "zapi": {
+        const clientToken = process.env.ZAPI_CLIENT_TOKEN || "";
+        const res = await fetch(
+          `https://api.z-api.io/instances/${instanceId}/token/${token}/send-image`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "client-token": clientToken },
+            body: JSON.stringify({ phone: phoneWithDDI, image: imageUrl, caption: caption || "" }),
+          }
+        );
+        if (!res.ok) return { ok: false, error: `Z-API ${res.status}: ${await res.text()}` };
+        return { ok: true };
+      }
+
+      case "evolution": {
+        const baseUrl = (process.env.EVOLUTION_API_URL || "").replace(/\/$/, "");
+        const apiKey = token || process.env.EVOLUTION_API_KEY || "";
+        const res = await fetch(
+          `${baseUrl}/message/sendMedia/${instanceId}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json", apikey: apiKey },
+            body: JSON.stringify({
+              number: phoneWithDDI,
+              mediatype: "image",
+              media: imageUrl,
+              caption: caption || "",
+            }),
+          }
+        );
+        if (!res.ok) return { ok: false, error: `Evolution ${res.status}: ${await res.text()}` };
+        return { ok: true };
+      }
+
+      case "ultramsg": {
+        const res = await fetch(
+          `https://api.ultramsg.com/${instanceId}/messages/image`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({
+              token,
+              to: `+${phoneWithDDI}`,
+              image: imageUrl,
+              caption: caption || "",
+            }).toString(),
+          }
+        );
+        if (!res.ok) return { ok: false, error: `Ultramsg ${res.status}: ${await res.text()}` };
+        return { ok: true };
+      }
+
+      case "mock":
+      default:
+        console.log(`[WhatsApp Mock] → ${phone}: [imagem] ${imageUrl} — ${caption || ""}`);
+        return { ok: true };
+    }
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+}
+
 export function formatTemplate(template: string, vars: Record<string, string>): string {
   return template.replace(/\{(\w+)\}/g, (_, key) => vars[key] ?? `{${key}}`);
 }

@@ -1143,6 +1143,62 @@ function BotKeywordEditor({ keywords, onChange }: { keywords: string[]; onChange
   );
 }
 
+// ── Campo de imagem do bot (URL + upload) ────────────────────────────────────
+function BotImageInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const supabase = createClient();
+  const [uploading, setUploading] = useState(false);
+  const [err, setErr] = useState("");
+
+  async function upload(file: File) {
+    setUploading(true);
+    setErr("");
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { setErr("Não autenticado."); return; }
+      if (file.size > 5 * 1024 * 1024) { setErr("Imagem muito grande (máx. 5MB)."); return; }
+      const ext = file.name.split(".").pop() || "jpg";
+      const path = `${user.id}/bot-${Date.now()}.${ext}`;
+      const { error } = await supabase.storage
+        .from("avatars")
+        .upload(path, file, { upsert: true, contentType: file.type });
+      if (error) { setErr("Upload falhou: " + error.message); return; }
+      const { data: urlData } = supabase.storage.from("avatars").getPublicUrl(path);
+      onChange(urlData.publicUrl);
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <div>
+      <label className="text-[11px] text-slate-500 font-medium">🖼️ Imagem (opcional — o texto vira legenda)</label>
+      <div className="flex items-center gap-2 mt-0.5">
+        {value && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={value} alt="" className="w-10 h-10 rounded-lg object-cover border border-slate-200 shrink-0" />
+        )}
+        <input
+          className="input text-xs flex-1 min-w-0"
+          type="url"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="https://... ou envie um arquivo →"
+        />
+        <label className={`btn text-xs border border-slate-200 cursor-pointer shrink-0 px-2.5 ${uploading ? "opacity-50 pointer-events-none" : ""}`}>
+          {uploading ? "Enviando…" : "📎"}
+          <input type="file" accept="image/*" className="hidden"
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) upload(f); e.target.value = ""; }} />
+        </label>
+        {value && (
+          <button type="button" onClick={() => onChange("")}
+            className="text-red-400 hover:text-red-600 text-sm shrink-0">✕</button>
+        )}
+      </div>
+      {err && <p className="text-[11px] text-red-500 mt-0.5">{err}</p>}
+    </div>
+  );
+}
+
 // ── Editor de fluxos do bot ──────────────────────────────────────────────────
 const SPECIAL_ACTIONS = [
   { value: "schedule", label: "📅 Enviar link de agendamento" },
@@ -1255,9 +1311,16 @@ function BotFlowEditor({ flows, onChange }: { flows: BotFlow[]; onChange: (v: Bo
                 onChange={(e) => updateFlow(fi, { message: e.target.value })}
                 placeholder={"Olá! 👋 Bem-vindo(a) a *{negocio}*!\n\nComo posso ajudar? Escolha uma opção:"}
               />
+              <div className="mt-2">
+                <BotImageInput value={flow.imageUrl || ""} onChange={(v) => updateFlow(fi, { imageUrl: v || undefined })} />
+              </div>
               {previewFlow === flow.id && (
                 <div className="mt-2 bg-[#e8fdd4] border border-[#b7e8a0] rounded-xl px-3.5 py-2.5 text-sm text-slate-800 whitespace-pre-line leading-relaxed">
                   <p className="text-[10px] text-slate-500 mb-1.5 font-semibold uppercase tracking-wide">Prévia WhatsApp</p>
+                  {flow.imageUrl && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={flow.imageUrl} alt="" className="rounded-lg max-h-40 w-auto mb-2 border border-[#b7e8a0]" />
+                  )}
                   {flow.message}
                   {flow.items.length > 0 && (
                     <div className="mt-2 space-y-0.5">
@@ -1311,6 +1374,8 @@ function BotFlowEditor({ flows, onChange }: { flows: BotFlow[]; onChange: (v: Bo
                         "O que o bot responde ao selecionar esta opção...\n\nEx: Nossos preços são:\n• Corte: R$ 40\n• Coloração: R$ 80\n\nAceitamos Pix e cartão. 💳"
                       }
                     />
+
+                    <BotImageInput value={item.imageUrl || ""} onChange={(v) => updateItem(fi, ii, { imageUrl: v || undefined })} />
 
                     <div className="grid grid-cols-2 gap-2">
                       <div>

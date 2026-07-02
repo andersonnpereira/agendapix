@@ -9,6 +9,8 @@ import { formatBRL } from "@/lib/format";
 // Sem isso o Next.js trata a rota como estática e o Vercel cacheia a resposta
 // no CDN — o cron "roda" mas a função nunca executa (X-Vercel-Cache: HIT)
 export const dynamic = "force-dynamic";
+// E sem isso os SELECTs do Supabase (fetch GET) são congelados pelo Data Cache
+export const fetchCache = "force-no-store";
 
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET;

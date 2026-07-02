@@ -5,5 +5,10 @@ export function createAdminClient() {
   if (!key) throw new Error("SUPABASE_SERVICE_ROLE_KEY não configurada no Vercel.");
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, key, {
     auth: { autoRefreshToken: false, persistSession: false },
+    // O Next.js 14 cacheia fetches GET no Data Cache — SELECTs do PostgREST
+    // ficavam congelados entre invocações (leitura stale em rotas de cron)
+    global: {
+      fetch: (input, init) => fetch(input, { ...init, cache: "no-store" }),
+    },
   });
 }

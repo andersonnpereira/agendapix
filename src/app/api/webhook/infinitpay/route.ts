@@ -3,16 +3,18 @@ import { activatePlanByEmail, detectPlanType, type PlanType } from "@/lib/plan-a
 import { createAdminClient } from "@/lib/supabase-admin";
 
 export async function POST(req: NextRequest) {
-  // Autenticação opcional via secret header
+  // Autenticação via secret header (fail-closed)
   const secret = process.env.INFINITPAY_WEBHOOK_SECRET;
-  if (secret) {
-    const token =
-      req.headers.get("x-infinitpay-signature") ||
-      req.headers.get("x-webhook-secret") ||
-      req.nextUrl.searchParams.get("secret");
-    if (token !== secret) {
-      return NextResponse.json({ error: "Token inválido" }, { status: 401 });
-    }
+  if (!secret) {
+    console.error("[webhook/infinitpay] INFINITPAY_WEBHOOK_SECRET não configurado — bloqueado.");
+    return NextResponse.json({ error: "Serviço indisponível" }, { status: 503 });
+  }
+  const token =
+    req.headers.get("x-infinitpay-signature") ||
+    req.headers.get("x-webhook-secret") ||
+    req.nextUrl.searchParams.get("secret");
+  if (token !== secret) {
+    return NextResponse.json({ error: "Token inválido" }, { status: 401 });
   }
 
   let body: Record<string, unknown>;
@@ -22,8 +24,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Body inválido" }, { status: 400 });
   }
 
-  // Log completo para diagnóstico — visível nos logs do Vercel
-  console.log("[webhook/infinitpay] RAW PAYLOAD:", JSON.stringify(body, null, 2));
+  // Log apenas das chaves de topo — evita gravar PII/dados de pagamento nos logs
+  console.log("[webhook/infinitpay] payload recebido — chaves:", Object.keys(body).join(", "));
 
   // Detecta status de pagamento aprovado — tenta todos os caminhos comuns do Infinit Pay
   const data = (body.data as Record<string, unknown>) || {};
@@ -61,7 +63,7 @@ export async function POST(req: NextRequest) {
   console.log("[webhook/infinitpay] status:", status, "| event:", event, "| paid_amount:", paidAmount, "| isApproved:", isApproved);
 
   if (!isApproved) {
-    return NextResponse.json({ ok: true, skipped: true, status, event, debug_body_keys: Object.keys(body) });
+    return NextResponse.json({ ok: true, skipped: true });
   }
 
   // Extrai e-mail — tenta todos os caminhos possíveis do Infinit Pay
@@ -86,7 +88,7 @@ export async function POST(req: NextRequest) {
     (data.email as string) ||
     "";
 
-  console.log("[webhook/infinitpay] email extraído do payload:", email || "(não encontrado)");
+  console.log("[webhook/infinitpay] email extraído:", email ? "(encontrado)" : "(não encontrado)");
 
   // Detecta plano: query param ?plan=monthly|annual tem precedência
   const planParam = req.nextUrl.searchParams.get("plan");

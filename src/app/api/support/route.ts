@@ -28,7 +28,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Campos obrigatórios ausentes." }, { status: 400 });
     }
 
-    const supportEmail = process.env.SUPPORT_EMAIL || "andersonnpereira@gmail.com";
+    const supportEmail = process.env.SUPPORT_EMAIL;
+    if (!supportEmail) {
+      console.error("[support] SUPPORT_EMAIL não configurado.");
+      return NextResponse.json({ error: "Serviço de suporte indisponível no momento." }, { status: 503 });
+    }
 
     await sendEmail({
       to: supportEmail,

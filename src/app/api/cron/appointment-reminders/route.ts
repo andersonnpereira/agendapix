@@ -10,12 +10,15 @@ export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
 
 export async function GET(req: NextRequest) {
+  // Fail-closed: sem CRON_SECRET configurado, o endpoint fica bloqueado.
   const secret = process.env.CRON_SECRET;
-  if (secret) {
-    const auth = req.headers.get("authorization");
-    if (auth !== `Bearer ${secret}`) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+  if (!secret) {
+    console.error("[cron/appointment-reminders] CRON_SECRET não configurado — endpoint bloqueado.");
+    return NextResponse.json({ error: "Serviço indisponível" }, { status: 503 });
+  }
+  const auth = req.headers.get("authorization");
+  if (auth !== `Bearer ${secret}`) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const supabase = createClient(

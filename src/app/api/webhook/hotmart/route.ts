@@ -2,15 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { activatePlanByEmail, type PlanType } from "@/lib/plan-activation";
 
 export async function POST(req: NextRequest) {
-  // ── Validação do token ─────────────────────────────────────────────
+  // ── Validação do token (fail-closed) ───────────────────────────────
   const secret = process.env.HOTMART_WEBHOOK_TOKEN;
-  if (secret) {
-    const token =
-      req.headers.get("x-hotmart-webhook-token") ||
-      req.nextUrl.searchParams.get("hottok");
-    if (token !== secret) {
-      return NextResponse.json({ error: "Token inválido" }, { status: 401 });
-    }
+  if (!secret) {
+    console.error("[webhook/hotmart] HOTMART_WEBHOOK_TOKEN não configurado — bloqueado.");
+    return NextResponse.json({ error: "Serviço indisponível" }, { status: 503 });
+  }
+  const token =
+    req.headers.get("x-hotmart-webhook-token") ||
+    req.nextUrl.searchParams.get("hottok");
+  if (token !== secret) {
+    return NextResponse.json({ error: "Token inválido" }, { status: 401 });
   }
 
   let body: Record<string, unknown>;

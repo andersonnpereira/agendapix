@@ -68,6 +68,17 @@ const GREETING_WORDS = ["oi","olá","ola","hi","hello","menu","início","inicio"
 function fmtBRL(cents: number): string {
   return "R$ " + (cents / 100).toFixed(2).replace(".", ",");
 }
+
+// Normaliza um telefone para comparação: só dígitos, remove DDI 55 e o
+// nono dígito do celular, retornando DDD + 8 dígitos finais. Assim
+// "5511999998888", "11999998888" e "1199998888" convergem, sem colidir
+// com clientes de DDDs diferentes (o DDD é preservado).
+function normalizePhoneForMatch(raw: string | null | undefined): string {
+  let d = (raw || "").replace(/\D/g, "");
+  if (d.length >= 12 && d.startsWith("55")) d = d.slice(2); // remove DDI
+  if (d.length === 11) d = d.slice(0, 2) + d.slice(3);      // remove 9º dígito
+  return d; // esperado: 10 dígitos (DDD + 8)
+}
 function fmtDate(d: string | null): string {
   if (!d) return "";
   const [, m, day] = d.split("-");
@@ -212,9 +223,12 @@ export async function handleBotMessage(profileId: string, phone: string, text: s
     const hoursSince = minutesSince / 60;
     const convState = conv.state as BotState;
     if (convState === "human") {
-      // Modo humano expira após humanTimeoutHours horas de inatividade do cliente
-      // 0 = nunca expira (persiste até "menu" / "0" explícito)
-      state = (humanTimeoutHours > 0 && hoursSince > humanTimeoutHours) ? "idle" : "human";
+      // Modo humano expira após humanTimeoutHours horas de inatividade do cliente.
+      // 0 = "nunca expira" pelo config, mas há um teto de segurança absoluto de
+      // 30 dias para o cliente nunca ficar preso caso desconheça "menu"/"0".
+      const HUMAN_MAX_HOURS = 24 * 30;
+      const effectiveTimeout = humanTimeoutHours > 0 ? Math.min(humanTimeoutHours, HUMAN_MAX_HOURS) : HUMAN_MAX_HOURS;
+      state = hoursSince > effectiveTimeout ? "idle" : "human";
     } else {
       state = minutesSince > sessionTimeout ? "idle" : convState;
     }
@@ -341,13 +355,13 @@ export async function handleBotMessage(profileId: string, phone: string, text: s
         newCurrentFlowId = "main";
 
       } else if (item.action === "charges") {
-        const last8 = phone.replace(/\D/g, "").slice(-8);
+        const target = normalizePhoneForMatch(phone);
         const { data: allCharges } = await admin
           .from("charges")
           .select("id, client_name, client_phone, description, amount_cents, status, due_date")
           .eq("profile_id", profileId).neq("status", "pago").order("due_date").limit(20);
         const byPhone = (allCharges || []).filter(
-          (c) => c.client_phone && c.client_phone.replace(/\D/g, "").slice(-8) === last8
+          (c) => c.client_phone && target.length >= 10 && normalizePhoneForMatch(c.client_phone) === target
         );
         if (freeText || item.imageUrl) await reply(freeText, item.imageUrl);
         if (byPhone.length > 0) {
@@ -374,17 +388,28 @@ export async function handleBotMessage(profileId: string, phone: string, text: s
     }
 
   } else if (state === "cobranca_lookup") {
-    const { data: charges } = await admin
+    // Escapa metacaracteres de LIKE (%, _, \) para evitar wildcard injection
+    // e exige um nome plausível (mín. 3 caracteres) antes de consultar.
+    const rawName = text.trim();
+    const safeName = rawName.replace(/[\\%_]/g, "\\$&");
+    const charges = rawName.length < 3 ? [] : (await admin
       .from("charges")
       .select("id, client_name, description, amount_cents, status, due_date")
-      .eq("profile_id", profileId).ilike("client_name", `%${text.trim()}%`).neq("status", "pago").order("due_date").limit(5);
-    if (!charges || charges.length === 0) {
-      await reply(`Não encontrei cobranças para "*${text.trim()}*" ✅\n\nEnvie *menu* para voltar ao início.`);
+      .eq("profile_id", profileId).ilike("client_name", `%${safeName}%`).neq("status", "pago").order("due_date").limit(5)).data;
+    if (rawName.length < 3) {
+      // Nome muito curto — permanece aguardando o nome completo
+      await reply("Por favor, informe seu *nome completo* para consultar. 🙂");
+      newState = "cobranca_lookup";
+      newCurrentFlowId = "main";
     } else {
-      await replyCharges(charges, charges[0].client_name || text, p.pix_key as string | null, reply);
+      if (!charges || charges.length === 0) {
+        await reply(`Não encontrei cobranças para "*${rawName}*" ✅\n\nEnvie *menu* para voltar ao início.`);
+      } else {
+        await replyCharges(charges, charges[0].client_name || rawName, p.pix_key as string | null, reply);
+      }
+      newState = "idle";
+      newCurrentFlowId = "main";
     }
-    newState = "idle";
-    newCurrentFlowId = "main";
 
   } else if (state === "human") {
     // Bot desativado — apenas encaminha mensagem ao atendente, sem responder ao cliente

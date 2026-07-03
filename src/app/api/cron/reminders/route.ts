@@ -13,12 +13,15 @@ export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
 
 export async function GET(req: NextRequest) {
+  // Fail-closed: sem CRON_SECRET configurado, o endpoint fica bloqueado.
   const secret = process.env.CRON_SECRET;
-  if (secret) {
-    const auth = req.headers.get("authorization");
-    if (auth !== `Bearer ${secret}`) {
-      return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
-    }
+  if (!secret) {
+    console.error("[cron/reminders] CRON_SECRET não configurado — endpoint bloqueado.");
+    return NextResponse.json({ error: "Serviço indisponível" }, { status: 503 });
+  }
+  const auth = req.headers.get("authorization");
+  if (auth !== `Bearer ${secret}`) {
+    return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   }
 
   try {
@@ -86,13 +89,13 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ ok: true, sent: 0 });
     }
 
-    // Modo diagnóstico: ?dry=1 lista o que seria enviado, sem enviar nada.
-    // ?dry=1&fix=1 também executa o update anti-reenvio e retorna as linhas afetadas.
+    // Modo diagnóstico: ?dry=1 apenas lista o que seria enviado, sem enviar
+    // nem gravar nada (não muta estado — seguro mesmo autenticado).
     if (req.nextUrl.searchParams.get("dry") === "1") {
-      const fix = req.nextUrl.searchParams.get("fix") === "1";
-      const matched: Array<Record<string, unknown>> = [];
-      for (const { charge, type } of allToProcess) {
-        const entry: Record<string, unknown> = {
+      return NextResponse.json({
+        ok: true,
+        dry: true,
+        matched: allToProcess.map(({ charge, type }) => ({
           id: charge.id,
           client: charge.client_name,
           due_date: charge.due_date,
@@ -101,21 +104,8 @@ export async function GET(req: NextRequest) {
           reminders_sent: charge.reminders_sent,
           status: charge.status,
           type,
-        };
-        if (fix) {
-          const { data: upData, error: upErr } = await admin
-            .from("charges")
-            .update({
-              last_auto_reminder_at: now,
-              reminders_sent: (charge.reminders_sent || 0) + 1,
-            })
-            .eq("id", charge.id)
-            .select("id, last_auto_reminder_at, reminders_sent");
-          entry.update = { error: upErr?.message || null, affectedRows: upData };
-        }
-        matched.push(entry);
-      }
-      return NextResponse.json({ ok: true, dry: true, matched });
+        })),
+      });
     }
 
     let sent = 0;

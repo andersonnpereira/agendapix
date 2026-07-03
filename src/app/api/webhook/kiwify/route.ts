@@ -2,15 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { activatePlanByEmail, type PlanType } from "@/lib/plan-activation";
 
 export async function POST(req: NextRequest) {
-  // ── Validação do token ─────────────────────────────────────────────
+  // ── Validação do token (fail-closed) ───────────────────────────────
   const secret = process.env.KIWIFY_WEBHOOK_SECRET;
-  if (secret) {
-    const token =
-      req.headers.get("kiwify-secret") ||
-      req.nextUrl.searchParams.get("token");
-    if (token !== secret) {
-      return NextResponse.json({ error: "Token inválido" }, { status: 401 });
-    }
+  if (!secret) {
+    console.error("[webhook/kiwify] KIWIFY_WEBHOOK_SECRET não configurado — bloqueado.");
+    return NextResponse.json({ error: "Serviço indisponível" }, { status: 503 });
+  }
+  const token =
+    req.headers.get("kiwify-secret") ||
+    req.nextUrl.searchParams.get("token");
+  if (token !== secret) {
+    return NextResponse.json({ error: "Token inválido" }, { status: 401 });
   }
 
   let body: Record<string, unknown>;

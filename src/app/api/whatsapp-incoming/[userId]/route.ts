@@ -51,9 +51,9 @@ export async function POST(
     return NextResponse.json({ error: "Body inválido" }, { status: 400 });
   }
 
-  // Log completo para debug (Vercel Functions → Logs)
+  // Log mínimo — evita gravar telefone/texto do cliente nos logs
   const event = ((body.event as string) || "").toLowerCase();
-  console.log("[bot-incoming]", JSON.stringify({ userId, event, body: JSON.stringify(body).slice(0, 500) }));
+  console.log("[bot-incoming] evento recebido:", event);
 
   // Aceita tanto "messages.upsert" (Evolution v2) quanto "MESSAGES_UPSERT" (algumas versões)
   if (event !== "messages.upsert") {
@@ -98,13 +98,13 @@ export async function POST(
     return NextResponse.json({ ok: true, skipped: "noText" });
   }
 
-  console.log("[bot-incoming] processando", { userId, phone, text: text.slice(0, 80) });
+  console.log("[bot-incoming] processando mensagem", { userId });
 
   try {
     await handleBotMessage(userId, phone, text);
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error("[bot-incoming] ERRO handleBotMessage:", e);
-    return NextResponse.json({ error: String(e) }, { status: 500 });
+    return NextResponse.json({ error: "Erro ao processar mensagem" }, { status: 500 });
   }
 }

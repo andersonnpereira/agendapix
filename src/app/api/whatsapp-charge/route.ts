@@ -96,6 +96,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true });
   } catch (e) {
-    return NextResponse.json({ error: `Erro interno: ${String(e)}` }, { status: 500 });
+    console.error("[whatsapp-charge] erro:", e);
+    return NextResponse.json({ error: "Erro ao enviar a cobrança. Tente novamente." }, { status: 500 });
   }
 }

@@ -37,7 +37,14 @@ export async function GET(req: NextRequest) {
   }
 
   const orderNsu  = randomUUID();
-  const webhookUrl  = `${APP_URL}/api/webhook/infinitpay?plan=${plan}`;
+  // Inclui o secret no webhook — o endpoint /api/webhook/infinitpay é fail-closed
+  // (rejeita 503 sem secret). Sem isso, o plano nunca seria ativado após o pagamento.
+  const webhookSecret = process.env.INFINITPAY_WEBHOOK_SECRET;
+  if (!webhookSecret) {
+    console.error("[checkout/start] INFINITPAY_WEBHOOK_SECRET não configurado — o webhook rejeitaria a confirmação.");
+    return NextResponse.redirect(new URL("/plano?erro=config", req.url));
+  }
+  const webhookUrl  = `${APP_URL}/api/webhook/infinitpay?plan=${plan}&secret=${encodeURIComponent(webhookSecret)}`;
   const redirectUrl = `${APP_URL}/dashboard`;
 
   // Headers — INFINITPAY_API_KEY opcional; alguns endpoints não exigem auth

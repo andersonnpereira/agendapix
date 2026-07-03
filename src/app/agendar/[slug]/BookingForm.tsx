@@ -716,6 +716,13 @@ export default function BookingForm({
           >
             {serviceQuestions.length > 0 ? "Próximo →" : "Revisar agendamento →"}
           </button>
+
+          <p className="text-[11px] text-slate-400 text-center leading-relaxed">
+            Ao continuar, você concorda que seus dados sejam usados para este agendamento, conforme a{" "}
+            <a href="/politica-de-privacidade" target="_blank" rel="noopener noreferrer" className="underline hover:text-brand">
+              Política de Privacidade
+            </a>.
+          </p>
         </div>
       )}
 

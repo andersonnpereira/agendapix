@@ -148,6 +148,13 @@ export default function LoginPage() {
             Entrar com link mágico (sem senha)
           </button>
 
+          <p className="text-center text-xs text-slate-400 mt-4 leading-relaxed">
+            Ao continuar, você concorda com os{" "}
+            <Link href="/termos-de-uso" className="text-brand hover:underline">Termos de Uso</Link>{" "}
+            e a{" "}
+            <Link href="/politica-de-privacidade" className="text-brand hover:underline">Política de Privacidade</Link>.
+          </p>
+
           <p className="text-center text-sm text-slate-500 mt-5">
             {mode === "login" ? "Não tem conta?" : "Já tem conta?"}{" "}
             <button

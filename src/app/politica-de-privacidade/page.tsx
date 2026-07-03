@@ -12,7 +12,7 @@ export default function PoliticaPrivacidadePage() {
         <div>
           <Link href="/" className="text-sm text-green-600 hover:underline">← Voltar ao início</Link>
           <h1 className="text-3xl font-bold text-slate-900 mt-4">Política de Privacidade</h1>
-          <p className="text-slate-500 mt-2 text-sm">Última atualização: junho de 2026</p>
+          <p className="text-slate-500 mt-2 text-sm">Última atualização: julho de 2026</p>
         </div>
 
         <section className="space-y-3">
@@ -20,6 +20,16 @@ export default function PoliticaPrivacidadePage() {
           <p className="text-slate-600 leading-relaxed">
             O <strong>Agendou</strong> é uma plataforma de agendamento online e gestão financeira desenvolvida para profissionais autônomos brasileiros. Neste documento explicamos como coletamos, usamos e protegemos seus dados pessoais, em conformidade com a Lei Geral de Proteção de Dados (LGPD — Lei nº 13.709/2018).
           </p>
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2">
+            <p className="text-slate-700 font-semibold text-sm">Controlador e Operador (papéis)</p>
+            <p className="text-slate-600 text-sm leading-relaxed">
+              <strong>Dados da conta do profissional</strong> (quem assina o Agendou): o Agendou é o <strong>Controlador</strong>.
+            </p>
+            <p className="text-slate-600 text-sm leading-relaxed">
+              <strong>Dados dos clientes finais</strong> (quem agenda pela página do profissional): o <strong>profissional é o Controlador</strong> e o Agendou atua como <strong>Operador</strong>, tratando esses dados apenas para viabilizar o serviço e conforme as instruções do profissional. Cabe ao profissional informar seus clientes e obter o consentimento quando necessário, conforme os{" "}
+              <Link href="/termos-de-uso" className="text-green-600 hover:underline">Termos de Uso</Link>.
+            </p>
+          </div>
         </section>
 
         <section className="space-y-3">

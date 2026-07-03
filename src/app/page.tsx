@@ -18,13 +18,13 @@ const FEATURES = [
   {
     icon: "📅",
     title: "Agenda 100% automática",
-    desc: "Clientes escolhem serviço e horário pelo seu link. Sem DM, sem planilha, sem confusão.",
+    desc: "Clientes escolhem serviço, dia e horário pelo seu link. Sem DM, sem planilha, sem confusão.",
     highlight: true,
   },
   {
     icon: "💸",
     title: "Pix direto na sua conta",
-    desc: "Cobrança com sua chave Pix. O dinheiro cai direto, sem intermediário, zero taxa.",
+    desc: "Cobrança com a sua chave Pix. O dinheiro cai direto, sem intermediário e com zero taxa.",
     highlight: true,
   },
   {
@@ -34,21 +34,39 @@ const FEATURES = [
     highlight: true,
   },
   {
+    icon: "🔔",
+    title: "Lembrete automático anti-falta",
+    desc: "O cliente recebe um lembrete antes do horário — menos esquecimento, menos furo na agenda.",
+    highlight: false,
+  },
+  {
+    icon: "🤖",
+    title: "Chatbot no WhatsApp",
+    desc: "Um assistente responde seus clientes sozinho: menu de opções, agendamento e cobrança, 24h por dia.",
+    highlight: false,
+  },
+  {
     icon: "🔁",
     title: "Cobranças recorrentes",
-    desc: "Semanal, quinzenal ou mensal. A próxima cobrança é criada sozinha quando você marca como pago.",
+    desc: "Semanal, quinzenal ou mensal. A próxima cobrança é criada sozinha quando você marca como paga.",
     highlight: false,
   },
   {
     icon: "👥",
     title: "CRM de clientes",
-    desc: "Histórico, total gasto, aniversários e inativos. Tudo pra você fidelizar e reconquistar.",
+    desc: "Histórico, total gasto, aniversariantes e clientes sumidos. Tudo pra fidelizar e reconquistar.",
     highlight: false,
   },
   {
     icon: "📊",
     title: "Financeiro em tempo real",
     desc: "Receita do mês, pendências e horário de pico. Saiba o que vai entrar antes de entrar.",
+    highlight: false,
+  },
+  {
+    icon: "🎨",
+    title: "Sua página, sua cara",
+    desc: "Logo, cor, capa e bio personalizadas. Um link de agendamento profissional pra colar na bio.",
     highlight: false,
   },
 ];
@@ -104,7 +122,7 @@ const COMPARISON = [
   { feature: "Lembrete automático",          agendou: "✓", manual: "✗", papel: "✗" },
   { feature: "Histórico de clientes",        agendou: "✓", manual: "✗", papel: "✗" },
   { feature: "WhatsApp integrado",           agendou: "✓", manual: "Manual", papel: "✗" },
-  { feature: "Custo mensal",                 agendou: "R$ 33", manual: "Grátis", papel: "Grátis" },
+  { feature: "Custo mensal",                 agendou: "R$ 19,90", manual: "Grátis", papel: "Grátis" },
   { feature: "Horas gastas por semana",      agendou: "~30 min", manual: "3–5h", papel: "5h+" },
 ];
 
@@ -127,7 +145,7 @@ const PRICING = [
   },
   {
     name: "Mensal",
-    price: "R$ 47",
+    price: "R$ 19,90",
     period: "/mês",
     highlight: false,
     badge: null,
@@ -144,19 +162,19 @@ const PRICING = [
   },
   {
     name: "Anual",
-    price: "R$ 33",
+    price: "R$ 14,99",
     period: "/mês",
     highlight: true,
     badge: "MAIS POPULAR",
-    subtext: "cobrado R$ 397/ano — economize R$ 167",
+    subtext: "cobrado R$ 179,90/ano — economize R$ 58,90",
     features: [
       "Tudo do plano mensal",
-      "30% mais barato",
+      "25% mais barato que o mensal",
       "12 meses garantidos",
       "Novas funções em primeira mão",
       "Suporte prioritário máximo",
     ],
-    cta: "Assinar anual — R$ 397/ano",
+    cta: "Assinar anual — R$ 179,90/ano",
     href: "/login",
   },
 ];
@@ -184,7 +202,7 @@ const FAQS = [
   },
   {
     q: "Posso cancelar a qualquer momento?",
-    a: "Sim. Sem fidelidade, sem multa. Seus dados ficam salvos por 30 dias após o cancelamento caso você mude de ideia.",
+    a: "Sim. Sem fidelidade e sem multa. Você continua com acesso até o fim do período já pago, e seus dados ficam salvos caso decida voltar.",
   },
 ];
 
@@ -513,7 +531,7 @@ export default function Home() {
                 {[
                   "Confirmação automática ao agendar",
                   "Cobrança Pix enviada por WhatsApp",
-                  "Lembrete 24h antes do atendimento",
+                  "Lembrete no dia anterior, na hora que você escolher",
                   "Mensagem personalizável com o seu estilo",
                 ].map((item) => (
                   <li key={item} className="flex items-center gap-3 text-sm text-slate-300">
@@ -704,7 +722,7 @@ export default function Home() {
             ))}
           </div>
           <p className="text-center text-xs text-slate-400 mt-8">
-            A assinatura é ativada via Pix direto com o administrador · Ativação em até 1 hora útil
+            Pagamento via Pix ou cartão · Acesso liberado automaticamente após a confirmação
           </p>
         </section>
 
@@ -793,7 +811,11 @@ export default function Home() {
             </div>
             <div className="border-t border-slate-800 pt-8 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-600">
               <span>© {new Date().getFullYear()} Agendou · Feito para autônomos brasileiros</span>
-              <span>O Pix cai direto na sua conta · Sem intermediário · Sem taxa</span>
+              <div className="flex items-center gap-4">
+                <Link href="/termos-de-uso" className="hover:text-brand transition-colors">Termos de uso</Link>
+                <Link href="/politica-de-privacidade" className="hover:text-brand transition-colors">Privacidade</Link>
+                <Link href="/ajuda" className="hover:text-brand transition-colors">Ajuda</Link>
+              </div>
             </div>
           </div>
         </footer>

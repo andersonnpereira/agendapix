@@ -611,7 +611,7 @@ export default function ConfiguracoesPage() {
             ) : (
               <p className="text-sm text-red-500 text-center">Erro ao gerar QR code.</p>
             )}
-            <p className="text-xs text-slate-400 text-center">Atualiza automaticamente a cada 5 segundos.</p>
+            <p className="text-xs text-slate-400 text-center">Atualiza automaticamente a cada 30 segundos.</p>
             <button className="btn text-sm w-full border border-slate-200" onClick={fetchQr}>
               ↺ Atualizar agora
             </button>

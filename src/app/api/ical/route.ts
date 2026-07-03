@@ -67,7 +67,7 @@ export async function GET(req: NextRequest) {
     .single();
 
   const calName = profile?.business_name || profile?.name || "Agendamentos";
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://agendapix.vercel.app";
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://agendasj.vercel.app";
 
   const lines: string[] = [
     "BEGIN:VCALENDAR",

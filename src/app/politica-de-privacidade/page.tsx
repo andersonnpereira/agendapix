@@ -82,7 +82,7 @@ export default function PoliticaPrivacidadePage() {
             <li>Revogar o consentimento a qualquer momento</li>
             <li>Registrar reclamação junto à ANPD</li>
           </ul>
-          <p className="text-slate-600 mt-2">Para exercer seus direitos, entre em contato via <a href="mailto:contato@agendou.app" className="text-green-600 hover:underline">contato@agendou.app</a></p>
+          <p className="text-slate-600 mt-2">Para exercer seus direitos, entre em contato pela nossa <a href="/ajuda" className="text-green-600 hover:underline">Central de Ajuda</a>.</p>
         </section>
 
         <section className="space-y-3">

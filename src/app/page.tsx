@@ -126,6 +126,8 @@ const COMPARISON = [
   { feature: "Horas gastas por semana",      agendou: "~30 min", manual: "3–5h", papel: "5h+" },
 ];
 
+// Todos os planos têm TODOS os recursos. A diferença é só o preço e o prazo —
+// nada de recurso bloqueado por plano.
 const PRICING = [
   {
     name: "Teste grátis",
@@ -133,12 +135,12 @@ const PRICING = [
     period: "7 dias",
     highlight: false,
     badge: null as string | null,
-    subtext: null as string | null,
+    subtext: "acesso completo, sem cartão",
     features: [
-      "Agenda online ilimitada",
-      "Cobrança Pix automática",
-      "WhatsApp integrado",
-      "Link da bio personalizado",
+      "Todos os recursos liberados",
+      "Agenda, Pix e WhatsApp automático",
+      "CRM, financeiro e chatbot",
+      "Sem cartão de crédito",
     ],
     cta: "Começar grátis",
     href: "/login",
@@ -149,13 +151,12 @@ const PRICING = [
     period: "/mês",
     highlight: false,
     badge: null,
-    subtext: null,
+    subtext: "continue com tudo, mês a mês",
     features: [
-      "Tudo do plano grátis",
-      "CRM de clientes completo",
-      "Financeiro e fluxo de caixa",
-      "Cobranças recorrentes",
-      "Relatórios e métricas",
+      "Todos os recursos, sempre",
+      "Agenda, cobranças e CRM ilimitados",
+      "Chatbot e WhatsApp automático",
+      "Cancele quando quiser",
     ],
     cta: "Assinar mensal",
     href: "/login",
@@ -168,11 +169,10 @@ const PRICING = [
     badge: "MAIS POPULAR",
     subtext: "cobrado R$ 179,90/ano — economize R$ 58,90",
     features: [
-      "Tudo do plano mensal",
+      "Todos os recursos, sempre",
       "25% mais barato que o mensal",
+      "Quase 3 meses de graça no ano",
       "12 meses garantidos",
-      "Novas funções em primeira mão",
-      "Suporte prioritário máximo",
     ],
     cta: "Assinar anual — R$ 179,90/ano",
     href: "/login",
@@ -666,6 +666,10 @@ export default function Home() {
             <p className="text-brand text-sm font-bold uppercase tracking-widest mb-3">Sem surpresa</p>
             <h2 className="text-3xl sm:text-4xl font-extrabold text-slate-900">Simples e transparente</h2>
             <p className="text-slate-500 mt-3">Comece grátis. Assine quando ver o resultado. Cancele quando quiser.</p>
+            <div className="inline-flex items-center gap-2 bg-brand-light text-brand-dark text-sm font-semibold px-4 py-2 rounded-full border border-brand/20 mt-5">
+              <span className="text-brand font-bold">✓</span>
+              Todos os recursos em todos os planos — muda só o preço
+            </div>
           </div>
           <div className="grid sm:grid-cols-3 gap-5 items-start">
             {PRICING.map((plan) => (
@@ -697,7 +701,7 @@ export default function Home() {
                     </span>
                   </div>
                   {plan.subtext && (
-                    <p className="text-xs text-green-200 mt-2">{plan.subtext}</p>
+                    <p className={`text-xs mt-2 ${plan.highlight ? "text-green-200" : "text-slate-400"}`}>{plan.subtext}</p>
                   )}
                 </div>
                 <ul className="space-y-2.5 flex-1">

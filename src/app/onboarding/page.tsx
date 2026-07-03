@@ -49,20 +49,34 @@ export default function OnboardingPage() {
 
     const trialExpires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
+    // Não sobrescreve um plano PAGO já aplicado (ex.: comprou antes de se
+    // cadastrar → trigger de pending_activations ativou monthly/annual/lifetime).
+    // Só define trial para quem realmente é novo.
+    const { data: current } = await supabase
+      .from("profiles")
+      .select("plan_type")
+      .eq("id", user.id)
+      .single();
+    const alreadyPaid = current?.plan_type === "monthly" || current?.plan_type === "annual" || current?.plan_type === "lifetime";
+
+    const profilePayload: Record<string, unknown> = {
+      business_name: businessName,
+      slug: finalSlug,
+      pix_key: normalizePixKey(pixKey, pixType),
+      pix_key_type: pixType,
+      pix_merchant_name: merchantName,
+      pix_merchant_city: "BR",
+      whatsapp_provider: "evolution",
+    };
+    if (!alreadyPaid) {
+      profilePayload.plan_type = "trial";
+      profilePayload.plan_expires_at = trialExpires;
+    }
+
     // 1. atualiza profile
     const { error: pErr } = await supabase
       .from("profiles")
-      .update({
-        business_name: businessName,
-        slug: finalSlug,
-        pix_key: normalizePixKey(pixKey, pixType),
-        pix_key_type: pixType,
-        pix_merchant_name: merchantName,
-        pix_merchant_city: "BR",
-        plan_type: "trial",
-        plan_expires_at: trialExpires,
-        whatsapp_provider: "evolution",
-      })
+      .update(profilePayload)
       .eq("id", user.id);
 
     if (pErr) {

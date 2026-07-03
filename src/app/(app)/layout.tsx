@@ -80,8 +80,11 @@ export default async function AppLayout({
         <div className="px-5 h-14 flex items-center justify-between">
           <span className="font-bold text-lg text-brand tracking-tight">Agendou</span>
           <div className="flex items-center gap-3">
-            <Link href="/ajuda" className="text-xs text-slate-400 hover:text-brand transition-colors">
-              Ajuda
+            <Link
+              href="/ajuda"
+              className="inline-flex items-center gap-1 text-xs font-semibold text-brand bg-brand/10 hover:bg-brand/20 px-2.5 py-1.5 rounded-full transition-colors"
+            >
+              <span>❓</span> Ajuda
             </Link>
             <SignOutButton />
           </div>

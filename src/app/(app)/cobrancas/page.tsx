@@ -331,16 +331,9 @@ export default function CobrancasPage() {
         body: JSON.stringify({ charge_id: charge.id, type, message }),
       });
       if (res.ok) {
+        // O endpoint já gravou reminders_sent + send_history (fonte única).
+        // Aqui apenas refletimos no estado visual.
         const nowIso = new Date().toISOString();
-        // Atualiza send_history e reminders_sent
-        await supabase
-          .from("charges")
-          .update({
-            reminders_sent: charge.reminders_sent + 1,
-            send_history: [...(charge.send_history || []), nowIso],
-          })
-          .eq("id", charge.id);
-
         setCharges((prev) =>
           prev.map((c) =>
             c.id === charge.id
@@ -378,7 +371,6 @@ export default function CobrancasPage() {
     setBulkSending(true);
     let sent = 0;
     let failed = 0;
-    const nowIso = new Date().toISOString();
     for (const charge of targets) {
       const message = buildRecoveryMessage(charge);
       try {
@@ -388,13 +380,7 @@ export default function CobrancasPage() {
           body: JSON.stringify({ charge_id: charge.id, type: "lembrete", message }),
         });
         if (res.ok) {
-          await supabase
-            .from("charges")
-            .update({
-              reminders_sent: charge.reminders_sent + 1,
-              send_history: [...(charge.send_history || []), nowIso],
-            })
-            .eq("id", charge.id);
+          // O endpoint já grava reminders_sent + send_history.
           sent++;
         } else {
           failed++;
@@ -464,8 +450,30 @@ export default function CobrancasPage() {
 
   // ─── Pago ────────────────────────────────────────────────────────────────
   async function marcarPago(charge: Charge) {
+    if (charge.status === "pago") return; // guarda local contra clique duplo
     setActionId(charge.id + "-pago");
-    await supabase.from("charges").update({ status: "pago", paid_at: new Date().toISOString() }).eq("id", charge.id);
+
+    // UPDATE condicional: só marca como pago se ainda NÃO estava pago.
+    // .select() confirma se esta chamada foi a que efetivamente mudou o status —
+    // evita gerar a próxima recorrência em dobro (2 abas / clique duplo / corrida).
+    const { data: flipped, error: flipErr } = await supabase
+      .from("charges")
+      .update({ status: "pago", paid_at: new Date().toISOString() })
+      .eq("id", charge.id)
+      .neq("status", "pago")
+      .select("id");
+
+    if (flipErr) {
+      setActionId(null);
+      showToast("Erro ao marcar como pago. Tente novamente.");
+      return;
+    }
+    if (!flipped || flipped.length === 0) {
+      // Outra aba/dispositivo já marcou — não duplica a recorrência.
+      setActionId(null);
+      load();
+      return;
+    }
 
     const canRecur = charge.recurrence !== "none" && profile?.pix_key &&
       (charge.recurrence_remaining === null || charge.recurrence_remaining === undefined || charge.recurrence_remaining > 0);
@@ -487,8 +495,13 @@ export default function CobrancasPage() {
           });
         } catch { /* gera sem payload */ }
 
-        // Propaga lembrete automático: recalcula a data do lembrete com base nos dias de antecedência originais
+        // Propaga lembrete automático: recalcula a data do lembrete pelos dias
+        // de antecedência originais. Se não for possível recomputar (lembrete
+        // era no mesmo dia/depois do vencimento), DESLIGA o auto_reminder na
+        // próxima cobrança — evita registro com auto_reminder=true e
+        // scheduled_reminder_at=null, que o cron nunca pegaria (lembrete sumiria).
         let new_scheduled_reminder_at: string | null = null;
+        let new_auto_reminder = false;
         if (charge.auto_reminder && charge.scheduled_reminder_at && charge.due_date) {
           const origDue = new Date(charge.due_date + "T00:00:00").getTime();
           const origReminder = new Date(charge.scheduled_reminder_at).getTime();
@@ -496,6 +509,7 @@ export default function CobrancasPage() {
           if (advanceMs > 0) {
             const newDueMs = new Date(nextDue + "T00:00:00").getTime();
             new_scheduled_reminder_at = new Date(newDueMs - advanceMs).toISOString();
+            new_auto_reminder = true;
           }
         }
 
@@ -510,7 +524,7 @@ export default function CobrancasPage() {
           recurrence: charge.recurrence,
           next_due_date: nextDate(nextDue, charge.recurrence),
           recurrence_remaining: nextRemaining,
-          auto_reminder: charge.auto_reminder,
+          auto_reminder: new_auto_reminder,
           scheduled_reminder_at: new_scheduled_reminder_at,
           last_auto_reminder_at: null,
         });

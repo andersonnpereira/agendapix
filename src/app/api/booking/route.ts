@@ -124,8 +124,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Verifica conflito de horário antes do insert
-    const { data: conflito } = await supabase
+    // Verifica conflito de horário antes do insert (otimização — a garantia
+    // real contra corrida é o índice único parcial bookings_no_double_booking_idx).
+    const { data: conflito, error: conflitoErr } = await supabase
       .from("bookings")
       .select("id")
       .eq("profile_id", profile_id)
@@ -134,6 +135,10 @@ export async function POST(req: NextRequest) {
       .in("status", ["pendente", "confirmado"])
       .maybeSingle();
 
+    if (conflitoErr) {
+      console.error("[booking] erro ao checar conflito:", conflitoErr.message);
+      return NextResponse.json({ error: "Erro ao verificar disponibilidade. Tente novamente." }, { status: 500 });
+    }
     if (conflito) {
       return NextResponse.json(
         { error: "Este horário já foi reservado. Por favor, escolha outro." },
@@ -160,7 +165,16 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      // 23505 = violação do índice único → outro cliente reservou o mesmo slot
+      // no intervalo entre a checagem e o insert (corrida). Devolve 409.
+      if ((error as { code?: string }).code === "23505") {
+        return NextResponse.json(
+          { error: "Este horário acabou de ser reservado. Por favor, escolha outro." },
+          { status: 409 }
+        );
+      }
+      console.error("[booking] erro ao inserir:", error.message);
+      return NextResponse.json({ error: "Não foi possível concluir o agendamento. Tente novamente." }, { status: 500 });
     }
 
     // Auto-cria/vincula cliente usando service role key (opcional — não bloqueia o booking)

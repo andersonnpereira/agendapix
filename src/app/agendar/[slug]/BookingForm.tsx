@@ -359,6 +359,16 @@ export default function BookingForm({
 
       if (!res.ok) {
         const { error: e } = await res.json();
+        // 409 = horário acabou de ser ocupado — volta para a seleção de horário
+        // e recarrega os slots para o cliente escolher outro.
+        if (res.status === 409) {
+          setError(e || "Este horário acabou de ser reservado. Escolha outro, por favor.");
+          setSelectedTime("");
+          await onDateChange(selectedDate);
+          setStep("datetime");
+          setSubmitting(false);
+          return;
+        }
         setError(e || "Erro ao agendar. Tente novamente.");
         setSubmitting(false);
         return;

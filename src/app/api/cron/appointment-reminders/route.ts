@@ -36,13 +36,17 @@ export async function GET(req: NextRequest) {
   brTomorrow.setDate(brTomorrow.getDate() + 1);
   const tomorrow = `${brTomorrow.getFullYear()}-${String(brTomorrow.getMonth() + 1).padStart(2, "0")}-${String(brTomorrow.getDate()).padStart(2, "0")}`;
 
-  // Busca perfis cuja hora de lembrete bate com a hora atual
-  // reminder_hour null → padrão 8h
+  // Busca perfis cujo horário de lembrete JÁ chegou (<= hora atual). Usar ">="
+  // em vez de igualdade exata torna o envio resiliente a atrasos/falhas do
+  // cron — o flag client_reminder_sent (por agendamento) evita duplicar.
+  // reminder_hour null → padrão 8h.
   let profileQuery = supabase.from("profiles").select("id");
-  if (currentHourBRT === 8) {
-    profileQuery = profileQuery.or("reminder_hour.eq.8,reminder_hour.is.null");
+  if (currentHourBRT >= 8) {
+    // inclui os perfis no padrão (null = 8h) e os configurados até a hora atual
+    profileQuery = profileQuery.or(`reminder_hour.lte.${currentHourBRT},reminder_hour.is.null`);
   } else {
-    profileQuery = profileQuery.eq("reminder_hour", currentHourBRT);
+    // antes das 8h: só perfis com hora configurada explicitamente <= hora atual
+    profileQuery = profileQuery.lte("reminder_hour", currentHourBRT);
   }
   const { data: matchingProfiles } = await profileQuery;
 

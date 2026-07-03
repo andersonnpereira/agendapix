@@ -89,12 +89,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `WhatsApp falhou: ${result.error}` }, { status: 502 });
     }
 
+    // Fonte única de verdade para reminders_sent + send_history (o client
+    // não deve mais incrementar — antes contava em dobro).
+    const nowIso = new Date().toISOString();
+    const newSent = (charge.reminders_sent || 0) + 1;
+    const newHistory = [...((charge.send_history as string[] | null) || []), nowIso];
     await supabase
       .from("charges")
-      .update({ reminders_sent: (charge.reminders_sent || 0) + 1 })
+      .update({ reminders_sent: newSent, send_history: newHistory })
       .eq("id", charge_id);
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, reminders_sent: newSent, sent_at: nowIso });
   } catch (e) {
     console.error("[whatsapp-charge] erro:", e);
     return NextResponse.json({ error: "Erro ao enviar a cobrança. Tente novamente." }, { status: 500 });

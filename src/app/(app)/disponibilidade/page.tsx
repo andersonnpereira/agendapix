@@ -106,7 +106,9 @@ export default function DisponibilidadePage() {
   }
 
   async function remove(id: string) {
-    await supabase.from("availability").delete().eq("id", id);
+    if (!confirm("Remover este horário de atendimento?")) return;
+    const { error } = await supabase.from("availability").delete().eq("id", id);
+    if (error) { alert("Erro ao remover o horário. Tente novamente."); return; }
     load();
   }
 
@@ -136,7 +138,9 @@ export default function DisponibilidadePage() {
   }
 
   async function removeBlockedPeriod(id: string) {
-    await supabase.from("date_overrides").delete().eq("id", id);
+    if (!confirm("Remover este bloqueio de data?")) return;
+    const { error } = await supabase.from("date_overrides").delete().eq("id", id);
+    if (error) { alert("Erro ao remover o bloqueio. Tente novamente."); return; }
     load();
   }
 

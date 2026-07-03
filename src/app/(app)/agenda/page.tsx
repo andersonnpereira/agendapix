@@ -8,6 +8,7 @@ import WeekCalendar from "./WeekCalendar";
 
 type Booking = {
   id: string;
+  profile_id: string;
   client_name: string;
   client_phone: string;
   client_email: string | null;
@@ -194,23 +195,26 @@ export default function AgendaPage() {
 
   async function cancelar(id: string) {
     setActionLoading(id + "-cancelar");
-    await supabase.from("bookings").update({ status: "cancelado" }).eq("id", id);
+    const { error } = await supabase.from("bookings").update({ status: "cancelado" }).eq("id", id);
     setActionLoading(null);
+    if (error) { showToast("Erro ao cancelar. Tente novamente."); return; }
     load();
     showToast("Agendamento cancelado.");
   }
 
   async function concluir(id: string) {
     setActionLoading(id + "-concluir");
-    await supabase.from("bookings").update({ status: "concluido" }).eq("id", id);
+    const { error } = await supabase.from("bookings").update({ status: "concluido" }).eq("id", id);
     setActionLoading(null);
+    if (error) { showToast("Erro ao concluir. Tente novamente."); return; }
     load();
   }
 
   async function excluirAgendamento(id: string) {
     setActionLoading(id + "-excluir");
-    await supabase.from("bookings").delete().eq("id", id);
+    const { error } = await supabase.from("bookings").delete().eq("id", id);
     setActionLoading(null);
+    if (error) { showToast("Erro ao excluir. Tente novamente."); return; }
     setConfirmDeleteId(null);
     load();
     showToast("Agendamento excluído.");
@@ -223,7 +227,7 @@ export default function AgendaPage() {
     }
     setActionLoading(booking.id + "-cobrar");
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user) { setActionLoading(null); showToast("Sessão expirada. Entre novamente."); return; }
 
     const amount = booking.services?.price_cents || 0;
     let pix_payload: string | null = null;
@@ -241,7 +245,7 @@ export default function AgendaPage() {
       return;
     }
 
-    await supabase.from("charges").insert({
+    const { error: chargeErr } = await supabase.from("charges").insert({
       booking_id: booking.id,
       profile_id: user.id,
       client_name: booking.client_name,
@@ -253,6 +257,7 @@ export default function AgendaPage() {
     });
 
     setActionLoading(null);
+    if (chargeErr) { showToast("Erro ao criar cobrança. Tente novamente."); return; }
     showToast("Cobrança criada! Acesse Cobranças para enviar pelo WhatsApp.");
     setChargeModal(null);
   }
@@ -265,6 +270,30 @@ export default function AgendaPage() {
       return;
     }
     setActionLoading(rescheduleModal.id + "-reagendar");
+
+    // Revalida conflito: não deixa reagendar em cima de outro agendamento ativo
+    const timeNorm = rescheduleTime.length === 5 ? rescheduleTime + ":00" : rescheduleTime;
+    const { data: conflito, error: conflitoErr } = await supabase
+      .from("bookings")
+      .select("id")
+      .eq("profile_id", rescheduleModal.profile_id)
+      .eq("date", rescheduleDate)
+      .eq("time", timeNorm)
+      .in("status", ["pendente", "confirmado"])
+      .neq("id", rescheduleModal.id)
+      .maybeSingle();
+
+    if (conflitoErr) {
+      setActionLoading(null);
+      showToast("Erro ao verificar disponibilidade. Tente novamente.");
+      return;
+    }
+    if (conflito) {
+      setActionLoading(null);
+      showToast("Já existe um agendamento nesse horário. Escolha outro.");
+      return;
+    }
+
     const { error } = await supabase
       .from("bookings")
       .update({ date: rescheduleDate, time: rescheduleTime })

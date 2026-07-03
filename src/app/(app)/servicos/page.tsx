@@ -283,20 +283,25 @@ export default function ServicosPage() {
       duration_minutes: parseInt(form.duration) || 60,
     };
 
+    let dbErr = null;
     if (editingService) {
-      await supabase.from("services").update(payload).eq("id", editingService.id);
+      const { error } = await supabase.from("services").update(payload).eq("id", editingService.id);
+      dbErr = error;
     } else {
-      await supabase.from("services").insert({ ...payload, profile_id: user.id });
+      const { error } = await supabase.from("services").insert({ ...payload, profile_id: user.id });
+      dbErr = error;
     }
 
     setSaving(false);
+    if (dbErr) { showToast("Erro ao salvar o serviço. Tente novamente."); return; }
     closeForm();
     showToast("Serviço salvo!");
     load();
   }
 
   async function toggleActive(s: Service) {
-    await supabase.from("services").update({ active: !s.active }).eq("id", s.id);
+    const { error } = await supabase.from("services").update({ active: !s.active }).eq("id", s.id);
+    if (error) { showToast("Erro ao atualizar o serviço. Tente novamente."); return; }
     showToast(s.active ? "Serviço pausado." : "Serviço ativado.");
     load();
   }
@@ -333,8 +338,9 @@ export default function ServicosPage() {
   async function confirmAndDelete() {
     if (!confirmDelete) return;
     setDeleting(true);
-    await supabase.from("services").delete().eq("id", confirmDelete.id);
+    const { error } = await supabase.from("services").delete().eq("id", confirmDelete.id);
     setDeleting(false);
+    if (error) { showToast("Erro ao excluir o serviço. Tente novamente."); return; }
     setConfirmDelete(null);
     showToast("Serviço excluído!");
     load();

@@ -66,10 +66,11 @@ export default function OnboardingPage() {
       .eq("id", user.id);
 
     if (pErr) {
+      console.error("[onboarding] salvar perfil:", pErr.message);
       setError(
         pErr.message.includes("duplicate")
           ? "Esse link já está em uso. Escolha outro."
-          : pErr.message
+          : "Não foi possível salvar. Tente novamente."
       );
       setLoading(false);
       return;

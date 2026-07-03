@@ -174,7 +174,7 @@ export default function ClientesPage() {
     if (!fName.trim()) return;
     setSaving(true);
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user) { setSaving(false); showToast("Sessão expirada. Entre novamente."); return; }
 
     const payload = {
       name: fName.trim(),
@@ -188,24 +188,28 @@ export default function ClientesPage() {
       status: fStatus,
     };
 
+    let dbErr = null;
     if (editClient) {
-      await supabase.from("clients").update(payload).eq("id", editClient.id);
-      if (detailClient?.id === editClient.id) setDetailClient({ ...editClient, ...payload });
-      showToast("Cliente atualizado!");
+      const { error } = await supabase.from("clients").update(payload).eq("id", editClient.id);
+      dbErr = error;
+      if (!error && detailClient?.id === editClient.id) setDetailClient({ ...editClient, ...payload });
     } else {
-      await supabase.from("clients").insert({ ...payload, profile_id: user.id });
-      showToast("Cliente cadastrado!");
+      const { error } = await supabase.from("clients").insert({ ...payload, profile_id: user.id });
+      dbErr = error;
     }
 
     setSaving(false);
+    if (dbErr) { showToast("Erro ao salvar o cliente. Tente novamente."); return; }
+    showToast(editClient ? "Cliente atualizado!" : "Cliente cadastrado!");
     setShowModal(false);
     load();
   }
 
   async function deleteClient(id: string) {
     setDeleting(true);
-    await supabase.from("clients").delete().eq("id", id);
+    const { error } = await supabase.from("clients").delete().eq("id", id);
     setDeleting(false);
+    if (error) { showToast("Erro ao excluir o cliente. Tente novamente."); return; }
     setConfirmDelete(null);
     if (detailClient?.id === id) setDetailClient(null);
     load();

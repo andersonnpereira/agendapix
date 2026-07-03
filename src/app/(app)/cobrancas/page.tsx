@@ -441,7 +441,8 @@ export default function CobrancasPage() {
         showToast("📋 Cobrança duplicada!");
         load();
       } else {
-        showToast("Erro ao duplicar: " + error.message);
+        console.error("[cobrancas] duplicar:", error.message);
+        showToast("Erro ao duplicar a cobrança. Tente novamente.");
       }
     } finally {
       setActionId(null);
@@ -582,7 +583,8 @@ export default function CobrancasPage() {
         .eq("id", editModal.id);
 
       if (error) {
-        setEError("Erro ao salvar: " + error.message);
+        console.error("[cobrancas] salvar edição:", error.message);
+        setEError("Erro ao salvar. Tente novamente.");
       } else {
         setEditModal(null);
         load();

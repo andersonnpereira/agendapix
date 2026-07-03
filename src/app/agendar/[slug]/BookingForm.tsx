@@ -264,6 +264,7 @@ export default function BookingForm({
   const [clientNotes, setClientNotes] = useState("");
   const [extraAnswers, setExtraAnswers] = useState<Record<string, string>>({});
   const [extrasError, setExtrasError] = useState("");
+  const [contactError, setContactError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
@@ -283,6 +284,18 @@ export default function BookingForm({
     : [];
 
   function goFromContactToNext() {
+    // Valida telefone: 10 a 13 dígitos (fixo/celular BR, com ou sem DDI).
+    const phoneDigits = clientPhone.replace(/\D/g, "");
+    if (phoneDigits.length < 10 || phoneDigits.length > 13) {
+      setContactError("Informe um WhatsApp válido com DDD, ex: (11) 99999-8888.");
+      return;
+    }
+    // Valida e-mail apenas se preenchido (é opcional).
+    if (clientEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clientEmail.trim())) {
+      setContactError("E-mail inválido. Corrija ou deixe em branco.");
+      return;
+    }
+    setContactError("");
     if (serviceQuestions.length > 0) {
       setExtrasError("");
       setStep("extras");
@@ -691,6 +704,10 @@ export default function BookingForm({
               placeholder="Ex: prefiro franja curta, alergia a produto X..."
             />
           </div>
+
+          {contactError && (
+            <p className="text-xs text-red-500 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{contactError}</p>
+          )}
 
           <button
             className="btn-primary w-full py-3 rounded-2xl text-sm font-bold disabled:opacity-40"

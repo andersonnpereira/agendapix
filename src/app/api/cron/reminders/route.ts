@@ -49,9 +49,13 @@ export async function GET(req: NextRequest) {
       msg_lembrete_hoje: string | null;
       msg_cobranca_vencida: string | null;
       pix_key: string | null;
+      reminder_hour: number | null;
     };
 
-    const PROFILE_SELECT = "whatsapp_provider, whatsapp_token, whatsapp_instance_id, msg_lembrete, msg_lembrete_hoje, msg_cobranca_vencida, pix_key";
+    const PROFILE_SELECT = "whatsapp_provider, whatsapp_token, whatsapp_instance_id, msg_lembrete, msg_lembrete_hoje, msg_cobranca_vencida, pix_key, reminder_hour";
+
+    // Hora atual em BRT (nowBRtMs já tem o offset -3h aplicado)
+    const currentHourBRT = new Date(nowBRtMs).getUTCHours();
 
     // ── 1. Lembretes antecipados + vencidas ─────────────────────────────────
     // Inclui: antes do vencimento (regular) E após vencimento (cobrança vencida)
@@ -78,15 +82,27 @@ export async function GET(req: NextRequest) {
 
     // Mescla removendo duplicatas
     const advanceIds = new Set((advanceCharges || []).map((c) => c.id));
-    const allToProcess = [
+    const merged = [
       ...(advanceCharges || []).map((c) => ({ charge: c, type: "advance" as const })),
       ...(dueTodayCharges || [])
         .filter((c) => !advanceIds.has(c.id))
         .map((c) => ({ charge: c, type: "due_today" as const })),
     ];
 
+    // Portão de horário: "vence hoje" e vencidos (que reenviam todo dia) não
+    // podem sair de madrugada — só a partir da hora configurada (reminder_hour,
+    // padrão 8h). Lembretes ANTECIPADOS têm data/hora escolhida pelo usuário
+    // (scheduled_reminder_at, datetime) e são respeitados sem gate.
+    const allToProcess = merged.filter(({ charge, type }) => {
+      const rh = (charge.profiles as ProfileJoin).reminder_hour ?? 8;
+      const isDueToday = type === "due_today";
+      const isOverdue = !!charge.due_date && charge.due_date < todayDate;
+      if (isDueToday || isOverdue) return currentHourBRT >= rh;
+      return true; // antecipado agendado — respeita o horário escolhido
+    });
+
     if (allToProcess.length === 0) {
-      return NextResponse.json({ ok: true, sent: 0 });
+      return NextResponse.json({ ok: true, sent: 0, hour: currentHourBRT });
     }
 
     // Modo diagnóstico: ?dry=1 apenas lista o que seria enviado, sem enviar

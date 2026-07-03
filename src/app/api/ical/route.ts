@@ -18,30 +18,37 @@ function escape(s: string) {
 }
 
 export async function GET(req: NextRequest) {
-  // Permite ?token=<profile_id> para subscrição sem cookie (ex: Google Calendar)
+  // Permite ?token=<ical_token> para subscrição sem cookie (ex: Google Calendar).
+  // O token é um segredo dedicado (coluna ical_token), NÃO o profile_id —
+  // que é público e apareceria no HTML da página de agendamento.
   const { searchParams } = new URL(req.url);
   const tokenParam = searchParams.get("token");
-
-  let profileId: string;
-
-  if (tokenParam) {
-    // Valida que o token é um UUID válido
-    if (!/^[0-9a-f-]{36}$/i.test(tokenParam)) {
-      return new NextResponse("Token inválido", { status: 401 });
-    }
-    profileId = tokenParam;
-  } else {
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return new NextResponse("Não autenticado", { status: 401 });
-    profileId = user.id;
-  }
 
   const admin = createAdmin(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     { auth: { autoRefreshToken: false, persistSession: false } }
   );
+
+  let profileId: string;
+
+  if (tokenParam) {
+    if (!/^[0-9a-f-]{36}$/i.test(tokenParam)) {
+      return new NextResponse("Token inválido", { status: 401 });
+    }
+    const { data: owner } = await admin
+      .from("profiles")
+      .select("id")
+      .eq("ical_token", tokenParam)
+      .single();
+    if (!owner) return new NextResponse("Token inválido", { status: 401 });
+    profileId = owner.id;
+  } else {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return new NextResponse("Não autenticado", { status: 401 });
+    profileId = user.id;
+  }
 
   const today = new Date().toISOString().slice(0, 10);
   const { data: bookings } = await admin

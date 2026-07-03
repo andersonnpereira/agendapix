@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { createClient } from "@/lib/supabase-server";
+import { createAdminClient } from "@/lib/supabase-admin";
 import BookingForm from "./BookingForm";
 import { AvatarImg } from "./AvatarImg";
 
 export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
-  const supabase = createClient();
+  const supabase = createAdminClient();
   const { data: profile } = await supabase
     .from("profiles")
     .select("name, business_name, avatar_url, bio")
@@ -49,7 +49,7 @@ export const dynamic = "force-dynamic";
 type Props = { params: { slug: string } };
 
 export default async function AgendarPage({ params }: Props) {
-  const supabase = createClient();
+  const supabase = createAdminClient();
 
   const { data: profile } = await supabase
     .from("profiles")

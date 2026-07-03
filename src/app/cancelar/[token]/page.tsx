@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { createClient } from "@/lib/supabase-server";
+import { createAdminClient } from "@/lib/supabase-admin";
 import CancelForm from "./CancelForm";
 
 export const metadata: Metadata = { title: "Cancelar agendamento — Agendou" };
@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 type Props = { params: { token: string } };
 
 export default async function CancelarPage({ params }: Props) {
-  const supabase = createClient();
+  const supabase = createAdminClient();
 
   const { data: booking } = await supabase
     .from("bookings")

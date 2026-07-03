@@ -2,7 +2,6 @@
 
 import { useState, useRef, useEffect } from "react";
 import Image from "next/image";
-import { createClient } from "@/lib/supabase-browser";
 import { formatBRL } from "@/lib/format";
 
 type ExtraQuestion = {
@@ -252,7 +251,6 @@ export default function BookingForm({
   bookingSettings,
   businessName,
 }: Props) {
-  const supabase = createClient();
   const formTopRef = useRef<HTMLDivElement>(null);
   const [step, setStep] = useState<Step>("service");
   const [selectedService, setSelectedService] = useState<Service | null>(null);
@@ -313,22 +311,20 @@ export default function BookingForm({
     const requestId = ++slotRequestRef.current;
     const weekday = new Date(date + "T00:00:00").getDay();
 
-    const { data: booked } = await supabase
-      .from("bookings")
-      .select("time, services(duration_minutes)")
-      .eq("profile_id", profileId)
-      .eq("date", date)
-      .in("status", ["pendente", "confirmado"]);
+    // Horários ocupados via endpoint server-side (sem PII) — a tabela
+    // bookings não é mais lida diretamente pelo navegador.
+    let booked: Array<{ time: string; duration_minutes: number }> = [];
+    try {
+      const res = await fetch(`/api/slots?profileId=${encodeURIComponent(profileId)}&date=${encodeURIComponent(date)}`);
+      if (res.ok) booked = (await res.json()).booked || [];
+    } catch { /* rede — trata como sem ocupação conhecida */ }
 
     if (requestId !== slotRequestRef.current) return;
 
-    const bookedForCalc = (booked || []).map((b) => {
-      const svc = b.services as unknown;
-      const dur = Array.isArray(svc)
-        ? (svc[0] as { duration_minutes: number } | undefined)?.duration_minutes
-        : (svc as { duration_minutes: number } | null)?.duration_minutes;
-      return { time: b.time as string, duration_minutes: dur || selectedService.duration_minutes };
-    });
+    const bookedForCalc = booked.map((b) => ({
+      time: b.time,
+      duration_minutes: b.duration_minutes || selectedService.duration_minutes,
+    }));
 
     const bufferMins = bookingSettings?.bufferMinutes ?? 0;
     let slots = calcSlots(availability, weekday, selectedService.duration_minutes, bookedForCalc, bufferMins);

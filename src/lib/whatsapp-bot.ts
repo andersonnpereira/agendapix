@@ -365,13 +365,27 @@ export async function handleBotMessage(profileId: string, phone: string, text: s
     if (!item) {
       newFallbackCount = fallbackCount + 1;
       if (newFallbackCount >= fallbackMaxTries) {
-        await reply(humanMsg);
+        // Trava atômica antes de responder: se o cliente mandou várias
+        // mensagens em sequência rápida, dois webhooks podem processar em
+        // paralelo e cada um decidir escalar — sem isso o cliente recebia a
+        // mensagem de escalonamento repetida (ex.: caso do Diogo). Só quem
+        // conseguir tirar o estado de "menu" primeiro envia a mensagem.
+        const { data: claimed } = await admin
+          .from("bot_conversations")
+          .update({ state: "human", last_message_at: now.toISOString(), fallback_count: 0, current_flow: currentFlowId })
+          .eq("profile_id", profileId).eq("phone", phone).eq("state", "menu")
+          .select("state");
+        if (claimed && claimed.length > 0) {
+          await reply(humanMsg);
+          await notifyOwner(`Cliente *${phone}* escalado ao atendente após respostas inválidas.`);
+        } else {
+          // Outra mensagem concorrente já escalou — só encaminha, sem repetir o aviso
+          await notifyOwner(`💬 *${phone}*:\n"${text.slice(0, 300)}"`);
+        }
         newState = "human";
         newFallbackCount = 0;
-        await notifyOwner(`Cliente *${phone}* escalado ao atendente após respostas inválidas.`);
       } else {
-        const hint = fallbackMaxTries - newFallbackCount === 1 ? "\n\n_Última tentativa._" : "";
-        await reply(fallbackMsg + hint);
+        await reply(fallbackMsg);
         newState = "menu";
       }
       newCurrentFlowId = currentFlowId;

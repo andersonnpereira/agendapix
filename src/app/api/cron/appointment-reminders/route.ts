@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { sendWhatsApp, formatTemplate, DEFAULT_MSG_LEMBRETE_AMANHA } from "@/lib/whatsapp";
+import { sendWhatsApp, formatTemplate, normalizeWhatsAppPhone, DEFAULT_MSG_LEMBRETE_AMANHA } from "@/lib/whatsapp";
 import { sendEmail, htmlLembreteCliente } from "@/lib/email";
+import { markOutboundSent } from "@/lib/whatsapp-bot";
 
 // Sem isso o Next.js trata a rota como estática e o Vercel cacheia a resposta
 // no CDN — o cron "roda" mas a função nunca executa (X-Vercel-Cache: HIT)
@@ -120,7 +121,10 @@ export async function GET(req: NextRequest) {
         token: profile.whatsapp_token || undefined,
         instanceId: profile.whatsapp_instance_id || undefined,
       });
-      if (result.ok) notified = true;
+      if (result.ok) {
+        notified = true;
+        await markOutboundSent(booking.profile_id as string, normalizeWhatsAppPhone(booking.client_phone as string));
+      }
     }
 
     const clientEmail = (booking as Record<string, unknown>).client_email as string | null | undefined;

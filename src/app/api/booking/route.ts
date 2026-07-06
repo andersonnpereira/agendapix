@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { sendEmail, htmlNovoAgendamento, htmlConfirmacaoCliente } from "@/lib/email";
-import { sendWhatsApp, msgConfirmacao } from "@/lib/whatsapp";
+import { sendWhatsApp, msgConfirmacao, normalizeWhatsAppPhone } from "@/lib/whatsapp";
+import { markOutboundSent } from "@/lib/whatsapp-bot";
 
 const supabaseAdmin = () =>
   createSupabaseClient(
@@ -292,6 +293,8 @@ export async function POST(req: NextRequest) {
         message: clientMsg,
         provider: "evolution",
         instanceId,
+      }).then((r) => {
+        if (r.ok) return markOutboundSent(profile_id, normalizeWhatsAppPhone(client_phone));
       }).catch((e) => console.error("[booking client-notify WA]", e));
     }
 

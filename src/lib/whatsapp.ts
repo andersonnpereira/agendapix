@@ -18,6 +18,16 @@ export const DEFAULT_MSG_LEMBRETE_AMANHA =
 export const DEFAULT_MSG_COBRANCA_VENCIDA =
   `Olá, {nome}! 😊\n\nPassando para lembrar que temos uma cobrança em aberto no seu nome:\n\n📋 *{servico}*\n💰 Valor: *{valor}*\n📅 Vencimento: *{data}*\n\n🔑 *Chave Pix para pagamento:*\n{pix}\n\nCaso já tenha efetuado o pagamento, desconsidere esta mensagem. 🙏\n\nQualquer dúvida estou à disposição!`;
 
+// Normaliza para o mesmo formato usado no JID do WhatsApp (só dígitos, com
+// DDI) — usado tanto para montar o "to" de envio quanto para casar com o
+// telefone extraído do webhook (bot_conversations.phone), que vem sempre
+// nesse formato. Mantenha em sincronia com a lógica de envio abaixo.
+export function normalizeWhatsAppPhone(raw: string): string {
+  const hasPlus = raw.trim().startsWith("+");
+  const digits = raw.replace(/\D/g, "");
+  return hasPlus ? digits : (digits.startsWith("55") ? digits : `55${digits}`);
+}
+
 export interface SendWhatsAppParams {
   to: string; // apenas dígitos, com DDI: "5511999998888"
   message: string;
@@ -46,12 +56,8 @@ export async function sendWhatsApp(
   const token = params.token || process.env.WHATSAPP_TOKEN || "";
   const instanceId =
     params.instanceId || process.env.WHATSAPP_INSTANCE_ID || "";
-  // Se o número original começa com '+', já inclui DDI — usar dígitos como estão.
-  // Caso contrário, tratar como brasileiro e aplicar DDI 55 adiante.
-  const hasPlus = params.to.trim().startsWith("+");
   const phone = params.to.replace(/\D/g, "");
-  // Número normalizado com DDI: se tem '+' usa os dígitos diretamente; senão garante "55"
-  const phoneWithDDI = hasPlus ? phone : (phone.startsWith("55") ? phone : `55${phone}`);
+  const phoneWithDDI = normalizeWhatsAppPhone(params.to);
   const { message } = params;
 
   try {
@@ -153,9 +159,8 @@ export async function sendWhatsAppImage(
   const token = params.token || process.env.WHATSAPP_TOKEN || "";
   const instanceId =
     params.instanceId || process.env.WHATSAPP_INSTANCE_ID || "";
-  const hasPlus = params.to.trim().startsWith("+");
   const phone = params.to.replace(/\D/g, "");
-  const phoneWithDDI = hasPlus ? phone : (phone.startsWith("55") ? phone : `55${phone}`);
+  const phoneWithDDI = normalizeWhatsAppPhone(params.to);
   const { imageUrl, caption } = params;
 
   try {

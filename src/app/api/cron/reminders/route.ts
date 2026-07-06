@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase-admin";
 import {
-  sendWhatsApp, msgLembrete, formatTemplate,
+  sendWhatsApp, msgLembrete, formatTemplate, normalizeWhatsAppPhone,
   DEFAULT_MSG_LEMBRETE_HOJE, DEFAULT_MSG_COBRANCA_VENCIDA,
 } from "@/lib/whatsapp";
+import { markOutboundSent } from "@/lib/whatsapp-bot";
 import { formatBRL } from "@/lib/format";
 
 // Sem isso o Next.js trata a rota como estática e o Vercel cacheia a resposta
@@ -188,6 +189,7 @@ export async function GET(req: NextRequest) {
       });
 
       if (result.ok) {
+        await markOutboundSent(charge.profile_id as string, normalizeWhatsAppPhone(charge.client_phone as string));
         // Grava também em send_history — sem isso o envio automático some do
         // "Histórico de envios" na UI (que só lê send_history, não reminders_sent).
         const newHistory = [...((charge.send_history as string[] | null) || []), now];

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase-server";
-import { sendWhatsApp, msgPix, msgLembrete } from "@/lib/whatsapp";
+import { sendWhatsApp, msgPix, msgLembrete, normalizeWhatsAppPhone } from "@/lib/whatsapp";
 import { formatBRL } from "@/lib/format";
+import { markOutboundSent } from "@/lib/whatsapp-bot";
 
 /**
  * POST /api/whatsapp-charge
@@ -88,6 +89,7 @@ export async function POST(req: NextRequest) {
     if (!result.ok) {
       return NextResponse.json({ error: `WhatsApp falhou: ${result.error}` }, { status: 502 });
     }
+    await markOutboundSent(user.id, normalizeWhatsAppPhone(charge.client_phone as string));
 
     // Fonte única de verdade para reminders_sent + send_history (o client
     // não deve mais incrementar — antes contava em dobro).

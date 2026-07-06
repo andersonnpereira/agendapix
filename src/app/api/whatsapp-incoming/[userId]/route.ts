@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { handleBotMessage } from "@/lib/whatsapp-bot";
+import { handleBotMessage, handleOwnerOutbound } from "@/lib/whatsapp-bot";
 
 // SQL necessário no Supabase (rodar uma vez):
 // CREATE TABLE IF NOT EXISTS public.bot_conversations (
@@ -10,6 +10,7 @@ import { handleBotMessage } from "@/lib/whatsapp-bot";
 //   last_message_at timestamptz DEFAULT now(),
 //   fallback_count int DEFAULT 0,
 //   current_flow text DEFAULT 'main',
+//   last_outbound_at timestamptz,
 //   UNIQUE(profile_id, phone)
 // );
 // ALTER TABLE public.bot_conversations ENABLE ROW LEVEL SECURITY;
@@ -62,12 +63,6 @@ export async function POST(
 
   const data = (body.data as Record<string, unknown>) || {};
   const key = (data.key as Record<string, unknown>) || {};
-
-  // Ignora mensagens enviadas pelo próprio bot (aceita boolean true ou string "true")
-  if (key.fromMe === true || key.fromMe === "true") {
-    return NextResponse.json({ ok: true, skipped: "fromMe" });
-  }
-
   const remoteJid = (key.remoteJid as string) || "";
 
   // Bot SÓ responde conversa individual (@s.whatsapp.net).
@@ -81,6 +76,22 @@ export async function POST(
   const phone = remoteJid.replace("@s.whatsapp.net", "").replace(/\D/g, "");
   if (!phone) {
     return NextResponse.json({ ok: true, skipped: "noPhone" });
+  }
+
+  // Mensagens com fromMe=true são as que SAEM do número do profissional —
+  // tanto os envios automáticos nossos (bot/cron/cobrança) quanto uma
+  // resposta manual que ele mesmo digitou no celular. handleOwnerOutbound
+  // usa o timestamp do último envio nosso para diferenciar os dois casos:
+  // se não foi eco de um envio recente, é atendimento humano manual e o bot
+  // deve pausar para essa conversa (ver caso de uso: profissional responde
+  // um cliente pelo WhatsApp e o bot, sem saber disso, insiste com o menu).
+  if (key.fromMe === true || key.fromMe === "true") {
+    try {
+      await handleOwnerOutbound(userId, phone);
+    } catch (e) {
+      console.error("[bot-incoming] erro ao processar fromMe:", e);
+    }
+    return NextResponse.json({ ok: true, skipped: "fromMe" });
   }
 
   // Extrai texto — tenta vários formatos da Evolution API

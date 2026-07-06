@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase-server";
-import { sendWhatsApp, msgConfirmacao } from "@/lib/whatsapp";
+import { sendWhatsApp, msgConfirmacao, normalizeWhatsAppPhone } from "@/lib/whatsapp";
+import { markOutboundSent } from "@/lib/whatsapp-bot";
 
 /**
  * POST /api/whatsapp
@@ -75,6 +76,7 @@ export async function POST(req: NextRequest) {
         { status: 502 }
       );
     }
+    await markOutboundSent(booking.profile_id, normalizeWhatsAppPhone(booking.client_phone));
 
     // Atualiza booking
     const { error: uErr } = await supabase

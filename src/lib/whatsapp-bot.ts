@@ -58,12 +58,17 @@ export const DEFAULT_FLOWS: BotFlow[] = [
   },
 ];
 
+// Janela de tolerância entre nós enviarmos uma mensagem e o eco "fromMe"
+// dela voltar pelo webhook da Evolution API — usada para diferenciar "essa
+// mensagem fromMe é o eco do que ACABAMOS de mandar" de "o profissional
+// respondeu manualmente pelo próprio celular".
+const OUTBOUND_ECHO_WINDOW_MS = 30_000;
+
 const MENU_NUMBERS = [
   "1️⃣","2️⃣","3️⃣","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣",
   "🔟","1️⃣1️⃣","1️⃣2️⃣","1️⃣3️⃣","1️⃣4️⃣","1️⃣5️⃣",
 ];
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "";
-const GREETING_WORDS = ["oi","olá","ola","hi","hello","menu","início","inicio","start","ajuda","help","ola!","oi!","0"];
 
 function fmtBRL(cents: number): string {
   return "R$ " + (cents / 100).toFixed(2).replace(".", ",");
@@ -156,6 +161,52 @@ function buildFlowText(flow: BotFlow, businessName: string): string {
   return `${flow.message.replace(/\{negocio\}/g, businessName)}\n\n${items}\n\n_Digite o número da opção._`;
 }
 
+// Chamado por TODO envio de WhatsApp ao cliente (bot, lembretes automáticos
+// de cron, cobrança manual, confirmação de agendamento) — grava o horário
+// para handleOwnerOutbound conseguir distinguir "eco do que acabamos de
+// mandar" de "o profissional respondeu manualmente pelo celular dele".
+// Falha aqui nunca deve derrubar o envio em si — por isso engole erros.
+export async function markOutboundSent(profileId: string, phone: string): Promise<void> {
+  try {
+    const admin = createAdminClient();
+    await admin.from("bot_conversations").upsert(
+      { profile_id: profileId, phone, last_outbound_at: new Date().toISOString() },
+      { onConflict: "profile_id,phone" }
+    );
+  } catch (e) {
+    console.error("[whatsapp-bot] markOutboundSent falhou:", e);
+  }
+}
+
+// Chamado pelo webhook quando chega um evento fromMe=true (mensagem saída do
+// próprio número do profissional). Duas origens possíveis:
+//   1) Eco de algo que NÓS enviamos há poucos segundos (bot, cron, cobrança) —
+//      ignorar, o estado da conversa já reflete isso.
+//   2) O profissional respondeu manualmente pelo app do celular — o bot não
+//      pode continuar empurrando menu/escalonamento por cima de um
+//      atendimento humano que já está em andamento. Pausa em estado "human".
+export async function handleOwnerOutbound(profileId: string, phone: string): Promise<void> {
+  const admin = createAdminClient();
+  const { data: conv } = await admin
+    .from("bot_conversations")
+    .select("last_outbound_at, state")
+    .eq("profile_id", profileId)
+    .eq("phone", phone)
+    .single();
+
+  if (conv?.last_outbound_at) {
+    const sinceMs = Date.now() - new Date(conv.last_outbound_at).getTime();
+    if (sinceMs >= 0 && sinceMs < OUTBOUND_ECHO_WINDOW_MS) return; // eco do nosso próprio envio
+  }
+  if (conv?.state === "human") return; // já pausado
+
+  await admin.from("bot_conversations").upsert(
+    { profile_id: profileId, phone, state: "human", last_message_at: new Date().toISOString(), fallback_count: 0 },
+    { onConflict: "profile_id,phone" }
+  );
+  console.log("[whatsapp-bot] resposta manual do profissional detectada — bot pausado:", { profileId, phone });
+}
+
 export async function handleBotMessage(profileId: string, phone: string, text: string): Promise<void> {
   const admin = createAdminClient();
   const { data: _raw } = await admin.from("profiles").select("*").eq("id", profileId).single();
@@ -184,6 +235,7 @@ export async function handleBotMessage(profileId: string, phone: string, text: s
       // Fallback: se a imagem falhou, garante que o texto chegue
       if (imageUrl && message) await sendWhatsApp({ ...common, message });
     }
+    await markOutboundSent(profileId, phone);
   }
   async function notifyOwner(msg: string) {
     const notifyPhone = (p.bot_notify_phone as string | null)?.trim();
@@ -238,7 +290,6 @@ export async function handleBotMessage(profileId: string, phone: string, text: s
 
   const normalized = text.trim().toLowerCase();
   const firstWord = normalized.split(/[\s!?,.:;]+/)[0] || normalized;
-  const isGreeting = GREETING_WORDS.includes(firstWord) || GREETING_WORDS.includes(normalized);
 
   const RESTART_WORDS = ["menu", "0", "reiniciar", "restart", "inicio", "início"];
   const isExplicitRestart = RESTART_WORDS.includes(normalized) || RESTART_WORDS.includes(firstWord);
@@ -249,19 +300,21 @@ export async function handleBotMessage(profileId: string, phone: string, text: s
       fallbackCount = 0;
       currentFlowId = "main";
     }
-    // Saudações em modo humano NÃO reiniciam — bot permanece silencioso
+    // Nenhuma outra mensagem reinicia em modo humano — bot permanece silencioso
   } else if (isExplicitRestart && state !== "idle") {
     // Restart explícito ("menu", "0", etc.) de qualquer estado ativo → volta ao início
     state = "idle";
     fallbackCount = 0;
     currentFlowId = "main";
   }
-  // Saudações ("oi", "olá"…) SÓ reiniciam quando state já é "idle"
-  // Se state === "menu", saudação vira entrada inválida → fallback (bot não reinicia no meio da conversa)
+  // Saudações ("oi", "olá"…) não são restart explícito — se state === "menu",
+  // viram entrada inválida → fallback (bot não reinicia no meio da conversa)
 
-  // Gatilho: só bloqueia ativações frias (state === idle, não saudação, não modo humano)
-  // Sessões ativas (menu, cobranca, human) e saudações sempre continuam
-  if (state === "idle" && !isGreeting) {
+  // Gatilho: só bloqueia ativações frias (state === idle, sem ser restart
+  // explícito, não modo humano). "menu"/"0"/etc. sempre reabrem o bot — o
+  // resto (saudações, palavras livres) respeita o trigger_mode configurado
+  // pelo profissional, para não ativar o bot fora do que ele escolheu.
+  if (state === "idle" && !isExplicitRestart) {
     const triggerMode = (p.bot_trigger_mode as BotTriggerMode | null) || BOT_DEFAULTS.triggerMode;
     const triggerKeywords: string[] = (p.bot_trigger_keywords as string[] | null) || BOT_DEFAULTS.triggerKeywords;
     const triggerNewConvHours = (p.bot_trigger_new_conv_hours as number | null) ?? BOT_DEFAULTS.triggerNewConvHours;

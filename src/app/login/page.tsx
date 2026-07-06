@@ -12,11 +12,19 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+
+    // Aceite obrigatório dos Termos no cadastro
+    if (mode === "signup" && !acceptedTerms) {
+      setMsg("Para criar a conta, você precisa aceitar os Termos de Uso e a Política de Privacidade.");
+      return;
+    }
+
     setLoading(true);
     setMsg(null);
 
@@ -24,7 +32,14 @@ export default function LoginPage() {
       const { error } = await supabase.auth.signUp({
         email,
         password,
-        options: { data: { name } },
+        options: {
+          data: {
+            name,
+            // Registro do aceite (prova de consentimento)
+            terms_accepted_at: new Date().toISOString(),
+            terms_version: "2026-07",
+          },
+        },
       });
       if (error) {
         setMsg(error.message);
@@ -60,6 +75,10 @@ export default function LoginPage() {
   async function magicLink() {
     if (!email) {
       setMsg("Digite seu e-mail primeiro.");
+      return;
+    }
+    if (mode === "signup" && !acceptedTerms) {
+      setMsg("Para criar a conta, você precisa aceitar os Termos de Uso e a Política de Privacidade.");
       return;
     }
     setLoading(true);
@@ -125,13 +144,30 @@ export default function LoginPage() {
               />
             </div>
 
+            {mode === "signup" && (
+              <label className="flex items-start gap-2.5 text-xs text-slate-600 leading-relaxed cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={acceptedTerms}
+                  onChange={(e) => setAcceptedTerms(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 shrink-0 accent-brand cursor-pointer"
+                />
+                <span>
+                  Li e aceito os{" "}
+                  <Link href="/termos-de-uso" target="_blank" className="text-brand hover:underline font-medium">Termos de Uso</Link>{" "}
+                  e a{" "}
+                  <Link href="/politica-de-privacidade" target="_blank" className="text-brand hover:underline font-medium">Política de Privacidade</Link>.
+                </span>
+              </label>
+            )}
+
             {msg && (
               <p className="text-sm text-slate-600 bg-slate-50 rounded-lg px-3 py-2">
                 {msg}
               </p>
             )}
 
-            <button className="btn-primary w-full" disabled={loading}>
+            <button className="btn-primary w-full" disabled={loading || (mode === "signup" && !acceptedTerms)}>
               {loading
                 ? "Aguarde..."
                 : mode === "login"
@@ -148,12 +184,14 @@ export default function LoginPage() {
             Entrar com link mágico (sem senha)
           </button>
 
-          <p className="text-center text-xs text-slate-400 mt-4 leading-relaxed">
-            Ao continuar, você concorda com os{" "}
-            <Link href="/termos-de-uso" className="text-brand hover:underline">Termos de Uso</Link>{" "}
-            e a{" "}
-            <Link href="/politica-de-privacidade" className="text-brand hover:underline">Política de Privacidade</Link>.
-          </p>
+          {mode === "login" && (
+            <p className="text-center text-xs text-slate-400 mt-4 leading-relaxed">
+              Ao continuar, você concorda com os{" "}
+              <Link href="/termos-de-uso" className="text-brand hover:underline">Termos de Uso</Link>{" "}
+              e a{" "}
+              <Link href="/politica-de-privacidade" className="text-brand hover:underline">Política de Privacidade</Link>.
+            </p>
+          )}
 
           <p className="text-center text-sm text-slate-500 mt-5">
             {mode === "login" ? "Não tem conta?" : "Já tem conta?"}{" "}

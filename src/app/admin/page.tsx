@@ -18,6 +18,8 @@ type Client = {
   registered_at: string | null;
   last_sign_in_at: string | null;
   booking_count: number;
+  terms_accepted_at: string | null;
+  terms_version: string | null;
 };
 
 const PLAN_LABELS: Record<string, { label: string; color: string }> = {
@@ -452,6 +454,11 @@ export default function AdminPage() {
                           <span>Cadastro: {formatDate(c.registered_at)}</span>
                           <span>Login: {formatDatetime(c.last_sign_in_at)}</span>
                           <span>📅 {c.booking_count} agendamento{c.booking_count !== 1 ? "s" : ""}</span>
+                          <span className={c.terms_accepted_at ? "text-brand" : "text-amber-500"}>
+                            {c.terms_accepted_at
+                              ? `📝 Termos aceitos: ${formatDatetime(c.terms_accepted_at)}${c.terms_version ? ` (v${c.terms_version})` : ""}`
+                              : "📝 Termos: não registrado"}
+                          </span>
                         </div>
                       </div>
                       <div className="flex gap-2 shrink-0">

@@ -207,7 +207,9 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   bot_trigger_keywords       text[] DEFAULT ARRAY['oi','olá','ola','hi','menu'],
   bot_trigger_new_conv_hours integer DEFAULT 24,
   bot_human_timeout_hours    integer DEFAULT 24,
-  ical_token                 uuid NOT NULL DEFAULT gen_random_uuid()
+  ical_token                 uuid NOT NULL DEFAULT gen_random_uuid(),
+  terms_accepted_at          timestamptz,
+  terms_version              text
 );
 CREATE UNIQUE INDEX IF NOT EXISTS profiles_ical_token_idx ON public.profiles(ical_token);
 

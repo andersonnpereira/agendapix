@@ -188,11 +188,15 @@ export async function GET(req: NextRequest) {
       });
 
       if (result.ok) {
+        // Grava também em send_history — sem isso o envio automático some do
+        // "Histórico de envios" na UI (que só lê send_history, não reminders_sent).
+        const newHistory = [...((charge.send_history as string[] | null) || []), now];
         const { error: upErr } = await admin
           .from("charges")
           .update({
             last_auto_reminder_at: now,
             reminders_sent: (charge.reminders_sent || 0) + 1,
+            send_history: newHistory,
           })
           .eq("id", charge.id);
         if (upErr) {

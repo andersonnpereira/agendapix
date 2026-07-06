@@ -33,6 +33,19 @@ export async function GET(req: NextRequest) {
     const nowBRtMs = Date.now() - BRT_OFFSET_MS;
     const todayDate = new Date(nowBRtMs).toISOString().slice(0, 10); // "YYYY-MM-DD" BRT
     const todayStart = todayDate + "T03:00:00.000Z"; // meia-noite BRT = 03:00 UTC
+    const currentHourBRT = new Date(nowBRtMs).getUTCHours();
+
+    // Piso de segurança ABSOLUTO: nenhuma mensagem automática de cobrança sai
+    // entre meia-noite e 6h BRT — nem "vence hoje"/vencidas (já gated por
+    // reminder_hour) nem lembretes ANTECIPADOS agendados manualmente pelo
+    // profissional (datetime-local livre, sem gate por padrão). Se o horário
+    // marcado cair na madrugada — erro de preenchimento, ou matemática de
+    // recorrência reproduzindo o horário original —, o envio só ocorre na
+    // primeira execução do cron a partir das 6h; nada se perde, só atrasa.
+    const QUIET_HOUR_END = 6;
+    if (currentHourBRT < QUIET_HOUR_END) {
+      return NextResponse.json({ ok: true, sent: 0, hour: currentHourBRT, skipped: "quiet_hours" });
+    }
 
     // Marca todas as cobranças vencidas (não pagas) como "atrasado" no banco
     await admin
@@ -53,9 +66,6 @@ export async function GET(req: NextRequest) {
     };
 
     const PROFILE_SELECT = "whatsapp_provider, whatsapp_token, whatsapp_instance_id, msg_lembrete, msg_lembrete_hoje, msg_cobranca_vencida, pix_key, reminder_hour";
-
-    // Hora atual em BRT (nowBRtMs já tem o offset -3h aplicado)
-    const currentHourBRT = new Date(nowBRtMs).getUTCHours();
 
     // ── 1. Lembretes antecipados + vencidas ─────────────────────────────────
     // Inclui: antes do vencimento (regular) E após vencimento (cobrança vencida)

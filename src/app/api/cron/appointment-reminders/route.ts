@@ -31,6 +31,15 @@ export async function GET(req: NextRequest) {
   const brNow = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" }));
   const currentHourBRT = brNow.getHours();
 
+  // Piso de segurança ABSOLUTO: nunca enviar lembrete de agendamento de
+  // madrugada, mesmo que reminder_hour de algum perfil esteja incorretamente
+  // configurado abaixo do mínimo permitido na UI (6h). Reforço redundante ao
+  // gate por reminder_hour logo abaixo — nunca deve disparar, mas garante.
+  const QUIET_HOUR_END = 6;
+  if (currentHourBRT < QUIET_HOUR_END) {
+    return NextResponse.json({ ok: true, sent: 0, hour: currentHourBRT, skipped: "quiet_hours" });
+  }
+
   // Amanhã no fuso Brasil
   const brTomorrow = new Date(brNow);
   brTomorrow.setDate(brTomorrow.getDate() + 1);

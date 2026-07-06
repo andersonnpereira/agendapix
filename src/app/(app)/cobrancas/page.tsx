@@ -294,6 +294,13 @@ export default function CobrancasPage() {
 
   async function scheduleReminder(charge: Charge) {
     if (!reminderScheduledAt) return;
+    // Bloqueia horário de madrugada — evita agendar sem querer um lembrete
+    // que acordaria o cliente (o cron também tem esse piso como reforço).
+    const scheduledHour = parseInt(reminderScheduledAt.slice(11, 13), 10);
+    if (scheduledHour < 6) {
+      showToast("⏰ Escolha um horário a partir das 06:00 — mensagens não são enviadas de madrugada.");
+      return;
+    }
     setActionId(charge.id + "-lembrete");
     try {
       const { error } = await supabase
@@ -614,6 +621,13 @@ export default function CobrancasPage() {
     if (!fAmount.trim()) {
       setFError("Informe o valor da cobrança.");
       return;
+    }
+    if (fAutoReminder && fScheduledAt) {
+      const scheduledHour = parseInt(fScheduledAt.slice(11, 13), 10);
+      if (scheduledHour < 6) {
+        setFError("Escolha um horário de lembrete a partir das 06:00 — mensagens não são enviadas de madrugada.");
+        return;
+      }
     }
 
     setFSaving(true);

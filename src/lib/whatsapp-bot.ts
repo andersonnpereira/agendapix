@@ -379,24 +379,31 @@ export async function handleBotMessage(profileId: string, phone: string, text: s
     } else if (!item) {
       newFallbackCount = fallbackCount + 1;
       if (newFallbackCount >= fallbackMaxTries) {
+        // Aviso de "vou te encaminhar" após várias respostas inválidas — mas
+        // SEM sair do estado "menu". Se o cliente digitar uma opção válida
+        // depois disso, o bot continua respondendo normalmente; só um
+        // atendimento humano de verdade (o profissional respondeu manualmente,
+        // ou o cliente pediu "falar com atendente" explicitamente) deve
+        // silenciar o bot por completo.
+        //
         // Trava atômica antes de responder: se o cliente mandou várias
         // mensagens em sequência rápida, dois webhooks podem processar em
-        // paralelo e cada um decidir escalar — sem isso o cliente recebia a
-        // mensagem de escalonamento repetida (ex.: caso do Diogo). Só quem
-        // conseguir tirar o estado de "menu" primeiro envia a mensagem.
+        // paralelo e cada um decidir avisar — sem isso o cliente recebia o
+        // aviso repetido (ex.: caso do Diogo). Só quem conseguir zerar o
+        // contador primeiro (fallback_count ainda no valor lido) envia.
         const { data: claimed } = await admin
           .from("bot_conversations")
-          .update({ state: "human", last_message_at: now.toISOString(), fallback_count: 0, current_flow: currentFlowId })
-          .eq("profile_id", profileId).eq("phone", phone).eq("state", "menu")
-          .select("state");
+          .update({ fallback_count: 0, last_message_at: now.toISOString(), current_flow: currentFlowId })
+          .eq("profile_id", profileId).eq("phone", phone).eq("fallback_count", fallbackCount)
+          .select("fallback_count");
         if (claimed && claimed.length > 0) {
           await reply(humanMsg);
-          await notifyOwner(`Cliente *${phone}* escalado ao atendente após respostas inválidas.`);
+          await notifyOwner(`Cliente *${phone}* não conseguiu usar o menu após várias tentativas.`);
         } else {
-          // Outra mensagem concorrente já escalou — só encaminha, sem repetir o aviso
+          // Outra mensagem concorrente já avisou — só encaminha, sem repetir o aviso
           await notifyOwner(`💬 *${phone}*:\n"${text.slice(0, 300)}"`);
         }
-        newState = "human";
+        newState = "menu";
         newFallbackCount = 0;
       } else {
         await reply(fallbackMsg);

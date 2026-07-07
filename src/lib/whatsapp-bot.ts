@@ -193,7 +193,7 @@ export async function handleOwnerOutbound(profileId: string, phone: string): Pro
   const admin = createAdminClient();
   const { data: conv } = await admin
     .from("bot_conversations")
-    .select("last_outbound_at, state")
+    .select("last_outbound_at, state, human_owner_engaged")
     .eq("profile_id", profileId)
     .eq("phone", phone)
     .single();
@@ -202,10 +202,14 @@ export async function handleOwnerOutbound(profileId: string, phone: string): Pro
     const sinceMs = Date.now() - new Date(conv.last_outbound_at).getTime();
     if (sinceMs >= 0 && sinceMs < OUTBOUND_ECHO_WINDOW_MS) return; // eco do nosso próprio envio
   }
-  if (conv?.state === "human") return; // já pausado
+  if (conv?.state === "human" && conv?.human_owner_engaged) return; // já pausado e o profissional já está na conversa
 
+  // human_owner_engaged=true marca que o PRÓPRIO profissional já respondeu
+  // manualmente essa conversa — a partir daqui ele já está ciente de tudo,
+  // então handleBotMessage para de encaminhar cada mensagem do cliente pra
+  // ele (senão vira spam de notificação numa conversa que ele já está vendo).
   await admin.from("bot_conversations").upsert(
-    { profile_id: profileId, phone, state: "human", last_message_at: new Date().toISOString(), fallback_count: 0 },
+    { profile_id: profileId, phone, state: "human", last_message_at: new Date().toISOString(), fallback_count: 0, human_owner_engaged: true },
     { onConflict: "profile_id,phone" }
   );
   console.log("[whatsapp-bot] resposta manual do profissional detectada — bot pausado:", { profileId, phone });
@@ -262,7 +266,7 @@ export async function handleBotMessage(profileId: string, phone: string, text: s
   // Carregar conversa
   const { data: conv } = await admin
     .from("bot_conversations")
-    .select("state, last_message_at, fallback_count, current_flow")
+    .select("state, last_message_at, fallback_count, current_flow, human_owner_engaged")
     .eq("profile_id", profileId)
     .eq("phone", phone)
     .single();
@@ -271,6 +275,7 @@ export async function handleBotMessage(profileId: string, phone: string, text: s
   let state: BotState = "idle";
   let fallbackCount = 0;
   let currentFlowId = "main";
+  const ownerEngaged = conv?.human_owner_engaged ?? false;
 
   const humanTimeoutHours = (p.bot_human_timeout_hours as number | null) ?? BOT_DEFAULTS.humanTimeoutHours;
 
@@ -350,12 +355,14 @@ export async function handleBotMessage(profileId: string, phone: string, text: s
   let newState: BotState = state;
   let newFallbackCount = 0;
   let newCurrentFlowId = currentFlowId;
+  let newOwnerEngaged = ownerEngaged;
 
   const fallbackMsg = (p.bot_fallback_message as string | null) || BOT_DEFAULTS.fallback;
   const humanMsg = (p.bot_human_message as string | null) || BOT_DEFAULTS.human;
 
   // Estado idle → mostrar menu principal
   if (state === "idle") {
+    newOwnerEngaged = false; // conversa nova — zera qualquer engajamento de um ciclo anterior
     const mainFlow = flows.find((f) => f.id === "main") || flows[0];
     await reply(buildFlowText(mainFlow, businessName), mainFlow.imageUrl);
     newState = "menu";
@@ -465,6 +472,7 @@ export async function handleBotMessage(profileId: string, phone: string, text: s
         await reply(freeText || humanMsg, item.imageUrl);
         newState = "human";
         newCurrentFlowId = "main";
+        newOwnerEngaged = false; // pedido explícito — ainda ninguém respondeu de verdade
         await notifyOwner(`Cliente *${phone}* solicitou atendimento humano.`);
 
       } else {
@@ -500,14 +508,19 @@ export async function handleBotMessage(profileId: string, phone: string, text: s
     }
 
   } else if (state === "human") {
-    // Bot desativado — apenas encaminha mensagem ao atendente, sem responder ao cliente
-    await notifyOwner(`💬 *${phone}*:\n"${text.slice(0, 300)}"`);
+    // Bot desativado — sem responder ao cliente. Só encaminha pro dono se ele
+    // ainda não tiver respondido essa conversa manualmente (human_owner_engaged);
+    // uma vez que ele já está respondendo pessoalmente, ele já está ciente de
+    // tudo e ficar avisando de novo a cada mensagem vira spam de notificação.
+    if (!ownerEngaged) {
+      await notifyOwner(`💬 *${phone}*:\n"${text.slice(0, 300)}"`);
+    }
     newState = "human";
     newCurrentFlowId = currentFlowId;
   }
 
   await admin.from("bot_conversations").upsert(
-    { profile_id: profileId, phone, state: newState, last_message_at: now.toISOString(), fallback_count: newFallbackCount, current_flow: newCurrentFlowId },
+    { profile_id: profileId, phone, state: newState, last_message_at: now.toISOString(), fallback_count: newFallbackCount, current_flow: newCurrentFlowId, human_owner_engaged: newOwnerEngaged },
     { onConflict: "profile_id,phone" }
   );
 }

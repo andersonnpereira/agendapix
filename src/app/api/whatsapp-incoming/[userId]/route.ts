@@ -11,6 +11,7 @@ import { handleBotMessage, handleOwnerOutbound } from "@/lib/whatsapp-bot";
 //   fallback_count int DEFAULT 0,
 //   current_flow text DEFAULT 'main',
 //   last_outbound_at timestamptz,
+//   human_owner_engaged boolean NOT NULL DEFAULT false,
 //   UNIQUE(profile_id, phone)
 // );
 // ALTER TABLE public.bot_conversations ENABLE ROW LEVEL SECURITY;

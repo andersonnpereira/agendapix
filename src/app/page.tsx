@@ -42,7 +42,7 @@ const FEATURES = [
   {
     icon: "🤖",
     title: "Chatbot no WhatsApp",
-    desc: "Um assistente responde seus clientes sozinho: menu de opções, agendamento e cobrança, 24h por dia.",
+    desc: "Monte seu próprio menu com submenus, imagens e respostas personalizadas. Responde 24h por dia e transfere pra você quando precisar.",
     highlight: false,
   },
   {
@@ -67,6 +67,12 @@ const FEATURES = [
     icon: "🎨",
     title: "Sua página, sua cara",
     desc: "Logo, cor, capa e bio personalizadas. Um link de agendamento profissional pra colar na bio.",
+    highlight: false,
+  },
+  {
+    icon: "⭐",
+    title: "Avaliação automática no Google",
+    desc: "Depois do atendimento, o cliente recebe o link pra te avaliar no Google (ou onde você preferir). Mais reputação, sem precisar pedir.",
     highlight: false,
   },
 ];

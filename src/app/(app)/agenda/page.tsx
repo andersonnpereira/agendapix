@@ -30,6 +30,7 @@ type Profile = {
   pix_merchant_city: string | null;
   whatsapp_provider: string;
   review_link: string | null;
+  ical_token: string | null;
 };
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
@@ -71,6 +72,7 @@ export default function AgendaPage() {
   });
 
   const [calendarDetail, setCalendarDetail] = useState<Booking | null>(null);
+  const [showIcalModal, setShowIcalModal] = useState(false);
 
   // Reagendamento
   const [rescheduleModal, setRescheduleModal] = useState<Booking | null>(null);
@@ -80,6 +82,19 @@ export default function AgendaPage() {
   const showToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(""), 3500);
+  };
+
+  const icalUrl = profile?.ical_token
+    ? `${process.env.NEXT_PUBLIC_SITE_URL || (typeof window !== "undefined" ? window.location.origin : "")}/api/ical?token=${profile.ical_token}`
+    : "";
+
+  const copyIcalUrl = async () => {
+    try {
+      await navigator.clipboard.writeText(icalUrl);
+      showToast("Link copiado!");
+    } catch {
+      showToast("Não foi possível copiar — selecione o link manualmente.");
+    }
   };
 
   function addDaysToDate(dateStr: string, n: number): string {
@@ -94,7 +109,7 @@ export default function AgendaPage() {
 
     const { data: p } = await supabase
       .from("profiles")
-      .select("id, pix_key, pix_key_type, pix_merchant_name, pix_merchant_city, whatsapp_provider, review_link")
+      .select("id, pix_key, pix_key_type, pix_merchant_name, pix_merchant_city, whatsapp_provider, review_link, ical_token")
       .eq("id", user.id)
       .single();
     setProfile(p);
@@ -362,14 +377,14 @@ export default function AgendaPage() {
               📅 Semana
             </button>
           </div>
-          <a
-            href="/api/ical"
-            download="agenda.ics"
+          <button
+            type="button"
+            onClick={() => setShowIcalModal(true)}
             className="text-xs text-slate-500 hover:text-brand border border-slate-200 rounded-lg px-3 py-1.5 transition-colors"
-            title="Exportar para Google Calendar, iPhone ou Outlook"
+            title="Assinar agenda no Google Calendar, iPhone ou Outlook"
           >
-            ↓ .ics
-          </a>
+            📅 Assinar agenda
+          </button>
         </div>
       </div>
 
@@ -672,6 +687,38 @@ export default function AgendaPage() {
               >
                 {actionLoading?.endsWith("-reagendar") ? "Salvando..." : "Confirmar reagendamento"}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showIcalModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-slate-900 text-lg">Assinar agenda</h3>
+              <button className="text-slate-400 hover:text-slate-600" onClick={() => setShowIcalModal(false)}>✕</button>
+            </div>
+            <p className="text-sm text-slate-500">
+              Assine esse link no seu calendário — seus agendamentos aparecem lá automaticamente e se atualizam sozinhos, sem precisar baixar nada de novo.
+            </p>
+            <div className="flex gap-2">
+              <input readOnly className="input text-xs flex-1 truncate" value={icalUrl} onFocus={(e) => e.target.select()} />
+              <button className="btn-primary text-sm px-4 shrink-0" onClick={copyIcalUrl}>Copiar</button>
+            </div>
+            <div className="space-y-3 text-sm text-slate-600 border-t border-slate-100 pt-4">
+              <div>
+                <p className="font-semibold text-slate-800">📱 iPhone / iPad</p>
+                <p className="text-slate-500">Ajustes → Calendário → Contas → Adicionar Conta → Outro → Adicionar Assinatura de Calendário → cole o link.</p>
+              </div>
+              <div>
+                <p className="font-semibold text-slate-800">🖥️ Google Calendar</p>
+                <p className="text-slate-500">No site do Google Calendar: "Outros calendários" (+) → Fazer o download de uma agenda → cole o link.</p>
+              </div>
+              <div>
+                <p className="font-semibold text-slate-800">📧 Outlook</p>
+                <p className="text-slate-500">Adicionar calendário → Assinar da Web → cole o link.</p>
+              </div>
             </div>
           </div>
         </div>

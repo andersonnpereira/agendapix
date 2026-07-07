@@ -102,14 +102,22 @@ export async function GET(req: NextRequest) {
 
     // Portão de horário: "vence hoje" e vencidos (que reenviam todo dia) não
     // podem sair de madrugada — só a partir da hora configurada (reminder_hour,
-    // padrão 8h). Lembretes ANTECIPADOS têm data/hora escolhida pelo usuário
-    // (scheduled_reminder_at, datetime) e são respeitados sem gate.
+    // padrão 8h). Lembretes ANTECIPADOS reenviam todo dia até o vencimento
+    // (scheduled_reminder_at <= now fica verdadeiro pra sempre depois do 1º
+    // envio) — sem fixar a hora escolhida pelo profissional, a partir do 2º
+    // dia eles disparavam na primeira execução do cron do dia (6h, logo após
+    // o piso de silêncio), ignorando o horário configurado. Por isso a hora
+    // de scheduled_reminder_at também vira portão, todo santo dia.
     const allToProcess = merged.filter(({ charge, type }) => {
       const rh = (charge.profiles as ProfileJoin).reminder_hour ?? 8;
       const isDueToday = type === "due_today";
       const isOverdue = !!charge.due_date && charge.due_date < todayDate;
       if (isDueToday || isOverdue) return currentHourBRT >= rh;
-      return true; // antecipado agendado — respeita o horário escolhido
+      if (charge.scheduled_reminder_at) {
+        const scheduledHourBRT = new Date(new Date(charge.scheduled_reminder_at as string).getTime() - BRT_OFFSET_MS).getUTCHours();
+        return currentHourBRT >= scheduledHourBRT;
+      }
+      return true;
     });
 
     if (allToProcess.length === 0) {

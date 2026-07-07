@@ -1033,7 +1033,7 @@ export default function ConfiguracoesPage() {
             ))}
           </select>
           <p className="text-xs text-slate-400 mt-1">
-            Horário (BRT) em que o lembrete de amanhã será enviado ao cliente
+            Horário (BRT) a partir do qual são enviados: o lembrete de agendamento de amanhã e as cobranças que vencem hoje ou já venceram
           </p>
         </div>
 

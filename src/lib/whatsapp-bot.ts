@@ -69,6 +69,10 @@ const MENU_NUMBERS = [
   "🔟","1️⃣1️⃣","1️⃣2️⃣","1️⃣3️⃣","1️⃣4️⃣","1️⃣5️⃣",
 ];
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "";
+// Cumprimentos soltos que não devem contar como tentativa inválida quando o
+// cliente já está no meio de um menu — muito comum mandar "oi"/"boa tarde"
+// numa mensagem e a pergunta de verdade só na próxima.
+const PLEASANTRIES = ["oi","olá","ola","oi!","olá!","hi","hello","opa","eae","e ai","e aí","bom dia","boa tarde","boa noite","tudo bem","tudo bom","td bem"];
 
 function fmtBRL(cents: number): string {
   return "R$ " + (cents / 100).toFixed(2).replace(".", ",");
@@ -361,8 +365,18 @@ export async function handleBotMessage(profileId: string, phone: string, text: s
     const currentFlow = flows.find((f) => f.id === currentFlowId) || flows[0];
     const choice = parseInt(normalized) - 1;
     const item = currentFlow?.items[choice];
+    const isPleasantry = PLEASANTRIES.includes(normalized) || PLEASANTRIES.includes(firstWord);
 
-    if (!item) {
+    if (!item && isPleasantry) {
+      // Cumprimento solto no meio do menu ("oi", "boa tarde"…) — muito comum o
+      // cliente mandar isso e só na mensagem seguinte a pergunta de verdade.
+      // Não conta como tentativa inválida, só relembra as opções.
+      await reply(buildFlowText(currentFlow, businessName), currentFlow.imageUrl);
+      newState = "menu";
+      newFallbackCount = fallbackCount;
+      newCurrentFlowId = currentFlowId;
+
+    } else if (!item) {
       newFallbackCount = fallbackCount + 1;
       if (newFallbackCount >= fallbackMaxTries) {
         // Trava atômica antes de responder: se o cliente mandou várias

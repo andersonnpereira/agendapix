@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase-admin";
 import { sendWhatsApp, sendWhatsAppImage } from "@/lib/whatsapp";
+import { sendEmail, htmlAtendimentoHumano } from "@/lib/email";
 
 export type BotState = "idle" | "menu" | "cobranca_lookup" | "human";
 export type BotSpecialAction = "schedule" | "charges" | "human";
@@ -247,8 +248,32 @@ export async function handleBotMessage(profileId: string, phone: string, text: s
   }
   async function notifyOwner(msg: string) {
     const notifyPhone = (p.bot_notify_phone as string | null)?.trim();
-    if (!notifyPhone) return;
-    await sendWhatsApp({ to: notifyPhone, message: `🤖 *Bot*\n${msg}`, provider, token: (p.whatsapp_token as string) || undefined, instanceId: (p.whatsapp_instance_id as string) || undefined });
+    if (notifyPhone) {
+      const result = await sendWhatsApp({ to: notifyPhone, message: `🤖 *Bot*\n${msg}`, provider, token: (p.whatsapp_token as string) || undefined, instanceId: (p.whatsapp_instance_id as string) || undefined });
+      if (!result.ok) {
+        console.error("[whatsapp-bot] notifyOwner falhou (WhatsApp):", result.error, { profileId, notifyPhone });
+      }
+    }
+    // Canal redundante por e-mail — a notificação por WhatsApp pode falhar
+    // (rate limit, instância caída) ou simplesmente não gerar alerta nativo
+    // no celular quando há uma sessão de API conectada no mesmo número.
+    try {
+      let email = (p.notification_email as string | null)?.trim() || "";
+      if (!email) {
+        const { data } = await admin.auth.admin.getUserById(profileId);
+        email = data?.user?.email || "";
+      }
+      if (email) {
+        const ok = await sendEmail({
+          to: email,
+          subject: "🙋 Cliente precisa de atendimento",
+          html: htmlAtendimentoHumano({ phone, message: msg, siteUrl: SITE_URL }),
+        });
+        if (!ok) console.error("[whatsapp-bot] notifyOwner falhou (e-mail):", { profileId, email });
+      }
+    } catch (e) {
+      console.error("[whatsapp-bot] notifyOwner erro ao tentar e-mail:", e);
+    }
   }
 
   // Horário de atendimento

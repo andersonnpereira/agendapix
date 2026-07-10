@@ -135,6 +135,31 @@ export function htmlCancelamentoProfissional(data: {
 </div>`.trim();
 }
 
+export function htmlAtendimentoHumano(data: {
+  phone: string;
+  message: string;
+  siteUrl: string;
+}): string {
+  const waLink = `https://wa.me/${data.phone.replace(/\D/g, "")}`;
+  return `
+<div style="font-family:sans-serif;max-width:520px;margin:0 auto;color:#1a1a1a">
+  <div style="background:#f59e0b;padding:20px 24px;border-radius:8px 8px 0 0">
+    <h2 style="color:#fff;margin:0;font-size:20px">🙋 Cliente precisa de atendimento</h2>
+  </div>
+  <div style="border:1px solid #e5e7eb;border-top:none;padding:24px;border-radius:0 0 8px 8px">
+    <p style="margin-top:0">O chatbot do WhatsApp não conseguiu resolver e o cliente está aguardando você:</p>
+    <table style="width:100%;border-collapse:collapse;margin:12px 0">
+      <tr><td style="padding:8px 0;font-weight:700;width:100px">WhatsApp</td><td style="padding:8px 0">${data.phone}</td></tr>
+      <tr style="background:#f9fafb"><td style="padding:8px;font-weight:700;vertical-align:top">Mensagem</td><td style="padding:8px">${data.message}</td></tr>
+    </table>
+    <a href="${waLink}" style="display:inline-block;background:#16a34a;color:#fff;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:700;margin-top:8px">
+      Abrir conversa no WhatsApp →
+    </a>
+    <p style="font-size:11px;color:#94a3b8;margin-top:20px">Este aviso por e-mail existe porque a notificação por WhatsApp pode falhar ou não gerar alerta nativo no celular. Enviado via <a href="${data.siteUrl}" style="color:#16a34a">Agendou</a>.</p>
+  </div>
+</div>`.trim();
+}
+
 export function htmlNovoAgendamento(data: {
   clientName: string;
   service: string;

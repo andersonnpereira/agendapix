@@ -1,6 +1,5 @@
 import { createAdminClient } from "@/lib/supabase-admin";
-import { sendWhatsApp, sendWhatsAppImage } from "@/lib/whatsapp";
-import { sendEmail, htmlAtendimentoHumano } from "@/lib/email";
+import { sendWhatsApp, sendWhatsAppImage, normalizeWhatsAppPhone } from "@/lib/whatsapp";
 
 export type BotState = "idle" | "menu" | "cobranca_lookup" | "human";
 export type BotSpecialAction = "schedule" | "charges" | "human";
@@ -248,31 +247,18 @@ export async function handleBotMessage(profileId: string, phone: string, text: s
   }
   async function notifyOwner(msg: string) {
     const notifyPhone = (p.bot_notify_phone as string | null)?.trim();
-    if (notifyPhone) {
-      const result = await sendWhatsApp({ to: notifyPhone, message: `🤖 *Bot*\n${msg}`, provider, token: (p.whatsapp_token as string) || undefined, instanceId: (p.whatsapp_instance_id as string) || undefined });
-      if (!result.ok) {
-        console.error("[whatsapp-bot] notifyOwner falhou (WhatsApp):", result.error, { profileId, notifyPhone });
-      }
+    if (!notifyPhone) {
+      console.warn("[whatsapp-bot] notifyOwner: bot_notify_phone não configurado — aviso perdido:", { profileId });
+      return;
     }
-    // Canal redundante por e-mail — a notificação por WhatsApp pode falhar
-    // (rate limit, instância caída) ou simplesmente não gerar alerta nativo
-    // no celular quando há uma sessão de API conectada no mesmo número.
-    try {
-      let email = (p.notification_email as string | null)?.trim() || "";
-      if (!email) {
-        const { data } = await admin.auth.admin.getUserById(profileId);
-        email = data?.user?.email || "";
-      }
-      if (email) {
-        const ok = await sendEmail({
-          to: email,
-          subject: "🙋 Cliente precisa de atendimento",
-          html: htmlAtendimentoHumano({ phone, message: msg, siteUrl: SITE_URL }),
-        });
-        if (!ok) console.error("[whatsapp-bot] notifyOwner falhou (e-mail):", { profileId, email });
-      }
-    } catch (e) {
-      console.error("[whatsapp-bot] notifyOwner erro ao tentar e-mail:", e);
+    const normalizedNotify = normalizeWhatsAppPhone(notifyPhone);
+    // Tenta 2x: um envio falho (instância instável, limite de taxa) não pode
+    // significar que o dono nunca fique sabendo que um cliente precisa dele.
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      const result = await sendWhatsApp({ to: normalizedNotify, message: `🤖 *Bot*\n${msg}`, provider, token: (p.whatsapp_token as string) || undefined, instanceId: (p.whatsapp_instance_id as string) || undefined });
+      if (result.ok) return;
+      console.error(`[whatsapp-bot] notifyOwner falhou (tentativa ${attempt}/2):`, result.error, { profileId, notifyPhone });
+      if (attempt === 1) await new Promise((r) => setTimeout(r, 1500));
     }
   }
 
@@ -409,38 +395,47 @@ export async function handleBotMessage(profileId: string, phone: string, text: s
       newCurrentFlowId = currentFlowId;
 
     } else if (!item) {
-      newFallbackCount = fallbackCount + 1;
-      if (newFallbackCount >= fallbackMaxTries) {
-        // Aviso de "vou te encaminhar" após várias respostas inválidas — mas
-        // SEM sair do estado "menu". Se o cliente digitar uma opção válida
-        // depois disso, o bot continua respondendo normalmente; só um
-        // atendimento humano de verdade (o profissional respondeu manualmente,
-        // ou o cliente pediu "falar com atendente" explicitamente) deve
-        // silenciar o bot por completo.
-        //
-        // Trava atômica antes de responder: se o cliente mandou várias
-        // mensagens em sequência rápida, dois webhooks podem processar em
-        // paralelo e cada um decidir avisar — sem isso o cliente recebia o
-        // aviso repetido (ex.: caso do Diogo). Só quem conseguir zerar o
-        // contador primeiro (fallback_count ainda no valor lido) envia.
-        const { data: claimed } = await admin
-          .from("bot_conversations")
-          .update({ fallback_count: 0, last_message_at: now.toISOString(), current_flow: currentFlowId })
-          .eq("profile_id", profileId).eq("phone", phone).eq("fallback_count", fallbackCount)
-          .select("fallback_count");
-        if (claimed && claimed.length > 0) {
-          await reply(humanMsg);
-          await notifyOwner(`Cliente *${phone}* não conseguiu usar o menu após várias tentativas.`);
-        } else {
-          // Outra mensagem concorrente já avisou — só encaminha, sem repetir o aviso
-          await notifyOwner(`💬 *${phone}*:\n"${text.slice(0, 300)}"`);
-        }
-        newState = "menu";
-        newFallbackCount = 0;
+      if (fallbackCount >= fallbackMaxTries) {
+        // Já cruzamos o limite antes nessa mesma sequência — o aviso "vou te
+        // encaminhar" já foi mandado uma vez; não repete pro cliente a cada
+        // nova mensagem solta (isso é o que "consertava sozinho" virava spam
+        // — cliente recebendo a mesma mensagem de novo e de novo). Só
+        // encaminha em silêncio, e só se o profissional ainda não tiver
+        // entrado na conversa manualmente.
+        if (!ownerEngaged) await notifyOwner(`💬 *${phone}*:\n"${text.slice(0, 300)}"`);
+        newFallbackCount = fallbackMaxTries; // permanece "preso" até escolher opção válida
       } else {
-        await reply(fallbackMsg);
-        newState = "menu";
+        newFallbackCount = fallbackCount + 1;
+        if (newFallbackCount >= fallbackMaxTries) {
+          // Cruzou o limite agora — avisa uma única vez. SEM sair do estado
+          // "menu": se o cliente digitar uma opção válida depois, o bot
+          // continua respondendo normalmente; só um atendimento humano de
+          // verdade (profissional respondeu manualmente, ou pedido explícito
+          // de "falar com atendente") deve silenciar o bot por completo.
+          //
+          // Trava atômica antes de responder: se o cliente mandou várias
+          // mensagens em sequência rápida, dois webhooks podem processar em
+          // paralelo e cada um decidir avisar — sem isso o cliente recebia o
+          // aviso repetido (ex.: caso do Diogo). Só quem conseguir marcar o
+          // contador primeiro (fallback_count ainda no valor lido) envia.
+          const { data: claimed } = await admin
+            .from("bot_conversations")
+            .update({ fallback_count: fallbackMaxTries, last_message_at: now.toISOString(), current_flow: currentFlowId })
+            .eq("profile_id", profileId).eq("phone", phone).eq("fallback_count", fallbackCount)
+            .select("fallback_count");
+          if (claimed && claimed.length > 0) {
+            await reply(humanMsg);
+            await notifyOwner(`Cliente *${phone}* não conseguiu usar o menu após várias tentativas.`);
+          } else if (!ownerEngaged) {
+            // Outra mensagem concorrente já avisou — só encaminha, sem repetir o aviso
+            await notifyOwner(`💬 *${phone}*:\n"${text.slice(0, 300)}"`);
+          }
+          newFallbackCount = fallbackMaxTries;
+        } else {
+          await reply(fallbackMsg);
+        }
       }
+      newState = "menu";
       newCurrentFlowId = currentFlowId;
 
     } else {

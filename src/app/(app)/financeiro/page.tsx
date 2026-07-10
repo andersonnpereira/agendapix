@@ -60,6 +60,10 @@ export default function FinanceiroPage() {
     .reduce((s, c) => s + c.amount_cents, 0);
 
   const pendingTotal = pending.reduce((s, c) => s + c.amount_cents, 0);
+  // Card "A receber" mostra só o que vence neste mês — pendingTotal (todos os
+  // meses) continua servindo de base pro cálculo de inadimplência abaixo.
+  const pendingThisMonth = pending.filter((c) => (c.due_date || "").startsWith(thisMonthKey));
+  const pendingThisMonthTotal = pendingThisMonth.reduce((s, c) => s + c.amount_cents, 0);
   const overdueTotal = overdue.reduce((s, c) => s + c.amount_cents, 0);
   const totalReceived = paid.reduce((s, c) => s + c.amount_cents, 0);
 
@@ -186,9 +190,9 @@ export default function FinanceiroPage() {
 
         {/* A receber */}
         <div className="card py-3 space-y-1">
-          <p className="text-xs text-slate-500">A receber</p>
-          <p className="text-lg font-bold text-amber-600">{formatBRL(pendingTotal)}</p>
-          <p className="text-xs text-slate-400">{pending.length} pendente{pending.length !== 1 ? "s" : ""}</p>
+          <p className="text-xs text-slate-500">A receber (este mês)</p>
+          <p className="text-lg font-bold text-amber-600">{formatBRL(pendingThisMonthTotal)}</p>
+          <p className="text-xs text-slate-400">{pendingThisMonth.length} pendente{pendingThisMonth.length !== 1 ? "s" : ""}</p>
         </div>
 
         {/* Em atraso */}

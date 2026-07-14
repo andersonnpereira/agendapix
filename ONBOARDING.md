@@ -24,7 +24,7 @@ Nada disso está neste documento — só os nomes, para quem já tem acesso sabe
 - **cron-job.org**: 2 jobs configurados, `GET` a cada hora (`0 * * * *`), com header `Authorization: Bearer <CRON_SECRET>`:
   - `https://agendasj.vercel.app/api/cron/reminders` — lembretes/cobranças
   - `https://agendasj.vercel.app/api/cron/appointment-reminders` — lembretes de agendamento (D-1)
-- **Evolution API**: instância própria/terceirizada de WhatsApp (Baileys por baixo) — cada profissional conecta via QR code na tela de Configurações.
+- **Evolution API**: self-hosted numa VM grátis (Oracle Cloud Always Free, tenancy `andersonnbarbosapereira`, região `sa-saopaulo-1`, IP `163.176.39.0`, hostname público `https://163-176-39-0.nip.io` via nip.io + Caddy/Let's Encrypt). Cada profissional conecta via QR code na tela de Configurações — ver seção 5.1 abaixo para detalhes de infraestrutura antes de mexer no servidor.
 - **InfinitPay**: processa os pagamentos de assinatura da própria plataforma (planos mensal/anual). Webhook configurado com `?plan=monthly` / `?plan=annual` + `&secret=<INFINITPAY_WEBHOOK_SECRET>`.
 - **Deploy**: `git push origin main` → deploy automático no Vercel. Não há branch de staging separada — main é produção.
 
@@ -50,6 +50,20 @@ Estados: `idle` → `menu` (mostra opções numeradas) → `human` (silêncio to
 - **`notifyOwner`**: notifica só por WhatsApp (o usuário pediu explicitamente para NÃO usar e-mail como canal — já foi tentado e revertido a pedido dele). Normaliza o número e tenta 2x com um intervalo curto antes de desistir. Notificação nativa do WhatsApp no celular do profissional pode não aparecer quando há uma sessão de API (Evolution) conectada no mesmo número — isso é limitação de infraestrutura do WhatsApp/Evolution, fora do controle do código.
 - **Piso de silêncio (`QUIET_HOUR_END = 6`)**: nenhuma mensagem automática (bot ou cron) sai entre meia-noite e 6h BRT, em `cron/reminders` e `cron/appointment-reminders`.
 - **Cobrança "antecipada" recorrente**: o horário escolhido pelo profissional (`scheduled_reminder_at`) precisa ser respeitado TODO dia que a cobrança se repete, não só no primeiro — sem isso, a partir do 2º dia ela dispara na primeira execução do cron do dia (6h), ignorando o horário configurado.
+
+## 5.1 Infraestrutura da Evolution API (self-host, migrado em 14/07/2026)
+
+O hosting anterior (algum free trial) expirou sem aviso, quebrando a conexão do WhatsApp ("Application not found"). Migrado para self-host permanente:
+
+- **VM**: Oracle Cloud, tenancy `andersonnbarbosapereira`, região São Paulo, instância `evolution-api` (`VM.Standard.E2.1.Micro`, Always Free — 1 OCPU/1GB RAM + swapfile de 2GB em `/swapfile`). IP público `163.176.39.0`. Chave SSH em `C:\Users\Anderson\Downloads\ssh-key-2026-07-14 (1).key`, usuário `ubuntu`.
+- **URL pública**: `https://163-176-39-0.nip.io` — usa nip.io (DNS grátis que resolve `X-Y-Z-W.nip.io` pro IP `X.Y.Z.W`, sem precisar de domínio próprio) + Caddy fazendo HTTPS automático via Let's Encrypt.
+- **Stack**: `~/evolution/docker-compose.yml` na VM — Postgres 15 + `evoapicloud/evolution-api:latest` (⚠️ a imagem mudou de nome; `atendai/evolution-api` não existe mais) + Caddy 2 como reverse proxy.
+- **Firewall — precisa liberar em DOIS lugares** (esquecer um dos dois trava o Caddy no ACME challenge com "Timeout during connect"):
+  1. iptables da própria VM (`sudo iptables -I INPUT ... --dport 80/443 -j ACCEPT` + `sudo netfilter-persistent save`)
+  2. Security List da VCN no painel Oracle (Networking → Virtual Cloud Networks → `vcn-evolution` → Security Lists → Add Ingress Rules, `0.0.0.0/0` TCP portas 80 e 443)
+- **Gotcha ao criar VM nova**: criar a VCN/subnet "inline" durante a criação da instância não habilita IP público direito (toggle de "Public IPv4" fica cinza mesmo escolhendo "create new public subnet"). Solução: criar a rede ANTES via Networking → Virtual Cloud Networks → **Start VCN Wizard → "Create VCN with Internet Connectivity"**, e só depois criar a instância selecionando essa VCN/subnet já prontas.
+- **Gotcha do shape Ampere grátis** (`VM.Standard.A1.Flex`, 4 OCPU/24GB): erro comum "Out of capacity" — é a cota ARM grátis da Oracle disputada globalmente, não afeta instância já criada, só novas criações. Alternativa que quase sempre tem vaga na hora: `VM.Standard.E2.1.Micro` (AMD, 1 OCPU/1GB, também Always Free — o que está em uso hoje).
+- **Para reconectar/conectar um profissional**: só precisa usar a tela normal do app (Configurações → escanear QR → clicar "Configurar webhook") — não precisa mexer no servidor.
 
 ## 6. Onde estão as migrações SQL pendentes de rodar
 

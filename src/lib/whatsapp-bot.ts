@@ -286,7 +286,13 @@ export async function handleBotMessage(profileId: string, phone: string, text: s
   let state: BotState = "idle";
   let fallbackCount = 0;
   let currentFlowId = "main";
-  const ownerEngaged = conv?.human_owner_engaged ?? false;
+  // "Profissional já está ciente" só vale por um tempo — se o cliente sumir
+  // e voltar depois de OWNER_ENGAGED_DECAY_HOURS sem nova interação, trata
+  // como uma situação nova de novo e volta a notificar (o profissional pode
+  // ter esquecido do caso depois de tanto tempo parado).
+  const OWNER_ENGAGED_DECAY_HOURS = 12;
+  const hoursSinceLastMsgForDecay = conv ? (now.getTime() - new Date(conv.last_message_at).getTime()) / 3600000 : Infinity;
+  const ownerEngaged = (conv?.human_owner_engaged ?? false) && hoursSinceLastMsgForDecay < OWNER_ENGAGED_DECAY_HOURS;
 
   const humanTimeoutHours = (p.bot_human_timeout_hours as number | null) ?? BOT_DEFAULTS.humanTimeoutHours;
 

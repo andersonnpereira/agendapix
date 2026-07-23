@@ -51,19 +51,19 @@ Estados: `idle` → `menu` (mostra opções numeradas) → `human` (silêncio to
 - **Piso de silêncio (`QUIET_HOUR_END = 6`)**: nenhuma mensagem automática (bot ou cron) sai entre meia-noite e 6h BRT, em `cron/reminders` e `cron/appointment-reminders`.
 - **Cobrança "antecipada" recorrente**: o horário escolhido pelo profissional (`scheduled_reminder_at`) precisa ser respeitado TODO dia que a cobrança se repete, não só no primeiro — sem isso, a partir do 2º dia ela dispara na primeira execução do cron do dia (6h), ignorando o horário configurado.
 
-## 5.1 Infraestrutura da Evolution API (self-host, migrado em 14/07/2026)
+## 5.1 Infraestrutura da Evolution API (self-host — servidor ATUAL: AWS, desde 23/07/2026)
 
-O hosting anterior (algum free trial) expirou sem aviso, quebrando a conexão do WhatsApp ("Application not found"). Migrado para self-host permanente:
+Histórico: hosting original expirou → Oracle Cloud grátis (14/07) → Oracle caiu e ficou inacessível → **AWS Free Tier (23/07), servidor em uso hoje**. Todo o setup é feito via SSH direto pelo Claude Code (a sessão roda na máquina do Anderson).
 
-- **VM**: Oracle Cloud, tenancy `andersonnbarbosapereira`, região São Paulo, instância `evolution-api` (`VM.Standard.E2.1.Micro`, Always Free — 1 OCPU/1GB RAM + swapfile de 2GB em `/swapfile`). IP público `163.176.39.0`. Chave SSH em `C:\Users\Anderson\Downloads\ssh-key-2026-07-14 (1).key`, usuário `ubuntu`.
-- **URL pública**: `https://163-176-39-0.nip.io` — usa nip.io (DNS grátis que resolve `X-Y-Z-W.nip.io` pro IP `X.Y.Z.W`, sem precisar de domínio próprio) + Caddy fazendo HTTPS automático via Let's Encrypt.
-- **Stack**: `~/evolution/docker-compose.yml` na VM — Postgres 15 + `evoapicloud/evolution-api:latest` (⚠️ a imagem mudou de nome; `atendai/evolution-api` não existe mais) + Caddy 2 como reverse proxy.
-- **Firewall — precisa liberar em DOIS lugares** (esquecer um dos dois trava o Caddy no ACME challenge com "Timeout during connect"):
-  1. iptables da própria VM (`sudo iptables -I INPUT ... --dport 80/443 -j ACCEPT` + `sudo netfilter-persistent save`)
-  2. Security List da VCN no painel Oracle (Networking → Virtual Cloud Networks → `vcn-evolution` → Security Lists → Add Ingress Rules, `0.0.0.0/0` TCP portas 80 e 443)
-- **Gotcha ao criar VM nova**: criar a VCN/subnet "inline" durante a criação da instância não habilita IP público direito (toggle de "Public IPv4" fica cinza mesmo escolhendo "create new public subnet"). Solução: criar a rede ANTES via Networking → Virtual Cloud Networks → **Start VCN Wizard → "Create VCN with Internet Connectivity"**, e só depois criar a instância selecionando essa VCN/subnet já prontas.
-- **Gotcha do shape Ampere grátis** (`VM.Standard.A1.Flex`, 4 OCPU/24GB): erro comum "Out of capacity" — é a cota ARM grátis da Oracle disputada globalmente, não afeta instância já criada, só novas criações. Alternativa que quase sempre tem vaga na hora: `VM.Standard.E2.1.Micro` (AMD, 1 OCPU/1GB, também Always Free — o que está em uso hoje).
-- **Para reconectar/conectar um profissional**: só precisa usar a tela normal do app (Configurações → escanear QR → clicar "Configurar webhook") — não precisa mexer no servidor.
+**Servidor atual (AWS):**
+- **AWS EC2 Free Tier** (plano gratuito 6 meses + US$100 crédito; o plano gratuito **se auto-encerra em vez de cobrar** — baixo risco de cobrança surpresa). Região `us-east-2` (Ohio), instância `evolution-api` (`t3.micro`, 1GB RAM + swapfile de 3GB). IP público `18.221.150.94`. Chave SSH em `C:\Users\Anderson\Downloads\Video\videos curtos\evolution-key.pem` (.pem/RSA), usuário `ubuntu`.
+- **URL pública**: `https://18-221-150-94.nip.io` (nip.io — DNS grátis que resolve `X-Y-Z-W.nip.io` pro IP — + Caddy/Let's Encrypt automático).
+- **Vercel**: `EVOLUTION_API_URL=https://18-221-150-94.nip.io` e `EVOLUTION_API_KEY=a107516840fd91aafde04191e64a3fed26f43eb53b1eeebd` (a chave tem que bater com `AUTHENTICATION_API_KEY` do docker-compose no servidor).
+- **Stack**: `~/evolution/docker-compose.yml` na VM — Postgres 15 + `evoapicloud/evolution-api:latest` (⚠️ NÃO `atendai/evolution-api`, não existe mais) + Caddy 2. **Blindagem de memória** (o que faltou na Oracle, que travou): `mem_limit` por container (postgres 256m / evolution 512m / caddy 128m), swap 3GB, e histórico reduzido (`DATABASE_SAVE_DATA_NEW_MESSAGE=false`, `SAVE_DATA_CHATS=false`).
+- **Firewall**: na AWS as portas 22/80/443 são abertas na criação da instância (marcar "Allow SSH/HTTP/HTTPS" no assistente) — o Security Group já fica certo, sem precisar mexer em iptables nem painel separado.
+- **Reconectar/adicionar profissional**: só Configurações → escanear QR → "Configurar webhook". Não precisa mexer no servidor.
+
+**Se a AWS expirar (6 meses):** grátis+sempre-ligado+fora-da-máquina praticamente não existe (Render dorme, Fly/Railway viraram pago, Google Cloud/BR pede pré-pagamento de R$150, Oracle é instável/bloqueia 2ª conta). A saída realista é VPS pago barato (~R$25/mês, ex: Hetzner 4GB) — o Anderson vai adiar isso até "escalar".
 
 ## 6. Onde estão as migrações SQL pendentes de rodar
 

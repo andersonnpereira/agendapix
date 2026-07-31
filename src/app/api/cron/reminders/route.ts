@@ -161,7 +161,7 @@ export async function GET(req: NextRequest) {
         const tpl = profile.msg_lembrete_hoje || profile.msg_lembrete || DEFAULT_MSG_LEMBRETE_HOJE;
         message = formatTemplate(tpl, {
           nome:    charge.client_name || "Cliente",
-          servico: charge.description || "Serviço",
+          servico: (charge.description as string | null)?.trim() || "",
           valor:   amount,
           pix:     profile.pix_key || "",
           data:    dueDateFormatted,
@@ -171,7 +171,7 @@ export async function GET(req: NextRequest) {
         const tpl = profile.msg_cobranca_vencida || DEFAULT_MSG_COBRANCA_VENCIDA;
         message = formatTemplate(tpl, {
           nome:    charge.client_name || "Cliente",
-          servico: charge.description || "Serviço",
+          servico: (charge.description as string | null)?.trim() || "",
           valor:   amount,
           pix:     profile.pix_key || "",
           data:    dueDateFormatted,
@@ -180,7 +180,7 @@ export async function GET(req: NextRequest) {
         // ── Antecipado: 1 dia antes ou mais ──────────────────────────────────
         message = msgLembrete(
           charge.client_name || "Cliente",
-          charge.description || "Serviço",
+          (charge.description as string | null)?.trim() || "",
           amount,
           profile.pix_key || "",
           profile.msg_lembrete || null,

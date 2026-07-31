@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
       type === "lembrete"
         ? msgLembrete(
             charge.client_name || "Cliente",
-            charge.description || "Serviço",
+            (charge.description as string | null)?.trim() || "",
             formatBRL(charge.amount_cents),
             profile.pix_key || "",
             profile.msg_lembrete || null,
@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
           )
         : msgPix(
             charge.client_name || "Cliente",
-            charge.description || "Serviço",
+            (charge.description as string | null)?.trim() || "",
             formatBRL(charge.amount_cents),
             profile.pix_key || "",
             profile.msg_pix || null

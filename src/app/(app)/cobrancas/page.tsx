@@ -212,9 +212,10 @@ export default function CobrancasPage() {
     const lines: string[] = [
       `Olá, ${charge.client_name || "Cliente"}! 💳`,
       ``,
-      `Pagamento referente a: *${charge.description || "Serviço"}*`,
-      `💰 Valor: *${formatBRL(charge.amount_cents)}*`,
     ];
+    // Só menciona o serviço quando a cobrança tem descrição preenchida.
+    if (charge.description?.trim()) lines.push(`Pagamento referente a: *${charge.description.trim()}*`);
+    lines.push(`💰 Valor: *${formatBRL(charge.amount_cents)}*`);
     if (charge.due_date) lines.push(`📅 Vencimento: ${formatDate(charge.due_date)}`);
     if (pixOptKey && profile?.pix_key) {
       lines.push(``, `🔑 Chave Pix:`, profile.pix_key);
@@ -240,7 +241,7 @@ export default function CobrancasPage() {
     const tpl = profile?.msg_cobranca_vencida || DEFAULT_MSG_COBRANCA_VENCIDA;
     return formatTemplate(tpl, {
       nome:    charge.client_name || "Cliente",
-      servico: charge.description || "Serviço",
+      servico: charge.description?.trim() || "",
       valor:   formatBRL(charge.amount_cents),
       pix:     profile?.pix_key || "",
       data:    formatDate(charge.due_date),
@@ -253,7 +254,7 @@ export default function CobrancasPage() {
       ? buildRecoveryMessage(charge)
       : msgLembrete(
           charge.client_name || "Cliente",
-          charge.description || "Serviço",
+          charge.description?.trim() || "",
           formatBRL(charge.amount_cents),
           profile?.pix_key || "",
           profile?.msg_lembrete || null,
@@ -547,7 +548,9 @@ export default function CobrancasPage() {
   function openEditModal(charge: Charge) {
     setEClientName(charge.client_name || "");
     setEClientPhone(charge.client_phone || "");
-    setEDescription(charge.description || "");
+    // "Serviço" era o preenchimento automático antigo — trata como vazio para
+    // não aparecer pré-preenchido no campo (o usuário pode deixar em branco).
+    setEDescription(charge.description === "Serviço" ? "" : (charge.description || ""));
     setEAmount((charge.amount_cents / 100).toFixed(2).replace(".", ","));
     setEDueDate(charge.due_date || "");
     setEError("");
@@ -582,7 +585,7 @@ export default function CobrancasPage() {
         .update({
           client_name: eClientName.trim(),
           client_phone: eClientPhone.trim() || null,
-          description: eDescription.trim() || "Serviço",
+          description: eDescription.trim() || null,
           amount_cents,
           pix_payload,
           due_date: eDueDate || null,
@@ -667,7 +670,7 @@ export default function CobrancasPage() {
         profile_id: user.id,
         client_name: fClientName.trim(),
         client_phone: fClientPhone.trim(),
-        description: fDescription.trim() || "Serviço",
+        description: fDescription.trim() || null,
         amount_cents,
         pix_payload,
         due_date: fDueDate,
@@ -1168,7 +1171,7 @@ export default function CobrancasPage() {
                         ? buildRecoveryMessage(reminderModal)
                         : msgLembrete(
                             reminderModal.client_name || "Cliente",
-                            reminderModal.description || "Serviço",
+                            reminderModal.description?.trim() || "",
                             formatBRL(reminderModal.amount_cents),
                             profile?.pix_key || "",
                             profile?.msg_lembrete || null,

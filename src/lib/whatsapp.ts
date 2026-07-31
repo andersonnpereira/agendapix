@@ -3,20 +3,22 @@ export type WhatsAppProvider = "mock" | "zapi" | "evolution" | "ultramsg";
 export const DEFAULT_MSG_CONFIRMACAO =
   `Olá, {nome}! 👋\n\nSeu agendamento foi *confirmado*! ✅\n\n✂️ Serviço: *{servico}*\n📅 Data: *{data}* às *{horario}*\n\n*{negocio}* te espera! Qualquer dúvida é só chamar. 😊`;
 
+// Trechos com {servico} em [[...]] somem por completo quando a cobrança não
+// tem descrição (formatTemplate remove o bloco em vez de escrever "Serviço").
 export const DEFAULT_MSG_PIX =
-  `Olá, {nome}! 💳\n\nAqui está o Pix para o serviço *{servico}*:\n💰 Valor: *{valor}*\n\n🔑 *Chave Pix:*\n{pix}\n\nObrigado pelo atendimento! 🙏`;
+  `Olá, {nome}! 💳\n\nAqui está o Pix[[ para o serviço *{servico}*]]:\n💰 Valor: *{valor}*\n\n🔑 *Chave Pix:*\n{pix}\n\nObrigado pelo atendimento! 🙏`;
 
 export const DEFAULT_MSG_LEMBRETE =
-  `Olá, {nome}! 👋\n\nPassando para lembrar que o pagamento do serviço *{servico}* no valor de *{valor}* vence em *{data}*.\n\n🔑 *Chave Pix:*\n{pix}\n\nSe já pagou, desconsidere. Obrigado! 😊`;
+  `Olá, {nome}! 👋\n\nPassando para lembrar que o pagamento[[ do serviço *{servico}*]] no valor de *{valor}* vence em *{data}*.\n\n🔑 *Chave Pix:*\n{pix}\n\nSe já pagou, desconsidere. Obrigado! 😊`;
 
 export const DEFAULT_MSG_LEMBRETE_HOJE =
-  `Olá, {nome}! ⏰\n\nLembrete: sua cobrança referente a *{servico}* vence *HOJE*!\n\n💰 Valor: *{valor}*\n📅 Vencimento: *{data}*\n\n🔑 *Chave Pix:*\n{pix}\n\nContamos com você! 🙏`;
+  `Olá, {nome}! ⏰\n\nLembrete: sua cobrança[[ referente a *{servico}*]] vence *HOJE*!\n\n💰 Valor: *{valor}*\n📅 Vencimento: *{data}*\n\n🔑 *Chave Pix:*\n{pix}\n\nContamos com você! 🙏`;
 
 export const DEFAULT_MSG_LEMBRETE_AMANHA =
   `Olá, {nome}! 👋\n\nLembrando que você tem *{servico}* amanhã:\n📅 *{data}* às *{horario}*\n📍 *{negocio}*\n\nQualquer dúvida é só chamar. Te esperamos! 😊`;
 
 export const DEFAULT_MSG_COBRANCA_VENCIDA =
-  `Olá, {nome}! 😊\n\nPassando para lembrar que temos uma cobrança em aberto no seu nome:\n\n📋 *{servico}*\n💰 Valor: *{valor}*\n📅 Vencimento: *{data}*\n\n🔑 *Chave Pix para pagamento:*\n{pix}\n\nCaso já tenha efetuado o pagamento, desconsidere esta mensagem. 🙏\n\nQualquer dúvida estou à disposição!`;
+  `Olá, {nome}! 😊\n\nPassando para lembrar que temos uma cobrança em aberto no seu nome:\n\n[[📋 *{servico}*\n]]💰 Valor: *{valor}*\n📅 Vencimento: *{data}*\n\n🔑 *Chave Pix para pagamento:*\n{pix}\n\nCaso já tenha efetuado o pagamento, desconsidere esta mensagem. 🙏\n\nQualquer dúvida estou à disposição!`;
 
 // Normaliza para o mesmo formato usado no JID do WhatsApp (só dígitos, com
 // DDI) — usado tanto para montar o "to" de envio quanto para casar com o
@@ -228,7 +230,19 @@ export async function sendWhatsAppImage(
 }
 
 export function formatTemplate(template: string, vars: Record<string, string>): string {
-  return template.replace(/\{(\w+)\}/g, (_, key) => vars[key] ?? `{${key}}`);
+  // 1) Blocos opcionais [[...]]: removidos por inteiro se QUALQUER variável
+  //    dentro deles estiver vazia/em branco. Usado para o {servico} sumir
+  //    (junto com "do serviço", "referente a" etc.) quando a cobrança não
+  //    tem descrição, em vez de renderizar a palavra "Serviço".
+  let out = template.replace(/\[\[([\s\S]*?)\]\]/g, (_, seg: string) => {
+    const tokens = seg.match(/\{(\w+)\}/g) || [];
+    const anyEmpty = tokens.some((t) => !((vars[t.slice(1, -1)] ?? "").trim()));
+    return anyEmpty ? "" : seg;
+  });
+  // 2) Substitui as variáveis restantes (ausentes ficam como {chave}).
+  out = out.replace(/\{(\w+)\}/g, (_, key) => vars[key] ?? `{${key}}`);
+  // 3) Limpa espaços duplicados deixados por blocos removidos (sem tocar em quebras de linha).
+  return out.replace(/[^\S\n]{2,}/g, " ").replace(/[^\S\n]+\n/g, "\n");
 }
 
 export function msgConfirmacao(

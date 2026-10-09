@@ -1,89 +1,114 @@
 # AgendaPix ("Agendou") — Guia de continuidade do projeto
 
-Documento de handoff para qualquer sessão do Claude Code (em qualquer conta) continuar este projeto sem perder contexto. Nenhum segredo/senha real está escrito aqui — só os nomes das variáveis e onde encontrá-las.
+Documento de handoff para qualquer IA / sessão de Claude Code (em qualquer conta) assumir este projeto sem perder contexto. **Princípio:** nenhum segredo/senha real é escrito aqui — só os nomes das variáveis e ONDE encontrá-las. (Exceção histórica: ver nota de segurança na seção 11.)
+
+> Última revisão grande: migração da Evolution API para AWS + correções do bot + fix da descrição de cobrança. Confira sempre o `git log` para o que veio depois.
 
 ## 1. O que é o projeto
 
-SaaS brasileiro de agendamento + cobrança via Pix + automação de WhatsApp, para autônomos e pequenos negócios (marca "Agendou"). Cliente final agenda por um link público (`/agendar/[slug]`), recebe confirmação/lembrete/cobrança automaticamente pelo WhatsApp do próprio profissional, paga via Pix (chave do próprio profissional, sem intermediário/taxa).
+SaaS brasileiro de **agendamento + cobrança via Pix + automação de WhatsApp**, para autônomos e pequenos negócios (marca "Agendou"). O cliente final agenda por um link público (`/agendar/[slug]`), recebe confirmação/lembrete/cobrança automaticamente pelo WhatsApp do próprio profissional, e paga via Pix (chave do próprio profissional, sem intermediário/taxa). A plataforma cobra assinatura dos profissionais (mensal/anual) via InfinitPay.
 
 - **Domínio de produção:** https://agendasj.vercel.app
-- **Repositório GitHub:** https://github.com/andersonnpereira/agendapix
+- **Repositório GitHub:** https://github.com/andersonnpereira/agendapix (conta GitHub: `andersonnpereira`)
 - **Diretório local:** `C:\Users\Anderson\OneDrive - GRUPO JCN\Área de Trabalho\agendapix`
 - **Dono do produto:** Anderson Pereira (anderson.pereira@grupojcn.com.br)
+- **Deploy:** `git push origin main` → deploy automático na Vercel (a Vercel está ligada a esse repo). Não há branch de staging — `main` é produção.
 
 ## 2. Stack
 
-Next.js 14 (App Router) + TypeScript + TailwindCSS · Supabase (Postgres + Auth + Storage, service-role admin client para operações de servidor) · Evolution API (WhatsApp, self-hosted/terceirizado) · Resend (e-mail) · cron-job.org (agendamento de crons) · Vercel (hosting/deploy).
+Next.js 14 (App Router) + TypeScript + TailwindCSS · Supabase (Postgres + Auth + Storage; usa client service-role "admin" para operações de servidor) · Evolution API self-hosted (WhatsApp, Baileys por baixo) · Resend (e-mail) · cron-job.org (agenda os crons) · Vercel (hosting/deploy) · InfinitPay (pagamento das assinaturas).
 
-## 3. Como acessar / onde estão as credenciais
+## 3. Contas e onde ficam as credenciais
 
-Nada disso está neste documento — só os nomes, para quem já tem acesso saber o que procurar:
+Valores reais NÃO estão aqui — só a localização:
 
-- **Vercel** (deploy + env vars): projeto do domínio agendasj.vercel.app. Variáveis relevantes: `NEXT_PUBLIC_SITE_URL` (deve ser `https://agendasj.vercel.app`), `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `CRON_SECRET`, `INFINITPAY_WEBHOOK_SECRET`, `EVOLUTION_API_URL`, `EVOLUTION_API_KEY`, `WHATSAPP_PROVIDER`, `WHATSAPP_TOKEN`, `WHATSAPP_INSTANCE_ID`, `RESEND_API_KEY`, `RESEND_FROM`, `SUPPORT_EMAIL`.
-- **Supabase**: projeto do banco em produção — pedir ao Anderson o link/acesso do painel. Schema real documentado em `supabase/schema_current.sql` (para disaster recovery / referência de colunas).
-- **cron-job.org**: 2 jobs configurados, `GET` a cada hora (`0 * * * *`), com header `Authorization: Bearer <CRON_SECRET>`:
+- **GitHub:** conta `andersonnpereira`, repo `andersonnpereira/agendapix`.
+- **Vercel** (deploy + variáveis de ambiente): projeto que publica em `agendasj.vercel.app`, ligado ao GitHub acima. Variáveis: `NEXT_PUBLIC_SITE_URL` (= `https://agendasj.vercel.app`), `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `CRON_SECRET`, `INFINITPAY_WEBHOOK_SECRET`, `EVOLUTION_API_URL`, `EVOLUTION_API_KEY`, `WHATSAPP_PROVIDER`, `WHATSAPP_TOKEN`, `WHATSAPP_INSTANCE_ID`, `RESEND_API_KEY`, `RESEND_FROM`, `SUPPORT_EMAIL`.
+- **Supabase:** projeto ref `dpufvtoqxyqylppvnxsr` (`https://dpufvtoqxyqylppvnxsr.supabase.co`). **Logado via GitHub com a conta Google `andersonnpereira@gmail.com`** (atenção: já houve confusão tentando logar com `playtecnologia01@gmail.com`, que é a conta ERRADA). Schema real documentado em `supabase/schema_current.sql`.
+- **Evolution API (WhatsApp):** self-hosted em VM da AWS — detalhes completos na seção 6. O profissional conecta o WhatsApp dele via QR na tela de Configurações do app.
+- **cron-job.org:** 2 jobs, `GET` a cada hora (`0 * * * *`), com header `Authorization: Bearer <CRON_SECRET>` (sem o header = 401 e nada é enviado):
   - `https://agendasj.vercel.app/api/cron/reminders` — lembretes/cobranças
-  - `https://agendasj.vercel.app/api/cron/appointment-reminders` — lembretes de agendamento (D-1)
-- **Evolution API**: self-hosted numa VM grátis (Oracle Cloud Always Free, tenancy `andersonnbarbosapereira`, região `sa-saopaulo-1`, IP `163.176.39.0`, hostname público `https://163-176-39-0.nip.io` via nip.io + Caddy/Let's Encrypt). Cada profissional conecta via QR code na tela de Configurações — ver seção 5.1 abaixo para detalhes de infraestrutura antes de mexer no servidor.
-- **InfinitPay**: processa os pagamentos de assinatura da própria plataforma (planos mensal/anual). Webhook configurado com `?plan=monthly` / `?plan=annual` + `&secret=<INFINITPAY_WEBHOOK_SECRET>`.
-- **Deploy**: `git push origin main` → deploy automático no Vercel. Não há branch de staging separada — main é produção.
+  - `https://agendasj.vercel.app/api/cron/appointment-reminders` — lembrete de agendamento (D-1)
+- **InfinitPay:** processa as assinaturas da plataforma. Webhook: `.../api/webhook/infinitpay?plan=monthly` / `?plan=annual` + `&secret=<INFINITPAY_WEBHOOK_SECRET>`.
 
-## 4. Decisões e armadilhas importantes (não repetir o trabalho de descobrir isso de novo)
+## 4. Decisões e armadilhas (não redescobrir isso do zero)
 
-- **Next.js Data Cache quebra crons/leituras do Supabase**: toda rota de cron/webhook precisa de `export const dynamic = "force-dynamic"` e `export const fetchCache = "force-no-store"`, senão o Vercel serve resposta cacheada (`X-Vercel-Cache: HIT`) e a função nunca executa de verdade. O client admin (`src/lib/supabase-admin.ts`) já força `cache: "no-store"` no fetch.
-- **RLS fechado de propósito**: `profiles`/`bookings` NÃO têm mais policy `select using(true)` (vazava PII/tokens). Leituras públicas (`/agendar/[slug]`, `/cancelar/[token]`) usam o client admin (service role) no servidor; horários ocupados vêm de `/api/slots` (sem PII). Não reabrir isso sem entender por quê foi fechado.
-- **Webhooks/crons são fail-closed**: sem o secret configurado, retornam 503 (não pulam a checagem). Isso já pegou o `/api/checkout/start` uma vez — ao tornar o webhook do InfinitPay fail-closed, ele parou de incluir o secret na URL gerada, quebrando ativação de pagamento. Já corrigido, mas é o tipo de regressão a vigiar ao mexer em auth de webhook.
-- **Fuso horário BRT**: o padrão `new Date(y,m,d,h,min)` combinado com "hora de parede BRT tratada como se fosse UTC" está CORRETO no runtime do Vercel (UTC) — o offset se cancela. Já foi investigado e é falso positivo de auditoria; não "corrigir" sem reler o racional nos comentários do código.
-- **Preços reais**: mensal R$ 19,90, anual R$ 179,90 (R$ 14,99/mês). Todos os planos (incluindo trial de 7 dias) têm os MESMOS recursos — não diferenciar features por plano no marketing.
+- **Next.js Data Cache quebra crons:** toda rota de cron/webhook precisa de `export const dynamic = "force-dynamic"` e `export const fetchCache = "force-no-store"`, senão o Vercel serve resposta cacheada (`X-Vercel-Cache: HIT`) e a função nunca executa. O `src/lib/supabase-admin.ts` já força `cache: "no-store"`.
+- **RLS fechado de propósito:** `profiles`/`bookings` NÃO têm `select using(true)` (vazava PII/tokens). Leituras públicas (`/agendar/[slug]`, `/cancelar/[token]`) usam o client admin no servidor; horários ocupados vêm de `/api/slots` (sem PII). Não reabrir sem entender o porquê.
+- **Webhooks/crons são fail-closed:** sem o secret, retornam 503. Já quebrou `/api/checkout/start` uma vez (parou de incluir o secret na URL do webhook) — vigiar ao mexer em auth de webhook.
+- **Fuso BRT:** `new Date(y,m,d,h,min)` + "hora de parede BRT tratada como UTC" está CORRETO no runtime UTC do Vercel (o offset se cancela). É falso positivo de auditoria — não "corrigir".
+- **Preços reais:** mensal R$ 19,90, anual R$ 179,90 (R$ 14,99/mês). Todos os planos (inclusive trial de 7 dias) têm os MESMOS recursos — não diferenciar features por plano no marketing.
+- **Antes de commitar:** `npx tsc --noEmit` tem que passar limpo. Sempre `git push origin main` ao final (deploy automático) — é o comportamento esperado, não perguntar antes.
+- **Descrição de cobrança vazia NÃO deve escrever a palavra "Serviço"** na mensagem. `formatTemplate` (em `src/lib/whatsapp.ts`) suporta blocos opcionais `[[...]]` que somem quando a variável dentro está vazia; os templates padrão de cobrança envolvem o `{servico}` nesses blocos. Todos os pontos de envio passam descrição vazia (não "Serviço") quando o campo está em branco, e o form grava `null`.
 
-## 5. O bot de WhatsApp — como o estado funciona (muito iterado nesta sessão)
+## 5. O bot de WhatsApp — máquina de estados (MUITO iterado; leia antes de mexer)
 
-Arquivo central: `src/lib/whatsapp-bot.ts`. Webhook de entrada: `src/app/api/whatsapp-incoming/[userId]/route.ts`. Estado por conversa fica em `bot_conversations` (chave `profile_id + phone`).
+Arquivo central: `src/lib/whatsapp-bot.ts`. Webhook de entrada: `src/app/api/whatsapp-incoming/[userId]/route.ts`. Estado por conversa na tabela `bot_conversations` (chave `profile_id + phone`). Estados: `idle` → `menu` (opções numeradas) → `human` (silêncio) ou `cobranca_lookup`.
 
-Estados: `idle` → `menu` (mostra opções numeradas) → `human` (silêncio total) ou `cobranca_lookup`. Pontos-chave já resolvidos, para não reintroduzir os mesmos bugs:
+Regras já resolvidas — **não reintroduzir estes bugs** (cada um veio de um caso real reportado com print):
 
-- **`human_owner_engaged`** (coluna em `bot_conversations`): fica `true` quando o profissional responde manualmente uma conversa (detectado via evento `fromMe=true` do webhook, `handleOwnerOutbound`). A partir daí o bot para de notificar CADA mensagem do cliente pro número de notificação — porque o profissional já está ciente. Só pedido explícito de "falar com atendente" ou fromMe reativa esse rastreio.
-- **`last_outbound_at`**: grava toda vez que o SISTEMA (bot, crons, cobrança manual) manda mensagem pro cliente — usado para diferenciar "eco do que acabamos de mandar" de "resposta manual real do profissional" quando chega um evento `fromMe`.
-- **Limite de tentativas do menu (`fallback_count` / `bot_fallback_max_tries`)**: ao esgotar as tentativas, o bot avisa UMA VEZ ("vou te encaminhar") e FICA no estado `menu` (não muda pra `human`) — assim, se o cliente digitar uma opção válida depois, o bot continua ajudando. O contador fica "preso" no valor máximo depois do aviso (não volta a 0), pra não repetir o aviso ao cliente a cada nova mensagem livre — só encaminha em silêncio (respeitando `human_owner_engaged`).
-- **Cumprimentos soltos** ("oi", "boa tarde" etc. — lista `PLEASANTRIES`) no meio do menu NÃO contam como tentativa inválida — só reenvia o menu. Isso existe porque cliente comumente manda o cumprimento e a pergunta real em mensagens separadas.
-- **Gatilho de ativação** (`bot_trigger_mode`/`bot_trigger_keywords`): só `menu`/`0`/`reiniciar`/`restart`/`início` sempre reabrem o bot a frio. O resto (saudações, texto livre) respeita a configuração do profissional — não deve haver bypass hardcoded disso.
-- **`notifyOwner`**: notifica só por WhatsApp (o usuário pediu explicitamente para NÃO usar e-mail como canal — já foi tentado e revertido a pedido dele). Normaliza o número e tenta 2x com um intervalo curto antes de desistir. Notificação nativa do WhatsApp no celular do profissional pode não aparecer quando há uma sessão de API (Evolution) conectada no mesmo número — isso é limitação de infraestrutura do WhatsApp/Evolution, fora do controle do código.
-- **Piso de silêncio (`QUIET_HOUR_END = 6`)**: nenhuma mensagem automática (bot ou cron) sai entre meia-noite e 6h BRT, em `cron/reminders` e `cron/appointment-reminders`.
-- **Cobrança "antecipada" recorrente**: o horário escolhido pelo profissional (`scheduled_reminder_at`) precisa ser respeitado TODO dia que a cobrança se repete, não só no primeiro — sem isso, a partir do 2º dia ela dispara na primeira execução do cron do dia (6h), ignorando o horário configurado.
+- **`human_owner_engaged`** (coluna): vira `true` quando o profissional responde manualmente a conversa (detectado via `fromMe=true` no webhook → `handleOwnerOutbound`). A partir daí o bot **para de encaminhar cada mensagem do cliente** pro número de notificação (o profissional já está ciente). **Expira após 12h** sem nova interação (`OWNER_ENGAGED_DECAY_HOURS`) — depois disso volta a notificar, pois o profissional já pode ter esquecido do caso.
+- **`last_outbound_at`** (coluna): gravada a cada envio do SISTEMA (bot, crons, cobrança manual, confirmação). Usada para diferenciar "eco do que acabamos de mandar" (janela de 30s) de "resposta manual real do profissional" quando chega `fromMe`.
+- **Contagem de tentativas inválidas do menu é ATÔMICA no banco** via função Postgres `bump_bot_fallback(profile_id, phone, max)` (`SELECT ... FOR UPDATE` + `UPDATE` numa transação). Isso existe porque duas mensagens DIFERENTES do cliente em poucos segundos conseguiam, cada uma, "cruzar o limite" antes da outra gravar, e o cliente recebia o aviso de escalonamento 2-3x (confirmado nos logs do servidor). NÃO voltar a ler/decidir/gravar o contador no código da aplicação.
+- Ao cruzar o limite: avisa UMA vez ("vou te encaminhar") e **permanece em `menu`** (não vai pra `human`). Se o cliente digitar uma opção válida depois, o bot continua ajudando. Só silencia de vez se: (a) cliente pede "falar com atendente" explicitamente, ou (b) profissional responde manualmente (`fromMe`).
+- **Cumprimentos soltos** ("oi", "boa tarde"… lista `PLEASANTRIES`) no meio do menu NÃO contam como tentativa inválida — só reenviam o menu (cliente costuma mandar cumprimento e pergunta em mensagens separadas).
+- **Gatilho de ativação** (`bot_trigger_mode`/`bot_trigger_keywords`): só `menu`/`0`/`reiniciar`/`restart`/`início` sempre reabrem o bot a frio; o resto respeita a config do profissional (não hardcodar bypass).
+- **`notifyOwner` notifica SÓ por WhatsApp** (o Anderson pediu explicitamente para NÃO usar e-mail — já foi tentado e revertido). Normaliza o número e tenta 2x antes de desistir. ⚠️ A notificação NATIVA do WhatsApp no celular do profissional pode não aparecer quando há uma sessão de API (Evolution) conectada no mesmo número — isso é limitação do WhatsApp/Evolution, fora do controle do código; por isso o `bot_notify_phone` (número dedicado de avisos) é o canal confiável.
+- **Piso de silêncio (`QUIET_HOUR_END = 6`):** nenhuma mensagem automática (bot ou cron) sai entre meia-noite e 6h BRT.
+- **Cobrança antecipada recorrente:** o horário escolhido pelo profissional (`scheduled_reminder_at`) é respeitado TODO dia que a cobrança se repete, não só no 1º (senão a partir do 2º dia dispara às 6h).
+- **Grupos:** o webhook ignora qualquer coisa que não seja `@s.whatsapp.net` (grupos `@g.us`, newsletters, status etc. nunca ativam o bot).
 
-## 5.1 Infraestrutura da Evolution API (self-host — servidor ATUAL: AWS, desde 23/07/2026)
+## 6. Infraestrutura da Evolution API (self-host — servidor ATUAL: AWS)
 
-Histórico: hosting original expirou → Oracle Cloud grátis (14/07) → Oracle caiu e ficou inacessível → **AWS Free Tier (23/07), servidor em uso hoje**. Todo o setup é feito via SSH direto pelo Claude Code (a sessão roda na máquina do Anderson).
+Histórico: hosting original (trial) expirou → Oracle Cloud grátis → **Oracle caiu/ficou inacessível** (VM travou por memória + perda de acesso ao painel) → **AWS Free Tier, servidor em uso hoje**. Todo o setup foi feito via SSH direto pelo Claude Code (a sessão roda na máquina do Anderson, então o SSH sai de lá).
 
 **Servidor atual (AWS):**
-- **AWS EC2 Free Tier** (plano gratuito 6 meses + US$100 crédito; o plano gratuito **se auto-encerra em vez de cobrar** — baixo risco de cobrança surpresa). Região `us-east-2` (Ohio), instância `evolution-api` (`t3.micro`, 1GB RAM + swapfile de 3GB). IP público `18.221.150.94`. Chave SSH em `C:\Users\Anderson\Downloads\Video\videos curtos\evolution-key.pem` (.pem/RSA), usuário `ubuntu`.
-- **URL pública**: `https://18-221-150-94.nip.io` (nip.io — DNS grátis que resolve `X-Y-Z-W.nip.io` pro IP — + Caddy/Let's Encrypt automático).
-- **Vercel**: `EVOLUTION_API_URL=https://18-221-150-94.nip.io` e `EVOLUTION_API_KEY=a107516840fd91aafde04191e64a3fed26f43eb53b1eeebd` (a chave tem que bater com `AUTHENTICATION_API_KEY` do docker-compose no servidor).
-- **Stack**: `~/evolution/docker-compose.yml` na VM — Postgres 15 + `evoapicloud/evolution-api:latest` (⚠️ NÃO `atendai/evolution-api`, não existe mais) + Caddy 2. **Blindagem de memória** (o que faltou na Oracle, que travou): `mem_limit` por container (postgres 256m / evolution 512m / caddy 128m), swap 3GB, e histórico reduzido (`DATABASE_SAVE_DATA_NEW_MESSAGE=false`, `SAVE_DATA_CHATS=false`).
-- **Firewall**: na AWS as portas 22/80/443 são abertas na criação da instância (marcar "Allow SSH/HTTP/HTTPS" no assistente) — o Security Group já fica certo, sem precisar mexer em iptables nem painel separado.
-- **Reconectar/adicionar profissional**: só Configurações → escanear QR → "Configurar webhook". Não precisa mexer no servidor.
+- **AWS EC2 Free Tier** (plano gratuito 6 meses + US$100 crédito; o plano gratuito **se auto-encerra em vez de cobrar** → baixo risco de cobrança surpresa). Conta root `andersonnpereira@gmail.com`, região `us-east-2` (Ohio), instância `evolution-api` (`t3.micro`, 1GB RAM + swapfile de 3GB em `/swapfile`). IP público `18.221.150.94`. Chave SSH em `C:\Users\Anderson\Downloads\Video\videos curtos\evolution-key.pem` (.pem/RSA), usuário `ubuntu`.
+- **URL pública:** `https://18-221-150-94.nip.io` (nip.io resolve `X-Y-Z-W.nip.io` → IP `X.Y.Z.W`, sem domínio próprio; Caddy faz HTTPS automático via Let's Encrypt).
+- **Vercel:** `EVOLUTION_API_URL=https://18-221-150-94.nip.io`. `EVOLUTION_API_KEY` tem que bater EXATAMENTE com `AUTHENTICATION_API_KEY` do docker-compose no servidor (se editar por engano, restaurar o valor que está no servidor).
+- **Stack:** `~/evolution/docker-compose.yml` na VM — Postgres 15 + `evoapicloud/evolution-api:latest` (⚠️ NÃO `atendai/evolution-api`, não existe mais) + Caddy 2. **Blindagem de memória** (o que faltou na Oracle e a fez travar): `mem_limit` por container (postgres 256m / evolution 512m / caddy 128m), swap 3GB, histórico reduzido (`DATABASE_SAVE_DATA_NEW_MESSAGE=false`, `SAVE_DATA_CHATS=false`).
+- **Firewall:** na AWS as portas 22/80/443 são abertas na criação da instância (marcar "Allow SSH/HTTP/HTTPS" no assistente) — o Security Group já fica certo, sem mexer em iptables nem painel separado (diferente da Oracle, que exigia os dois).
+- **Reconectar/adicionar profissional:** só Configurações → escanear QR → "Configurar webhook" (o botão existe na tela; sem ele o WhatsApp conecta mas o bot não recebe as mensagens). Não precisa mexer no servidor.
+- **Diagnóstico:** com a chave SSH dá pra entrar no servidor e ver `sudo docker logs evolution-evolution-api-1` — foi assim que vários bugs do bot foram confirmados (em vez de adivinhar por print). Checar instâncias/conexão: `curl -s https://18-221-150-94.nip.io/instance/fetchInstances -H "apikey: <EVOLUTION_API_KEY>"`.
 
-**Se a AWS expirar (6 meses):** grátis+sempre-ligado+fora-da-máquina praticamente não existe (Render dorme, Fly/Railway viraram pago, Google Cloud/BR pede pré-pagamento de R$150, Oracle é instável/bloqueia 2ª conta). A saída realista é VPS pago barato (~R$25/mês, ex: Hetzner 4GB) — o Anderson vai adiar isso até "escalar".
+**Se a AWS expirar (6 meses) ou cair:** grátis + sempre-ligado + fora da máquina do usuário praticamente não existe mais (Render dorme → mata o WhatsApp; Fly/Railway viraram pago; Google Cloud/BR exige pré-pagamento de R$150; Oracle é instável e bloqueia 2ª conta; celular Android é possível via Termux mas frágil — o Anderson descartou rodar no PC). A saída realista e definitiva é **VPS pago barato (~R$25/mês, ex: Hetzner 4GB)**. O Anderson vai adiar isso até "escalar". Servidor Oracle antigo (`163-176-39-0.nip.io`) está MORTO — não tentar usar.
 
-## 6. Onde estão as migrações SQL pendentes de rodar
+## 7. Migrações SQL (rodar no SQL Editor do Supabase)
 
-Arquivos `supabase/migration_*.sql` — cada um documenta o que faz no topo. Ao ler o código, sempre confirmar se a migração correspondente já foi rodada no banco de produção (perguntar ao Anderson se não tiver certeza) antes de assumir que uma coluna existe.
+Arquivos `supabase/migration_*.sql` — cada um se documenta no topo. Ao ler o código, **confirmar se a migração correspondente já foi rodada** antes de assumir que uma coluna/função existe (perguntar ao Anderson na dúvida). Principais, em ordem aproximada:
+- `migration_security.sql` — RLS fechado, coluna `ical_token`.
+- `migration_business.sql` — índice anti-double-booking, trigger `handle_new_user` (consome `pending_activations`), colunas `terms_accepted_at`/`terms_version`.
+- `migration_features.sql` — colunas de features.
+- `migration_bot_human_pause.sql` — coluna `last_outbound_at` em `bot_conversations`.
+- `migration_bot_owner_engaged.sql` — coluna `human_owner_engaged`.
+- `migration_bot_atomic_fallback.sql` — função `bump_bot_fallback()`.
+- `schema_current.sql` — snapshot do schema real (disaster recovery / referência de colunas).
 
-## 7. Fluxo de trabalho esperado
+## 8. Legal / LGPD (já implementado)
 
-1. Antes de qualquer commit: `npx tsc --noEmit` deve passar limpo.
-2. Mudanças em UI: preferir verificar com o preview (server já configurado em `.claude/launch.json`, nome `agendapix`) antes de reportar como concluído — páginas dentro de `(app)/` exigem login, então a verificação de UI logada é limitada sem uma conta de teste.
-3. Sempre `git push origin main` ao final de cada alteração (deploy automático) — não perguntar antes, isso já é comportamento esperado pelo usuário neste projeto.
-4. Se a mudança tiver uma migração SQL nova, deixar claro para o usuário rodar antes de considerar o fix "ativo".
-5. O usuário testa em produção com clientes reais e reporta prints de conversas do WhatsApp Business Web — analisar o print com cuidado (quem é "fromMe" vs quem é o cliente) antes de concluir causa raiz.
+- Termos de Uso com foro em **São João da Boa Vista/SP**; cláusula de responsabilidade exclusiva do contratante; papéis LGPD (contratante = Controlador dos dados dos clientes finais, Agendou = Operador).
+- Cadastro exige **aceite explícito dos Termos** (checkbox obrigatório) e grava `terms_accepted_at`/`terms_version` em `profiles` (visível no Admin → Clientes).
+- Formulário de contato/suporte usa **e-mail** (`SUPPORT_EMAIL`), NÃO WhatsApp — o Anderson reverteu explicitamente de WhatsApp para e-mail; não trocar sem pedido.
+- ⚠️ As cláusulas foram redigidas sem advogado — recomendado revisão jurídica profissional (limitação de responsabilidade/indenização têm limites no CDC quando o contratante é consumidor).
 
-## 8. Pendências conhecidas / não feito
+## 9. Fluxo de trabalho com o Anderson (como ele opera)
 
-- **Lote 6 (opcional, nunca solicitado formalmente)**: paginação em clientes/cobranças/financeiro (hoje baixam tudo no client), lembrete anti-no-show D-1, comprovante de pagamento.
-- **Financeiro**: usuário pediu avaliação de um painel mais completo (MRR de recorrência, ranking de clientes por faturamento, faturamento por serviço, filtro por período customizado/cliente/status, limite silencioso de 100 itens na lista) — proposta feita, aguardando priorização.
-- **CRM (Clientes)**: mesma coisa — tags/etiquetas, ordenação, segmentação por LTV, histórico de notas com data, exportar CSV, detecção de duplicados — proposta feita, aguardando priorização.
-- **Confiabilidade da notificação do bot**: mesmo com retry, se `notifyOwner` continuar falhando silenciosamente em produção, o próximo passo seria revisar diretamente os logs de função do Vercel (não acessível a partir do Claude Code neste ambiente) para achar a causa exata na Evolution API.
+1. Ele testa em produção com clientes reais e reporta **prints de conversas do WhatsApp Business Web**. Ao analisar, cuidado com quem é `fromMe` (ele/sistema) vs cliente antes de concluir causa raiz.
+2. Prefere verificar mudanças de UI no preview (`.claude/launch.json`, nome `agendapix`) — mas páginas em `(app)/` exigem login, então a verificação logada é limitada sem conta de teste.
+3. Toda migração SQL nova: deixar claro que ele precisa rodar antes de considerar o fix "ativo".
+4. Comunicação em português, direto ao ponto, honesto sobre limitações e custos.
 
-## 9. Memória anterior (não portátil)
+## 10. Pendências conhecidas (propostas, aguardando priorização)
 
-Havia um sistema de memória local (`~/.claude/projects/.../memory/project_agendapix_audit.md` e arquivos relacionados) com o histórico detalhado de cada lote de correções — esse sistema é local à instalação/conta do Claude Code, não acompanha a troca de conta. Este documento (`ONBOARDING.md`) é a versão condensada e portátil desse histórico; se possível, ao continuar o projeto numa conta nova, vale reconstruir aos poucos uma memória equivalente a partir daqui e do `git log`.
+- **Financeiro mais completo:** MRR de recorrência, ranking de clientes por faturamento, faturamento por serviço, filtro por período customizado/cliente/status, paginação (hoje baixa tudo no client, limite silencioso de 100 na lista). (O card "A receber" já foi corrigido para mostrar só o mês atual.)
+- **CRM mais completo:** tags/etiquetas, ordenação (por LTV/recência), segmentação de clientes VIP, histórico de notas com data, exportar CSV, detecção de duplicados.
+- **Lote 6 (opcional):** lembrete anti-no-show D-1, comprovante de pagamento.
+
+## 11. ⚠️ Nota de segurança (pendência real)
+
+- O **git remote local embute um Personal Access Token do GitHub** (`https://ghp_...@github.com/...`) em texto puro. Recomendado ao Anderson: revogar esse token em GitHub → Settings → Developer settings → Personal access tokens, e reconfigurar o remote sem token embutido. Não resolvido ainda.
+- Versões anteriores deste arquivo chegaram a conter o valor literal de `EVOLUTION_API_KEY` no histórico do git. Se o repositório for público, essa chave deve ser considerada exposta e rotacionada (gerar nova, atualizar `AUTHENTICATION_API_KEY` no docker-compose do servidor + `EVOLUTION_API_KEY` na Vercel). A partir desta versão, o valor não é mais escrito aqui.
+
+## 12. Memória local (não portátil)
+
+Existe memória local do Claude Code em `~/.claude/projects/.../memory/` (`project_agendapix.md`, `project_agendapix_audit.md` etc.) com o histórico granular de cada correção. Essa memória é local à instalação/conta e NÃO acompanha troca de conta/máquina. **Este `ONBOARDING.md` (versionado no git) é a fonte portátil.** Ao assumir numa conta nova, reconstruir memória equivalente a partir daqui + `git log`.

@@ -436,14 +436,6 @@ export default function ConfiguracoesPage() {
           />
           <p className="text-xs text-slate-400 mt-1">Exibida no seu link público de agendamento.</p>
         </div>
-        <div className="grid grid-cols-2 gap-2">
-          <Link href="/servicos" className="btn-ghost text-sm text-center">
-            ✂️ Serviços →
-          </Link>
-          <Link href="/disponibilidade" className="btn-ghost text-sm text-center">
-            ⏰ Horários →
-          </Link>
-        </div>
       </section>
 
       {/* Identidade visual */}
@@ -669,30 +661,6 @@ export default function ConfiguracoesPage() {
             Personalize cada mensagem enviada automaticamente. Clique nas variáveis para inserir no cursor.
           </p>
         </div>
-
-        {/* 1 — Confirmação de agendamento */}
-        <MsgCard
-          icon="✅"
-          title="Confirmação de agendamento"
-          description="Enviada quando um novo agendamento é confirmado."
-          value={msgConfirmacao}
-          onChange={setMsgConfirmacao}
-          onReset={() => setMsgConfirmacao(DEFAULT_MSG_CONFIRMACAO)}
-          vars={["{nome}", "{servico}", "{data}", "{horario}", "{negocio}"]}
-          varLabels={{ "{nome}": "Nome do cliente", "{servico}": "Serviço", "{data}": "Data", "{horario}": "Horário", "{negocio}": "Nome do negócio" }}
-        />
-
-        {/* 2 — Lembrete de agenda (amanhã) */}
-        <MsgCard
-          icon="📅"
-          title="Lembrete de agenda — amanhã"
-          description="Enviada automaticamente no dia anterior ao agendamento, no horário configurado em Regras."
-          value={msgLembreteAmanha}
-          onChange={setMsgLembreteAmanha}
-          onReset={() => setMsgLembreteAmanha(DEFAULT_MSG_LEMBRETE_AMANHA)}
-          vars={["{nome}", "{servico}", "{data}", "{horario}", "{negocio}"]}
-          varLabels={{ "{nome}": "Nome do cliente", "{servico}": "Serviço", "{data}": "Data", "{horario}": "Horário", "{negocio}": "Nome do negócio" }}
-        />
 
         {/* 3 — Envio de cobrança Pix */}
         <MsgCard

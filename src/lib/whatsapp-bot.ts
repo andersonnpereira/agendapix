@@ -51,7 +51,6 @@ export const DEFAULT_FLOWS: BotFlow[] = [
     name: "Menu Principal",
     message: "Olá! 👋 Bem-vindo(a) a *{negocio}*!\n\nComo posso ajudar? Escolha uma opção:",
     items: [
-      { emoji: "📅", title: "Agendar horário",    action: "schedule" },
       { emoji: "💳", title: "Consultar cobrança", action: "charges" },
       { emoji: "👤", title: "Falar com atendente",action: "human" },
     ],
@@ -455,17 +454,6 @@ export async function handleBotMessage(profileId: string, phone: string, text: s
           newState = "idle";
           newCurrentFlowId = "main";
         }
-
-      } else if (item.action === "schedule") {
-        const link = p.slug ? `${SITE_URL}/agendar/${p.slug as string}` : null;
-        if (freeText || item.imageUrl) await reply(freeText, item.imageUrl);
-        if (!freeText || !freeText.includes(link || "")) {
-          await reply(link
-            ? `📅 Clique aqui para agendar:\n${link}\n\nQualquer dúvida é só chamar! 😊`
-            : `Entre em contato diretamente para agendar. 😊`);
-        }
-        newState = "idle";
-        newCurrentFlowId = "main";
 
       } else if (item.action === "charges") {
         const target = normalizePhoneForMatch(phone);

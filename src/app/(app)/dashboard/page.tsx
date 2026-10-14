@@ -2,178 +2,76 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase-server";
 import { formatBRL, getTodayBR, addDaysBR } from "@/lib/format";
-import { CopyLinkButton } from "@/components/CopyLinkButton";
-import { ShareLinkButton } from "@/components/ShareLinkButton";
+
+type PendingCharge = {
+  id: string;
+  client_name: string | null;
+  description: string | null;
+  amount_cents: number;
+  status: string;
+  due_date: string | null;
+};
 
 export default async function DashboardPage() {
   const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("*")
+    .select("business_name, name, pix_key")
     .eq("id", user.id)
     .single();
 
   // uso pessoal: se ainda não configurou a chave Pix, manda pras Configurações
-  if (!profile?.pix_key) {
-    redirect("/configuracoes");
-  }
-
-  const trialDaysLeft =
-    profile.plan_type === "trial" && profile.plan_expires_at
-      ? Math.ceil(
-          (new Date(profile.plan_expires_at).getTime() - Date.now()) /
-            (1000 * 60 * 60 * 24)
-        )
-      : null;
+  if (!profile?.pix_key) redirect("/configuracoes");
 
   const today = getTodayBR();
+  const weekEnd = addDaysBR(7);
   const monthStartStr = today.slice(0, 7) + "-01";
 
-  const { data: todayBookings } = await supabase
-    .from("bookings")
-    .select("*, services(name)")
-    .eq("profile_id", user.id)
-    .eq("date", today)
-    .order("time");
-
-  const { count: pendingCount } = await supabase
-    .from("charges")
-    .select("*", { count: "exact", head: true })
-    .eq("profile_id", user.id)
-    .neq("status", "pago");
-
-  const { count: overdueCount } = await supabase
-    .from("charges")
-    .select("*", { count: "exact", head: true })
-    .eq("profile_id", user.id)
-    .eq("status", "atrasado");
-
-  const { data: paidCharges } = await supabase
-    .from("charges")
-    .select("amount_cents, paid_at")
-    .eq("profile_id", user.id)
-    .eq("status", "pago")
-    .gte("paid_at", monthStartStr);
-
-  const totalReceived =
-    paidCharges?.reduce((sum, c) => sum + (c.amount_cents || 0), 0) || 0;
-
-  // Analytics extras
-  const weekStartStr = (() => {
-    const d = new Date(today + "T12:00:00");
-    d.setDate(d.getDate() - d.getDay());
-    return d.toISOString().slice(0, 10);
-  })();
-
   const [
+    { data: pending },
+    { data: paidCharges },
     { count: clientCount },
-    { data: monthBookings },
-    { data: upcomingBookings },
-    { count: cancelledCount },
-    { count: totalMonthCount },
-    { data: topClientsRaw },
-    { data: peakHoursRaw },
+    { data: allClients },
   ] = await Promise.all([
+    supabase
+      .from("charges")
+      .select("id, client_name, description, amount_cents, status, due_date")
+      .eq("profile_id", user.id)
+      .neq("status", "pago")
+      .order("due_date", { ascending: true }),
+    supabase
+      .from("charges")
+      .select("amount_cents, paid_at")
+      .eq("profile_id", user.id)
+      .eq("status", "pago")
+      .gte("paid_at", monthStartStr),
     supabase
       .from("clients")
       .select("*", { count: "exact", head: true })
       .eq("profile_id", user.id)
       .eq("status", "ativo"),
     supabase
-      .from("bookings")
-      .select("service_id, services(name)")
+      .from("clients")
+      .select("name, birthdate")
       .eq("profile_id", user.id)
-      .gte("date", monthStartStr)
-      .neq("status", "cancelado"),
-    supabase
-      .from("bookings")
-      .select("client_name, date, time, services(name)")
-      .eq("profile_id", user.id)
-      .gt("date", today)
-      .lte("date", addDaysBR(3))
-      .neq("status", "cancelado")
-      .order("date")
-      .order("time")
-      .limit(3),
-    supabase
-      .from("bookings")
-      .select("*", { count: "exact", head: true })
-      .eq("profile_id", user.id)
-      .gte("date", monthStartStr)
-      .eq("status", "cancelado"),
-    supabase
-      .from("bookings")
-      .select("*", { count: "exact", head: true })
-      .eq("profile_id", user.id)
-      .gte("date", monthStartStr),
-    supabase
-      .from("bookings")
-      .select("client_name")
-      .eq("profile_id", user.id)
-      .gte("date", monthStartStr)
-      .in("status", ["confirmado", "concluido"]),
-    supabase
-      .from("bookings")
-      .select("time")
-      .eq("profile_id", user.id)
-      .gte("date", monthStartStr)
-      .in("status", ["confirmado", "concluido"]),
+      .eq("status", "ativo"),
   ]);
 
-  // Serviço mais agendado no mês
-  const svcCount: Record<string, { name: string; count: number }> = {};
-  for (const b of monthBookings || []) {
-    const svc = b.services as unknown as { name: string } | null;
-    if (svc && b.service_id) {
-      if (!svcCount[b.service_id]) svcCount[b.service_id] = { name: svc.name, count: 0 };
-      svcCount[b.service_id].count++;
-    }
-  }
-  const topService = Object.values(svcCount).sort((a, b) => b.count - a.count)[0] || null;
+  const pend = (pending || []) as PendingCharge[];
+  const isOverdue = (c: PendingCharge) =>
+    c.status === "atrasado" || (!!c.due_date && c.due_date < today);
 
-  // Taxa de cancelamento
-  const cancelRate =
-    totalMonthCount && totalMonthCount > 0
-      ? Math.round(((cancelledCount || 0) / totalMonthCount) * 100)
-      : 0;
+  const overdue = pend.filter(isOverdue);
+  const dueToday = pend.filter((c) => c.due_date === today);
+  const dueThisWeek = pend.filter((c) => !isOverdue(c) && c.due_date && c.due_date <= weekEnd);
 
-  // Top 3 clientes do mês
-  const clientNameCount: Record<string, number> = {};
-  for (const b of topClientsRaw || []) {
-    if (b.client_name)
-      clientNameCount[b.client_name] = (clientNameCount[b.client_name] || 0) + 1;
-  }
-  const topClients = Object.entries(clientNameCount)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 3)
-    .map(([name, count]) => ({ name, count }));
+  const sum = (list: PendingCharge[]) => list.reduce((s, c) => s + (c.amount_cents || 0), 0);
+  const totalReceived = (paidCharges || []).reduce((s, c) => s + (c.amount_cents || 0), 0);
 
-  // Horário de pico
-  const hourCount: Record<number, number> = {};
-  for (const b of peakHoursRaw || []) {
-    const hour = parseInt((b.time as string)?.slice(0, 2) || "0");
-    hourCount[hour] = (hourCount[hour] || 0) + 1;
-  }
-  const peakHour = Object.entries(hourCount).sort((a, b) => Number(b[1]) - Number(a[1]))[0];
-  const peakHourLabel = peakHour
-    ? `${peakHour[0]}h–${parseInt(peakHour[0]) + 1}h`
-    : null;
-
-  // Aniversariantes + clientes inativos
-  const thirtyDaysAgoStr = addDaysBR(-30);
-  const [{ data: allClients }, { data: recentClientBookings }] = await Promise.all([
-    supabase.from("clients").select("id, name, birthdate").eq("profile_id", user.id).eq("status", "ativo"),
-    supabase.from("bookings").select("client_id").eq("profile_id", user.id).gte("date", thirtyDaysAgoStr).neq("status", "cancelado").not("client_id", "is", null),
-  ]);
-
-  const recentIds = new Set((recentClientBookings || []).map((b) => b.client_id as string));
-  const inactiveCount = (allClients || []).filter((c) => !recentIds.has(c.id)).length;
-
+  // Aniversariantes (próximos 7 dias)
   const nowDate = new Date();
   const birthdayClients = (allClients || []).filter((c) => {
     if (!c.birthdate) return false;
@@ -192,56 +90,27 @@ export default async function DashboardPage() {
     return bm === todayMM && bd === todayDD;
   });
 
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "";
-  const publicLink = `${siteUrl}/agendar/${profile.slug}`;
+  const fmtDate = (d: string | null) => {
+    if (!d) return "";
+    const [y, m, day] = d.split("-");
+    return `${day}/${m}/${y}`;
+  };
 
   return (
     <div className="space-y-5">
       <div>
         <h1 className="text-2xl font-bold text-slate-900">
-          Olá, {profile.business_name || "tudo certo"} 👋
+          Olá, {profile.business_name || profile.name || "tudo certo"} 👋
         </h1>
-        <p className="text-slate-500 text-sm">Resumo de hoje</p>
+        <p className="text-slate-500 text-sm">Resumo das suas cobranças</p>
       </div>
 
-      {/* Link público */}
-      <div className="card bg-brand-light border-brand/20">
-        <p className="text-sm font-medium text-brand-dark mb-2">
-          Seu link pra colar na bio
-        </p>
-        <div className="flex items-center gap-2">
-          <input
-            readOnly
-            value={publicLink}
-            className="input text-sm bg-white flex-1 truncate"
-          />
-          <CopyLinkButton text={publicLink} />
-          <ShareLinkButton url={publicLink} title="Agende comigo!" />
-        </div>
-      </div>
-
-      {/* Banner de trial */}
-      {trialDaysLeft !== null && trialDaysLeft > 0 && (
-        <Link
-          href="/plano"
-          className="card border-amber-300 bg-amber-50 py-3 px-4 flex items-center justify-between"
-        >
-          <div>
-            <p className="text-sm font-semibold text-amber-800">
-              ⏳ Teste gratuito: {trialDaysLeft} dia{trialDaysLeft !== 1 ? "s" : ""} restante{trialDaysLeft !== 1 ? "s" : ""}
-            </p>
-            <p className="text-xs text-amber-600 mt-0.5">Veja os planos para continuar usando →</p>
-          </div>
-          <span className="text-amber-400 text-sm">→</span>
-        </Link>
-      )}
-
-      {/* Alerta de cobranças atrasadas */}
-      {(overdueCount ?? 0) > 0 && (
-        <Link href="/cobrancas?status=pendente" className="card bg-red-50 border-red-200 py-3 px-4 flex items-center justify-between">
+      {/* Alerta de atrasadas */}
+      {overdue.length > 0 && (
+        <Link href="/cobrancas?status=atrasado" className="card bg-red-50 border-red-200 py-3 px-4 flex items-center justify-between">
           <div>
             <p className="text-sm font-semibold text-red-700">
-              ⚠️ {overdueCount} cobrança{overdueCount! > 1 ? "s" : ""} atrasada{overdueCount! > 1 ? "s" : ""}
+              ⚠️ {overdue.length} cobrança{overdue.length > 1 ? "s" : ""} atrasada{overdue.length > 1 ? "s" : ""} — {formatBRL(sum(overdue))}
             </p>
             <p className="text-xs text-red-500 mt-0.5">Envie um lembrete agora</p>
           </div>
@@ -269,32 +138,27 @@ export default async function DashboardPage() {
         </Link>
       )}
 
-      {/* Clientes inativos */}
-      {inactiveCount > 0 && (
-        <Link href="/clientes" className="card bg-amber-50 border-amber-200 py-3 px-4 flex items-center justify-between">
-          <div>
-            <p className="text-sm font-semibold text-amber-700">
-              💤 {inactiveCount} cliente{inactiveCount > 1 ? "s" : ""} sem agendamento há 30+ dias
-            </p>
-            <p className="text-xs text-amber-500 mt-0.5">Reconquiste com uma mensagem ou promoção</p>
-          </div>
-          <span className="text-amber-300 text-sm">→</span>
-        </Link>
-      )}
-
       {/* Métricas */}
       <div className="grid grid-cols-2 gap-3">
         <div className="card text-center py-4">
-          <p className="text-3xl font-bold text-slate-900">{todayBookings?.length || 0}</p>
-          <p className="text-xs text-slate-500 mt-1">Agendamentos hoje</p>
+          <p className="text-lg font-bold text-amber-600">{formatBRL(sum(dueToday))}</p>
+          <p className="text-xs text-slate-500 mt-1">A receber hoje ({dueToday.length})</p>
         </div>
         <div className="card text-center py-4">
-          <p className="text-3xl font-bold text-amber-600">{pendingCount || 0}</p>
-          <p className="text-xs text-slate-500 mt-1">Cobranças abertas</p>
+          <p className="text-lg font-bold text-slate-900">{formatBRL(sum(dueThisWeek))}</p>
+          <p className="text-xs text-slate-500 mt-1">A receber na semana ({dueThisWeek.length})</p>
+        </div>
+        <div className="card text-center py-4">
+          <p className="text-lg font-bold text-red-600">{formatBRL(sum(overdue))}</p>
+          <p className="text-xs text-slate-500 mt-1">Em atraso ({overdue.length})</p>
         </div>
         <div className="card text-center py-4">
           <p className="text-lg font-bold text-brand">{formatBRL(totalReceived)}</p>
           <p className="text-xs text-slate-500 mt-1">Recebido no mês</p>
+        </div>
+        <div className="card text-center py-4">
+          <p className="text-3xl font-bold text-amber-600">{pend.length}</p>
+          <p className="text-xs text-slate-500 mt-1">Cobranças abertas</p>
         </div>
         <div className="card text-center py-4">
           <p className="text-3xl font-bold text-slate-900">{clientCount || 0}</p>
@@ -302,114 +166,47 @@ export default async function DashboardPage() {
         </div>
       </div>
 
-      {/* Métricas avançadas */}
-      {(cancelRate > 0 || topClients.length > 0 || peakHourLabel) && (
-        <div className="card space-y-3 py-4">
-          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Análise do mês</p>
-          {cancelRate > 0 && (
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-slate-500">Taxa de cancelamento</span>
-              <span
-                className={`font-semibold ${
-                  cancelRate >= 20
-                    ? "text-red-600"
-                    : cancelRate >= 10
-                    ? "text-amber-600"
-                    : "text-brand"
-                }`}
-              >
-                {cancelRate}%
-              </span>
-            </div>
-          )}
-          {peakHourLabel && (
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-slate-500">Horário de pico</span>
-              <span className="font-semibold text-slate-900">🕐 {peakHourLabel}</span>
-            </div>
-          )}
-          {topClients.length > 0 && (
-            <div className="space-y-1.5">
-              <p className="text-xs text-slate-500">🏆 Clientes do mês</p>
-              {topClients.map((c, i) => (
-                <div key={i} className="flex items-center justify-between text-sm">
-                  <span className="text-slate-700 truncate">{c.name}</span>
-                  <span className="text-xs font-semibold text-brand ml-2 shrink-0">{c.count}×</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Top serviço + próximos */}
-      {(topService || (upcomingBookings && upcomingBookings.length > 0)) && (
-        <div className="grid grid-cols-1 gap-3">
-          {topService && (
-            <div className="card py-3 flex items-center justify-between">
-              <div>
-                <p className="text-xs text-slate-500">🏆 Serviço mais agendado este mês</p>
-                <p className="font-semibold text-slate-900 mt-0.5">{topService.name}</p>
-              </div>
-              <span className="text-2xl font-bold text-brand">{topService.count}×</span>
-            </div>
-          )}
-          {upcomingBookings && upcomingBookings.length > 0 && (
-            <div className="card space-y-2 py-3">
-              <p className="text-xs text-slate-500 font-medium">📆 Próximos 3 dias</p>
-              {upcomingBookings.map((b, i) => {
-                const [y, m, d] = b.date.split("-");
-                const svc = b.services as unknown as { name: string } | null;
-                return (
-                  <div key={i} className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-slate-900">{b.client_name}</p>
-                      <p className="text-xs text-slate-400">{svc?.name || "Serviço"}</p>
-                    </div>
-                    <p className="text-xs text-slate-500 text-right">
-                      {d}/{m}<br />
-                      <span className="font-semibold text-brand">{b.time?.slice(0, 5)}</span>
-                    </p>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Agendamentos de hoje */}
-      <div>
-        <h2 className="font-semibold text-slate-900 mb-3">
-          Agendamentos de hoje
-        </h2>
-        {todayBookings && todayBookings.length > 0 ? (
+      {/* Vencem hoje */}
+      {dueToday.length > 0 && (
+        <div>
+          <h2 className="font-semibold text-slate-900 mb-3">Vencem hoje</h2>
           <div className="space-y-2">
-            {todayBookings.map((b) => (
-              <div
-                key={b.id}
-                className="card flex items-center justify-between py-3"
-              >
-                <div>
-                  <p className="font-medium text-slate-900">{b.client_name}</p>
-                  <p className="text-sm text-slate-500">
-                    {(b.services as { name: string } | null)?.name || "Serviço"}
-                  </p>
+            {dueToday.map((c) => (
+              <Link key={c.id} href="/cobrancas" className="card flex items-center justify-between py-3 hover:border-brand transition-colors">
+                <div className="min-w-0">
+                  <p className="font-medium text-slate-900 truncate">{c.client_name || "—"}</p>
+                  {c.description && <p className="text-sm text-slate-500 truncate">{c.description}</p>}
                 </div>
-                <span className="text-brand font-semibold">
-                  {b.time?.slice(0, 5)}
-                </span>
-              </div>
+                <span className="text-amber-600 font-semibold shrink-0 ml-2">{formatBRL(c.amount_cents)}</span>
+              </Link>
             ))}
           </div>
-        ) : (
-          <div className="card text-center text-slate-500 text-sm py-8">
-            Você ainda não tem agendamentos hoje.
-            <br />
-            Compartilhe seu link na bio para receber clientes. 🚀
+        </div>
+      )}
+
+      {/* Atrasadas */}
+      {overdue.length > 0 && (
+        <div>
+          <h2 className="font-semibold text-slate-900 mb-3">Atrasadas</h2>
+          <div className="space-y-2">
+            {overdue.slice(0, 8).map((c) => (
+              <Link key={c.id} href="/cobrancas?status=atrasado" className="card flex items-center justify-between py-3 hover:border-red-300 transition-colors">
+                <div className="min-w-0">
+                  <p className="font-medium text-slate-900 truncate">{c.client_name || "—"}</p>
+                  <p className="text-xs text-red-500">Venceu {fmtDate(c.due_date)}</p>
+                </div>
+                <span className="text-red-600 font-semibold shrink-0 ml-2">{formatBRL(c.amount_cents)}</span>
+              </Link>
+            ))}
           </div>
-        )}
-      </div>
+        </div>
+      )}
+
+      {pend.length === 0 && (
+        <div className="card text-center text-slate-500 text-sm py-8">
+          Nenhuma cobrança em aberto. 🎉
+        </div>
+      )}
 
       <Link href="/cobrancas" className="btn-primary w-full">
         + Nova cobrança

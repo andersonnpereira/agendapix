@@ -15,8 +15,20 @@ type Client = {
   notes: string | null;
   source: string | null;
   status: string;
+  tags: string[] | null;
   created_at: string;
 };
+
+type SortBy = "nome" | "recente" | "gasto";
+
+// Normaliza telefone p/ detectar duplicados: só dígitos, sem DDI 55 e sem o
+// 9º dígito do celular (mesma lógica usada no bot de WhatsApp).
+function normalizePhone(raw: string | null | undefined): string {
+  let d = (raw || "").replace(/\D/g, "");
+  if (d.length >= 12 && d.startsWith("55")) d = d.slice(2);
+  if (d.length === 11) d = d.slice(0, 2) + d.slice(3);
+  return d;
+}
 
 type ChargeItem = {
   id: string;
@@ -57,9 +69,13 @@ function Avatar({ name }: { name: string }) {
 export default function ClientesPage() {
   const supabase = createClient();
   const [clients, setClients] = useState<Client[]>([]);
+  const [spentByClient, setSpentByClient] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState<"todos" | "ativo" | "inativo">("todos");
+  const [filterTag, setFilterTag] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState<SortBy>("nome");
+  const [onlyDuplicates, setOnlyDuplicates] = useState(false);
   const [toast, setToast] = useState("");
 
   // Detail view
@@ -81,6 +97,8 @@ export default function ClientesPage() {
   const [fNotes, setFNotes] = useState("");
   const [fSource, setFSource] = useState("link");
   const [fStatus, setFStatus] = useState("ativo");
+  const [fTags, setFTags] = useState<string[]>([]);
+  const [fTagInput, setFTagInput] = useState("");
 
   // Confirm delete
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
@@ -94,8 +112,17 @@ export default function ClientesPage() {
   const load = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-    const { data } = await supabase.from("clients").select("*").eq("profile_id", user.id).order("name");
+    const [{ data }, { data: paid }] = await Promise.all([
+      supabase.from("clients").select("*").eq("profile_id", user.id).order("name"),
+      supabase.from("charges").select("client_id, amount_cents").eq("profile_id", user.id).eq("status", "pago").not("client_id", "is", null),
+    ]);
     setClients((data as Client[]) || []);
+    const spent: Record<string, number> = {};
+    for (const c of paid || []) {
+      const id = c.client_id as string;
+      spent[id] = (spent[id] || 0) + (c.amount_cents || 0);
+    }
+    setSpentByClient(spent);
     setLoading(false);
   }, [supabase]);
 
@@ -105,6 +132,7 @@ export default function ClientesPage() {
     setEditClient(null);
     setFName(""); setFPhone(""); setFEmail(""); setFBirthdate("");
     setFCpf(""); setFAddress(""); setFNotes(""); setFSource("link"); setFStatus("ativo");
+    setFTags([]); setFTagInput("");
     setShowModal(true);
   }
 
@@ -113,7 +141,14 @@ export default function ClientesPage() {
     setFName(c.name); setFPhone(c.phone || ""); setFEmail(c.email || "");
     setFBirthdate(c.birthdate || ""); setFCpf(c.cpf || ""); setFAddress(c.address || "");
     setFNotes(c.notes || ""); setFSource(c.source || "link"); setFStatus(c.status || "ativo");
+    setFTags(c.tags || []); setFTagInput("");
     setShowModal(true);
+  }
+
+  function addTag() {
+    const t = fTagInput.trim().toLowerCase();
+    if (t && !fTags.includes(t)) setFTags([...fTags, t]);
+    setFTagInput("");
   }
 
   async function openDetail(c: Client) {
@@ -154,6 +189,7 @@ export default function ClientesPage() {
       notes: fNotes || null,
       source: fSource,
       status: fStatus,
+      tags: fTags,
     };
 
     let dbErr = null;
@@ -184,12 +220,64 @@ export default function ClientesPage() {
     showToast("Cliente excluído.");
   }
 
-  const filtered = clients.filter((c) => {
-    const s = search.toLowerCase();
-    const matchSearch = !s || c.name.toLowerCase().includes(s) || (c.phone || "").includes(s) || (c.email || "").toLowerCase().includes(s);
-    const matchStatus = filterStatus === "todos" || c.status === filterStatus;
-    return matchStatus && matchSearch;
-  });
+  // Todas as tags em uso (para os chips de filtro)
+  const allTags = Array.from(new Set(clients.flatMap((c) => c.tags || []))).sort();
+
+  // Telefones repetidos → candidatos a duplicado
+  const phoneCount: Record<string, number> = {};
+  for (const c of clients) {
+    const p = normalizePhone(c.phone);
+    if (p.length >= 10) phoneCount[p] = (phoneCount[p] || 0) + 1;
+  }
+  const dupCount = Object.values(phoneCount).filter((n) => n > 1).length;
+  const isDuplicate = (c: Client) => {
+    const p = normalizePhone(c.phone);
+    return p.length >= 10 && phoneCount[p] > 1;
+  };
+
+  const filtered = clients
+    .filter((c) => {
+      const s = search.toLowerCase();
+      const matchSearch = !s || c.name.toLowerCase().includes(s) || (c.phone || "").includes(s) || (c.email || "").toLowerCase().includes(s);
+      const matchStatus = filterStatus === "todos" || c.status === filterStatus;
+      const matchTag = !filterTag || (c.tags || []).includes(filterTag);
+      const matchDup = !onlyDuplicates || isDuplicate(c);
+      return matchStatus && matchSearch && matchTag && matchDup;
+    })
+    .sort((a, b) => {
+      if (sortBy === "recente") return (b.created_at || "").localeCompare(a.created_at || "");
+      if (sortBy === "gasto") return (spentByClient[b.id] || 0) - (spentByClient[a.id] || 0);
+      return a.name.localeCompare(b.name, "pt-BR");
+    });
+
+  function exportCSV() {
+    const header = ["Nome", "WhatsApp", "E-mail", "Nascimento", "CPF", "Endereço", "Origem", "Status", "Etiquetas", "Total gasto (R$)", "Observações"];
+    const rows = filtered.map((c) => [
+      c.name,
+      c.phone || "",
+      c.email || "",
+      c.birthdate ? fmt(c.birthdate) : "",
+      c.cpf || "",
+      c.address || "",
+      SOURCE_LABELS[c.source || ""] || c.source || "",
+      c.status,
+      (c.tags || []).join(", "),
+      ((spentByClient[c.id] || 0) / 100).toFixed(2).replace(".", ","),
+      (c.notes || "").replace(/\n/g, " "),
+    ]);
+    const csv = [header, ...rows]
+      .map((r) => r.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(";"))
+      .join("\n");
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `clientes_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
 
   const fmt = (d: string | null) => {
     if (!d) return "";
@@ -245,6 +333,34 @@ export default function ClientesPage() {
                 <option key={v} value={v}>{l}</option>
               ))}
             </select>
+          </div>
+          <div className="col-span-2">
+            <label className="label">Etiquetas</label>
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {fTags.map((t) => (
+                <span key={t} className="inline-flex items-center gap-1 text-xs font-medium bg-brand-light text-brand-dark px-2 py-1 rounded-full">
+                  {t}
+                  <button type="button" onClick={() => setFTags(fTags.filter((x) => x !== t))} className="text-brand-dark/60 hover:text-brand-dark">✕</button>
+                </span>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <input
+                className="input text-sm flex-1"
+                value={fTagInput}
+                onChange={(e) => setFTagInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTag(); } }}
+                placeholder="Ex: mensalista, trimestral, teste…"
+              />
+              <button type="button" className="btn border border-slate-200 text-sm px-3" onClick={addTag}>+ Add</button>
+            </div>
+            {allTags.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-2">
+                {allTags.filter((t) => !fTags.includes(t)).slice(0, 8).map((t) => (
+                  <button key={t} type="button" onClick={() => setFTags([...fTags, t])} className="text-[11px] text-slate-500 bg-slate-100 hover:bg-slate-200 px-2 py-0.5 rounded-full">+ {t}</button>
+                ))}
+              </div>
+            )}
           </div>
           <div className="col-span-2">
             <label className="label">Observações internas</label>
@@ -349,6 +465,14 @@ export default function ClientesPage() {
               <span className="text-slate-700">{(item as string[])[1]}</span>
             </div>
           ))}
+
+          {(detailClient.tags || []).length > 0 && (
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              {(detailClient.tags || []).map((t) => (
+                <span key={t} className="text-xs font-medium bg-brand-light text-brand-dark px-2 py-1 rounded-full">{t}</span>
+              ))}
+            </div>
+          )}
 
           {detailClient.notes && (
             <div className="mt-2 bg-amber-50 border border-amber-100 rounded-xl p-3 text-sm">
@@ -467,19 +591,38 @@ export default function ClientesPage() {
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-slate-800 text-white text-sm px-4 py-2.5 rounded-xl shadow-lg">{toast}</div>
       )}
 
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <h1 className="text-2xl font-bold text-slate-900">Clientes</h1>
-        <button className="btn-primary text-sm px-4 py-2" onClick={openCreate}>
-          + Novo
-        </button>
+        <div className="flex items-center gap-2">
+          {clients.length > 0 && (
+            <button className="btn border border-slate-200 text-sm px-3 py-2" onClick={exportCSV} title="Exportar a lista filtrada em CSV">
+              ⬇ CSV
+            </button>
+          )}
+          <button className="btn-primary text-sm px-4 py-2" onClick={openCreate}>
+            + Novo
+          </button>
+        </div>
       </div>
 
-      <input
-        className="input text-sm"
-        placeholder="Buscar por nome, telefone ou e-mail..."
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-      />
+      <div className="flex gap-2">
+        <input
+          className="input text-sm flex-1"
+          placeholder="Buscar por nome, telefone ou e-mail..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <select
+          className="input text-sm w-auto"
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value as SortBy)}
+          title="Ordenar"
+        >
+          <option value="nome">A–Z</option>
+          <option value="recente">Mais recentes</option>
+          <option value="gasto">Maior gasto</option>
+        </select>
+      </div>
 
       <div className="flex flex-wrap gap-2">
         {([
@@ -499,10 +642,40 @@ export default function ClientesPage() {
             {f.label}
           </button>
         ))}
+        {dupCount > 0 && (
+          <button
+            onClick={() => setOnlyDuplicates((v) => !v)}
+            className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+              onlyDuplicates ? "bg-amber-500 text-white" : "bg-amber-100 text-amber-700 hover:bg-amber-200"
+            }`}
+          >
+            ⚠ Duplicados ({dupCount})
+          </button>
+        )}
         {clients.length > 0 && (
           <span className="ml-auto text-xs text-slate-400 self-center">{filtered.length}/{clients.length}</span>
         )}
       </div>
+
+      {/* Filtro por etiqueta */}
+      {allTags.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {filterTag && (
+            <button onClick={() => setFilterTag(null)} className="text-xs font-medium bg-slate-200 text-slate-600 px-2.5 py-1 rounded-full hover:bg-slate-300">✕ limpar</button>
+          )}
+          {allTags.map((t) => (
+            <button
+              key={t}
+              onClick={() => setFilterTag(filterTag === t ? null : t)}
+              className={`text-xs font-medium px-2.5 py-1 rounded-full transition-colors ${
+                filterTag === t ? "bg-brand text-white" : "bg-brand-light text-brand-dark hover:bg-brand/20"
+              }`}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+      )}
 
       {loading ? (
         <p className="text-slate-400 text-sm">Carregando...</p>
@@ -524,15 +697,24 @@ export default function ClientesPage() {
               <div className="flex-1 min-w-0">
                 <p className="font-semibold text-slate-900 truncate">{c.name}</p>
                 <p className="text-sm text-slate-500 truncate">{c.phone || c.email || "Sem contato"}</p>
-                {c.notes && (
-                  <p className="text-xs text-slate-400 italic truncate mt-0.5">"{c.notes}"</p>
+                {(c.tags || []).length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {(c.tags || []).slice(0, 3).map((t) => (
+                      <span key={t} className="text-[10px] font-medium bg-brand-light text-brand-dark px-1.5 py-0.5 rounded-full">{t}</span>
+                    ))}
+                  </div>
                 )}
               </div>
               <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                {isDuplicate(c) && (
+                  <span className="text-[10px] font-medium text-amber-600" title="Telefone repetido em outro cliente">⚠ duplicado</span>
+                )}
+                {(spentByClient[c.id] || 0) > 0 && (
+                  <span className="text-xs font-semibold text-brand">{fmtBRL(spentByClient[c.id])}</span>
+                )}
                 <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${c.status === "ativo" ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-500"}`}>
                   {c.status === "ativo" ? "Ativo" : "Inativo"}
                 </span>
-                <span className="text-xs text-slate-300">›</span>
               </div>
             </button>
           ))}

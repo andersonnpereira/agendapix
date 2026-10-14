@@ -18,9 +18,9 @@ export default async function DashboardPage() {
     .eq("id", user.id)
     .single();
 
-  // se não terminou o onboarding, manda pra lá
-  if (!profile?.slug || !profile?.pix_key) {
-    redirect("/onboarding");
+  // uso pessoal: se ainda não configurou a chave Pix, manda pras Configurações
+  if (!profile?.pix_key) {
+    redirect("/configuracoes");
   }
 
   const trialDaysLeft =

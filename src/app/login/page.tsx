@@ -56,7 +56,7 @@ export default function LoginPage() {
         setLoading(false);
         return;
       }
-      router.push("/onboarding");
+      router.push("/dashboard");
       return;
     }
 

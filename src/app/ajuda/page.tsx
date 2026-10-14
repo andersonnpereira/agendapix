@@ -223,19 +223,6 @@ const SECTIONS: Section[] = [
       "Pronto: abre igual a um aplicativo, com ícone na tela.",
     ],
   },
-  {
-    id: "planos",
-    icon: "👑",
-    title: "16. Planos e assinatura",
-    steps: [
-      "Você começa com 7 dias grátis, com acesso completo.",
-      "Depois, assine o plano Mensal (R$ 19,90/mês) ou Anual (R$ 179,90/ano — economize R$ 58,90).",
-      "O pagamento é por Pix ou cartão e o acesso é liberado automaticamente após a confirmação.",
-      "Sem fidelidade: cancele quando quiser e seus dados ficam salvos.",
-    ],
-    href: "/plano",
-    action: "Ver planos",
-  },
 ];
 
 const FAQS = [

@@ -43,15 +43,10 @@ export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
   const protectedPaths = [
     "/dashboard",
-    "/agenda",
-    "/servicos",
-    "/disponibilidade",
     "/cobrancas",
     "/configuracoes",
     "/financeiro",
     "/clientes",
-    "/admin",
-    "/onboarding",
   ];
   const isProtected = protectedPaths.some((p) => path.startsWith(p));
 

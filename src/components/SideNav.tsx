@@ -3,44 +3,20 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Home, CalendarDays, Users, CreditCard, BarChart3, Settings, HelpCircle, ShieldCheck,
+  Home, Users, CreditCard, BarChart3, Settings, HelpCircle,
 } from "lucide-react";
 import { SignOutButton } from "@/components/SignOutButton";
 
 const nav = [
   { href: "/dashboard",     label: "Início",        Icon: Home },
-  { href: "/agenda",        label: "Agenda",         Icon: CalendarDays },
   { href: "/clientes",      label: "Clientes",       Icon: Users },
   { href: "/cobrancas",     label: "Cobranças",      Icon: CreditCard },
   { href: "/financeiro",    label: "Financeiro",     Icon: BarChart3 },
   { href: "/configuracoes", label: "Configurações",  Icon: Settings },
 ];
 
-const PLAN_LABELS: Record<string, string> = {
-  trial:    "Trial gratuito",
-  monthly:  "Plano Mensal",
-  annual:   "Plano Anual",
-  lifetime: "Plano Vitalício",
-};
-
-function formatDateBR(iso: string) {
-  const [y, m, d] = iso.slice(0, 10).split("-");
-  return `${d}/${m}/${y}`;
-}
-
-interface SideNavProps {
-  isAdmin?: boolean;
-  planType?: string | null;
-  planExpiresAt?: string | null;
-  daysLeft?: number | null;
-}
-
-export function SideNav({ isAdmin, planType, planExpiresAt, daysLeft }: SideNavProps) {
+export function SideNav() {
   const pathname = usePathname();
-
-  const planLabel  = planType ? (PLAN_LABELS[planType] ?? planType) : null;
-  const isExpiring = daysLeft !== null && daysLeft !== undefined && daysLeft <= (planType === "annual" ? 15 : 7);
-  const isPaid     = planType === "monthly" || planType === "annual" || planType === "lifetime";
 
   return (
     <aside className="hidden lg:fixed lg:inset-y-0 lg:left-0 lg:flex lg:w-64 lg:flex-col z-20">
@@ -53,23 +29,6 @@ export function SideNav({ isAdmin, planType, planExpiresAt, daysLeft }: SideNavP
 
         {/* Nav items */}
         <nav className="flex-1 px-3 py-4 space-y-0.5">
-          {isAdmin && (
-            <Link
-              href="/admin"
-              className={[
-                "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 mb-2",
-                pathname.startsWith("/admin")
-                  ? "bg-purple-100 text-purple-700"
-                  : "text-purple-500 hover:bg-purple-50 hover:text-purple-700",
-              ].join(" ")}
-            >
-              <ShieldCheck size={18} strokeWidth={pathname.startsWith("/admin") ? 2.5 : 2} className="shrink-0" />
-              Admin
-              {pathname.startsWith("/admin") && (
-                <span className="ml-auto w-1.5 h-1.5 rounded-full bg-purple-500" />
-              )}
-            </Link>
-          )}
           {nav.map(({ href, label, Icon }) => {
             const isActive = pathname === href || pathname.startsWith(href + "/");
             return (
@@ -96,37 +55,6 @@ export function SideNav({ isAdmin, planType, planExpiresAt, daysLeft }: SideNavP
             );
           })}
         </nav>
-
-        {/* Badge do plano */}
-        {!isAdmin && planLabel && (
-          <div className="px-3 pb-2">
-            <div className={`rounded-xl p-3 border ${
-              isExpiring
-                ? "bg-amber-50 border-amber-200"
-                : isPaid
-                ? "bg-brand/5 border-brand/20"
-                : "bg-slate-50 border-slate-200"
-            }`}>
-              <div className="flex items-center gap-2 mb-0.5">
-                <span className="text-sm">{planType === "lifetime" ? "♾️" : isPaid ? "👑" : "⏳"}</span>
-                <span className={`text-xs font-semibold truncate ${
-                  isExpiring ? "text-amber-700" : isPaid ? "text-brand-dark" : "text-slate-600"
-                }`}>
-                  {planLabel}
-                </span>
-              </div>
-              {planExpiresAt && planType !== "lifetime" && (
-                <p className={`text-xs ${isExpiring ? "text-amber-600 font-medium" : "text-slate-400"}`}>
-                  {isExpiring && daysLeft === 0
-                    ? "Vence hoje!"
-                    : isExpiring
-                    ? `Vence em ${daysLeft}d — ${formatDateBR(planExpiresAt)}`
-                    : `Vence em ${formatDateBR(planExpiresAt)}`}
-                </p>
-              )}
-            </div>
-          </div>
-        )}
 
         {/* Bottom actions */}
         <div className="px-3 py-4 border-t border-slate-100 space-y-0.5">

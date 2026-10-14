@@ -13,6 +13,7 @@ type Charge = {
   due_date: string | null;
   paid_at: string | null;
   created_at: string;
+  recurrence: "none" | "weekly" | "biweekly" | "monthly";
 };
 
 const STATUS_LABEL: Record<string, { label: string; color: string }> = {
@@ -26,6 +27,8 @@ export default function FinanceiroPage() {
   const [charges, setCharges] = useState<Charge[]>([]);
   const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState<"mes" | "trimestre" | "semestre" | "ano">("mes");
+  const [statusFilter, setStatusFilter] = useState<"todos" | "pago" | "pendente" | "atrasado">("todos");
+  const [visibleCount, setVisibleCount] = useState(50);
   const [hoverBar, setHoverBar] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -33,7 +36,7 @@ export default function FinanceiroPage() {
     if (!user) return;
     const { data } = await supabase
       .from("charges")
-      .select("id, client_name, description, amount_cents, status, due_date, paid_at, created_at")
+      .select("id, client_name, description, amount_cents, status, due_date, paid_at, created_at, recurrence")
       .eq("profile_id", user.id)
       .order("created_at", { ascending: false });
     setCharges((data as Charge[]) || []);
@@ -74,6 +77,25 @@ export default function FinanceiroPage() {
   const totalBase = totalReceived + pendingTotal + overdueTotal;
   const inadimplencia = totalBase > 0 ? (overdueTotal / totalBase) * 100 : 0;
 
+  // Receita recorrente estimada (MRR): cada assinante ativo tem 1 cobrança em
+  // aberto com recorrência != none; normaliza o valor para mensal.
+  const MONTHLY_FACTOR: Record<string, number> = { weekly: 52 / 12, biweekly: 26 / 12, monthly: 1 };
+  const recurringOpen = charges.filter((c) => c.recurrence !== "none" && c.status !== "pago");
+  const mrr = Math.round(
+    recurringOpen.reduce((s, c) => s + c.amount_cents * (MONTHLY_FACTOR[c.recurrence] || 1), 0)
+  );
+
+  // Ranking de clientes por faturamento (cobranças pagas)
+  const byClient: Record<string, number> = {};
+  for (const c of paid) {
+    const name = (c.client_name || "—").trim();
+    byClient[name] = (byClient[name] || 0) + c.amount_cents;
+  }
+  const topClients = Object.entries(byClient)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([name, cents]) => ({ name, cents }));
+
   // 6-month chart
   const monthChart = Array.from({ length: 6 }, (_, i) => {
     const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
@@ -96,11 +118,14 @@ export default function FinanceiroPage() {
   const periodMonths = period === "mes" ? 1 : period === "trimestre" ? 3 : period === "semestre" ? 6 : 12;
   const fromDate = new Date(now.getFullYear(), now.getMonth() - (periodMonths - 1), 1);
   const fromStr = fromDate.toISOString().slice(0, 10);
-  const filtered = charges
-    .filter((c) => (c.paid_at || c.due_date || c.created_at) >= fromStr)
-    .slice(0, 100);
+  const matched = charges.filter(
+    (c) =>
+      (c.paid_at || c.due_date || c.created_at) >= fromStr &&
+      (statusFilter === "todos" || c.status === statusFilter)
+  );
+  const filtered = matched.slice(0, visibleCount);
 
-  const periodPaid = filtered.filter((c) => c.status === "pago").reduce((s, c) => s + c.amount_cents, 0);
+  const periodPaid = matched.filter((c) => c.status === "pago").reduce((s, c) => s + c.amount_cents, 0);
 
   const growth =
     lastMonthRevenue > 0
@@ -116,7 +141,7 @@ export default function FinanceiroPage() {
   // CSV export
   const exportCSV = () => {
     const header = ["Cliente", "Descrição", "Valor (R$)", "Status", "Vencimento", "Pago em"];
-    const rows = filtered.map((c) => [
+    const rows = matched.map((c) => [
       c.client_name || "",
       c.description || "",
       ((c.amount_cents || 0) / 100).toFixed(2).replace(".", ","),
@@ -217,7 +242,37 @@ export default function FinanceiroPage() {
           </p>
           <p className="text-xs text-slate-400">sobre total geral</p>
         </div>
+
+        {/* Receita recorrente (MRR) */}
+        {mrr > 0 && (
+          <div className="card py-3 space-y-1 col-span-2 bg-blue-50 border-blue-100">
+            <p className="text-xs text-blue-700 font-medium">Receita recorrente estimada</p>
+            <p className="text-2xl font-bold text-blue-800">{formatBRL(mrr)}<span className="text-sm font-medium text-blue-600">/mês</span></p>
+            <p className="text-xs text-blue-600/70">{recurringOpen.length} assinatura{recurringOpen.length !== 1 ? "s" : ""} ativa{recurringOpen.length !== 1 ? "s" : ""} (semanal/quinzenal normalizado p/ mês)</p>
+          </div>
+        )}
       </div>
+
+      {/* Ranking de clientes */}
+      {topClients.length > 0 && (
+        <div className="card py-4 space-y-2.5">
+          <p className="text-sm font-semibold text-slate-900">🏆 Clientes que mais pagaram</p>
+          {topClients.map((c, i) => {
+            const pct = topClients[0].cents > 0 ? (c.cents / topClients[0].cents) * 100 : 0;
+            return (
+              <div key={c.name} className="space-y-1">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-slate-700 truncate">{i + 1}. {c.name}</span>
+                  <span className="font-semibold text-brand ml-2 shrink-0">{formatBRL(c.cents)}</span>
+                </div>
+                <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                  <div className="h-full bg-brand rounded-full" style={{ width: `${pct}%` }} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Previsão próximo mês */}
       <div className="card py-3 flex items-center justify-between gap-3">
@@ -290,13 +345,34 @@ export default function FinanceiroPage() {
           <select
             className="input text-sm py-1.5 w-auto"
             value={period}
-            onChange={(e) => setPeriod(e.target.value as typeof period)}
+            onChange={(e) => { setPeriod(e.target.value as typeof period); setVisibleCount(50); }}
           >
             <option value="mes">Este mês</option>
             <option value="trimestre">Últimos 3 meses</option>
             <option value="semestre">Últimos 6 meses</option>
             <option value="ano">Último ano</option>
           </select>
+        </div>
+
+        {/* Filtro por status */}
+        <div className="flex flex-wrap gap-2">
+          {([
+            { key: "todos", label: "Todas" },
+            { key: "pago", label: "Pagas" },
+            { key: "pendente", label: "Pendentes" },
+            { key: "atrasado", label: "Atrasadas" },
+          ] as const).map((f) => (
+            <button
+              key={f.key}
+              onClick={() => { setStatusFilter(f.key); setVisibleCount(50); }}
+              className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                statusFilter === f.key ? "bg-brand text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+          <span className="ml-auto text-xs text-slate-400 self-center">{matched.length} no período</span>
         </div>
 
         {filtered.length === 0 ? (
@@ -336,6 +412,15 @@ export default function FinanceiroPage() {
                 );
               })}
             </div>
+
+            {matched.length > filtered.length && (
+              <button
+                onClick={() => setVisibleCount((v) => v + 50)}
+                className="btn border border-slate-200 text-sm w-full py-2.5 text-slate-600 hover:bg-slate-50"
+              >
+                Ver mais ({matched.length - filtered.length} restante{matched.length - filtered.length !== 1 ? "s" : ""})
+              </button>
+            )}
 
             <div className="card bg-brand-light border-brand/20 py-3 flex items-center justify-between">
               <p className="text-sm font-semibold text-brand-dark">Total recebido no período</p>

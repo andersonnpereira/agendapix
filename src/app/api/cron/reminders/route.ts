@@ -197,7 +197,7 @@ export async function GET(req: NextRequest) {
       });
 
       if (result.ok) {
-        await markOutboundSent(charge.profile_id as string, normalizeWhatsAppPhone(charge.client_phone as string));
+        await markOutboundSent(charge.profile_id as string, normalizeWhatsAppPhone(charge.client_phone as string), message);
         // Grava também em send_history — sem isso o envio automático some do
         // "Histórico de envios" na UI (que só lê send_history, não reminders_sent).
         const newHistory = [...((charge.send_history as string[] | null) || []), now];

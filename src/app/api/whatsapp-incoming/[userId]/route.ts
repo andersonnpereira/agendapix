@@ -102,22 +102,6 @@ export async function POST(
     return NextResponse.json({ ok: true, skipped: "noPhone", remoteJid });
   }
 
-  // Mensagens com fromMe=true são as que SAEM do número do profissional —
-  // tanto os envios automáticos nossos (bot/cron/cobrança) quanto uma
-  // resposta manual que ele mesmo digitou no celular. handleOwnerOutbound
-  // usa o timestamp do último envio nosso para diferenciar os dois casos:
-  // se não foi eco de um envio recente, é atendimento humano manual e o bot
-  // deve pausar para essa conversa (ver caso de uso: profissional responde
-  // um cliente pelo WhatsApp e o bot, sem saber disso, insiste com o menu).
-  if (key.fromMe === true || key.fromMe === "true") {
-    try {
-      await handleOwnerOutbound(userId, phone);
-    } catch (e) {
-      console.error("[bot-incoming] erro ao processar fromMe:", e);
-    }
-    return NextResponse.json({ ok: true, skipped: "fromMe" });
-  }
-
   // Extrai texto — tenta vários formatos da Evolution API
   const message = (data.message as Record<string, unknown>) || {};
   const text =
@@ -127,6 +111,20 @@ export async function POST(
     ((message.listResponseMessage as Record<string, unknown>)?.title as string) ||
     ((message.templateButtonReplyMessage as Record<string, unknown>)?.selectedDisplayText as string) ||
     "";
+
+  // Mensagens com fromMe=true SAEM do número do profissional — tanto os envios
+  // automáticos nossos (bot/cron/cobrança) quanto uma resposta que ele digitou
+  // no celular. handleOwnerOutbound diferencia os dois comparando o TEXTO: se
+  // bate com algo que o bot enviou há pouco, é eco (ignora); se é diferente, é
+  // resposta manual → o bot pausa para essa conversa.
+  if (key.fromMe === true || key.fromMe === "true") {
+    try {
+      await handleOwnerOutbound(userId, phone, text);
+    } catch (e) {
+      console.error("[bot-incoming] erro ao processar fromMe:", e);
+    }
+    return NextResponse.json({ ok: true, skipped: "fromMe" });
+  }
 
   if (!text.trim()) {
     console.log("[bot-incoming] sem texto extraível", { messageType: data.messageType, keys: Object.keys(message) });

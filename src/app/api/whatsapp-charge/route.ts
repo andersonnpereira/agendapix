@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
     if (!result.ok) {
       return NextResponse.json({ error: `WhatsApp falhou: ${result.error}` }, { status: 502 });
     }
-    await markOutboundSent(user.id, normalizeWhatsAppPhone(charge.client_phone as string));
+    await markOutboundSent(user.id, normalizeWhatsAppPhone(charge.client_phone as string), message);
 
     // Fonte única de verdade para reminders_sent + send_history (o client
     // não deve mais incrementar — antes contava em dobro).

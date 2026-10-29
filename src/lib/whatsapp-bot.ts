@@ -67,11 +67,15 @@ export const DEFAULT_FLOWS: BotFlow[] = [
   },
 ];
 
-// Janela de tolerância entre nós enviarmos uma mensagem e o eco "fromMe"
-// dela voltar pelo webhook da Evolution API — usada para diferenciar "essa
-// mensagem fromMe é o eco do que ACABAMOS de mandar" de "o profissional
-// respondeu manualmente pelo próprio celular".
-const OUTBOUND_ECHO_WINDOW_MS = 30_000;
+// Janela em que os textos recentes do bot ainda são relevantes para detectar
+// eco. Fora dela, qualquer fromMe é tratado como resposta manual.
+const OUTBOUND_ECHO_WINDOW_MS = 5 * 60_000;
+
+// Normaliza um texto para comparar eco × resposta manual (ignora espaços e
+// corta no tamanho — o WhatsApp não altera o texto, então a igualdade basta).
+function normalizeSnippet(text: string): string {
+  return (text || "").replace(/\s+/g, " ").trim().slice(0, 200);
+}
 
 const MENU_NUMBERS = [
   "1️⃣","2️⃣","3️⃣","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣",
@@ -235,13 +239,23 @@ function buildFlowText(flow: BotFlow, businessName: string): string {
 // para handleOwnerOutbound conseguir distinguir "eco do que acabamos de
 // mandar" de "o profissional respondeu manualmente pelo celular dele".
 // Falha aqui nunca deve derrubar o envio em si — por isso engole erros.
-export async function markOutboundSent(profileId: string, phone: string): Promise<void> {
+export async function markOutboundSent(profileId: string, phone: string, text?: string): Promise<void> {
   try {
     const admin = createAdminClient();
-    await admin.from("bot_conversations").upsert(
-      { profile_id: profileId, phone, last_outbound_at: new Date().toISOString() },
-      { onConflict: "profile_id,phone" }
-    );
+    const base = { profile_id: profileId, phone, last_outbound_at: new Date().toISOString() };
+    const snippet = text ? normalizeSnippet(text) : "";
+    if (snippet) {
+      // Mantém os últimos ~12 textos que enviamos, para reconhecer os ecos.
+      const { data } = await admin
+        .from("bot_conversations")
+        .select("last_outbound_texts")
+        .eq("profile_id", profileId).eq("phone", phone).single();
+      const prev = (data?.last_outbound_texts as string[] | null) || [];
+      const next = [...prev, snippet].slice(-12);
+      await admin.from("bot_conversations").upsert({ ...base, last_outbound_texts: next }, { onConflict: "profile_id,phone" });
+    } else {
+      await admin.from("bot_conversations").upsert(base, { onConflict: "profile_id,phone" });
+    }
   } catch (e) {
     console.error("[whatsapp-bot] markOutboundSent falhou:", e);
   }
@@ -254,18 +268,25 @@ export async function markOutboundSent(profileId: string, phone: string): Promis
 //   2) O profissional respondeu manualmente pelo app do celular — o bot não
 //      pode continuar empurrando menu/escalonamento por cima de um
 //      atendimento humano que já está em andamento. Pausa em estado "human".
-export async function handleOwnerOutbound(profileId: string, phone: string): Promise<void> {
+export async function handleOwnerOutbound(profileId: string, phone: string, text?: string): Promise<void> {
   const admin = createAdminClient();
   const { data: conv } = await admin
     .from("bot_conversations")
-    .select("last_outbound_at, state, human_owner_engaged")
+    .select("last_outbound_at, last_outbound_texts, state, human_owner_engaged")
     .eq("profile_id", profileId)
     .eq("phone", phone)
     .single();
 
+  // Eco do NOSSO próprio envio: o texto bate com algo que o bot mandou há
+  // pouco. Comparar por CONTEÚDO (não por tempo) evita confundir uma resposta
+  // manual rápida do profissional com o eco de uma mensagem do bot.
+  const snippet = normalizeSnippet(text || "");
   if (conv?.last_outbound_at) {
     const sinceMs = Date.now() - new Date(conv.last_outbound_at).getTime();
-    if (sinceMs >= 0 && sinceMs < OUTBOUND_ECHO_WINDOW_MS) return; // eco do nosso próprio envio
+    const recent = (conv.last_outbound_texts as string[] | null) || [];
+    if (snippet && sinceMs >= 0 && sinceMs < OUTBOUND_ECHO_WINDOW_MS && recent.includes(snippet)) {
+      return; // é o eco de uma mensagem que o próprio bot enviou
+    }
   }
   if (conv?.state === "human" && conv?.human_owner_engaged) return; // já pausado e o profissional já está na conversa
 
@@ -320,7 +341,7 @@ export async function handleBotMessage(profileId: string, phone: string, text: s
       // Fallback: se a imagem falhou, garante que o texto chegue
       if (imageUrl && message) await sendWhatsApp({ ...common, message });
     }
-    await markOutboundSent(profileId, phone);
+    await markOutboundSent(profileId, phone, message);
   }
   async function notifyOwner(msg: string) {
     const notifyPhone = (p.bot_notify_phone as string | null)?.trim();

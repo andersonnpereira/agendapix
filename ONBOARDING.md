@@ -6,7 +6,9 @@ Documento de handoff para qualquer IA / sessão de Claude Code (em qualquer cont
 
 ## 1. O que é o projeto
 
-SaaS brasileiro de **agendamento + cobrança via Pix + automação de WhatsApp**, para autônomos e pequenos negócios (marca "Agendou"). O cliente final agenda por um link público (`/agendar/[slug]`), recebe confirmação/lembrete/cobrança automaticamente pelo WhatsApp do próprio profissional, e paga via Pix (chave do próprio profissional, sem intermediário/taxa). A plataforma cobra assinatura dos profissionais (mensal/anual) via InfinitPay.
+> ⚠️ **CONVERTIDO PARA USO PESSOAL (out/2026).** Era um SaaS multi-cliente; o Anderson passou a usar só pra ele mesmo (cobrança de IPTV). Nas Fases 1–2 foram **REMOVIDOS**: todo o agendamento (agenda, serviços, disponibilidade, página pública `/agendar/[slug]`, cancelamento, APIs booking/slots/ical/cron appointment-reminders) e toda a máquina de SaaS (landing de marketing, `/plano`, `/onboarding`, `/admin`, checkout, webhooks de pagamento infinitpay/hotmart/kiwify, `lib/plan-activation`, trava de plano no layout). A raiz `/` redireciona pro app. **Não reintroduzir** essas partes. O que ficou e é usado: **cobranças + lembretes + clientes (CRM) + bot de WhatsApp**. As tabelas de agendamento (`bookings`, `services`, `availability`, `date_overrides`) ficaram paradas no banco (não dropadas).
+
+O núcleo (uso atual): **cobrança via Pix + lembretes automáticos + cadastro de clientes + automação/bot de WhatsApp**, do próprio número do dono. O cliente final paga via Pix (chave do próprio dono, sem intermediário/taxa).
 
 - **Domínio de produção:** https://agendasj.vercel.app
 - **Repositório GitHub:** https://github.com/andersonnpereira/agendapix (conta GitHub: `andersonnpereira`)
@@ -43,12 +45,16 @@ Valores reais NÃO estão aqui — só a localização:
 
 ## 5. O bot de WhatsApp — máquina de estados (MUITO iterado; leia antes de mexer)
 
-Arquivo central: `src/lib/whatsapp-bot.ts`. Webhook de entrada: `src/app/api/whatsapp-incoming/[userId]/route.ts`. Estado por conversa na tabela `bot_conversations` (chave `profile_id + phone`). Estados: `idle` → `menu` (opções numeradas) → `human` (silêncio) ou `cobranca_lookup`.
+Arquivo central: `src/lib/whatsapp-bot.ts`. Webhook de entrada: `src/app/api/whatsapp-incoming/[userId]/route.ts`. Estado por conversa na tabela `bot_conversations` (chave `profile_id + phone`). Estados: `idle` → `menu` (opções numeradas) → `human` (silêncio) · `cobranca_lookup` · `faq_menu` (lista de dúvidas).
 
 Regras já resolvidas — **não reintroduzir estes bugs** (cada um veio de um caso real reportado com print):
 
-- **`human_owner_engaged`** (coluna): vira `true` quando o profissional responde manualmente a conversa (detectado via `fromMe=true` no webhook → `handleOwnerOutbound`). A partir daí o bot **para de encaminhar cada mensagem do cliente** pro número de notificação (o profissional já está ciente). **Expira após 12h** sem nova interação (`OWNER_ENGAGED_DECAY_HOURS`) — depois disso volta a notificar, pois o profissional já pode ter esquecido do caso.
-- **`last_outbound_at`** (coluna): gravada a cada envio do SISTEMA (bot, crons, cobrança manual, confirmação). Usada para diferenciar "eco do que acabamos de mandar" (janela de 30s) de "resposta manual real do profissional" quando chega `fromMe`.
+- **Endereçamento `@lid` (IMPORTANTE):** o WhatsApp migrou pro JID novo `@lid` (privacidade). O webhook NÃO pode rejeitar `@lid` — é nele que chegam as respostas manuais do dono (fromMe) e, cada vez mais, mensagens de clientes. `extractRealPhone` (no route do webhook) resolve o telefone real dos campos auxiliares (`senderPn`/`remoteJidAlt`/`participantAlt`). Só rejeitar grupos (`@g.us`), newsletter e status/broadcast. Rejeitar `@lid` fazia o bot nunca saber que o humano entrou e responder por cima.
+- **Detecção de resposta manual por CONTEÚDO, não por tempo:** `handleOwnerOutbound` recebe o texto do fromMe e compara com `last_outbound_texts` (últimos ~12 textos que o bot enviou, por conversa). Texto igual = eco do próprio bot (ignora); texto diferente = resposta manual real → pausa. A antiga "janela de 30s" por tempo falhava quando o dono respondia rápido (confundia com o eco). `markOutboundSent(profileId, phone, text?)` grava o texto; TODO ponto de envio (reply do bot, cron de cobrança, cobrança manual) passa o texto.
+- **`human_owner_engaged`** (coluna): vira `true` quando o profissional responde manualmente a conversa. A partir daí o bot **para de encaminhar cada mensagem do cliente** pro número de notificação. **Expira após 12h** sem nova interação (`OWNER_ENGAGED_DECAY_HOURS`).
+- **`last_outbound_at` / `last_outbound_texts`** (colunas): gravadas a cada envio do SISTEMA. Usadas por `handleOwnerOutbound` para diferenciar eco × resposta manual (ver acima).
+- **FAQ automática** (`bot_faqs jsonb` em profiles): cada item `{keywords[], answer, imageUrl?, title?}`. `matchFaq` responde na hora quando o cliente escreve uma palavra-chave (sem acento, substring); funciona a frio (ativa o bot) e no meio do menu (não conta tentativa). NÃO dispara em `human` nem `cobranca_lookup`. Tendo ≥1 FAQ, o bot injeta automaticamente a opção "❓ Dúvidas frequentes" (ação `faq` → estado `faq_menu`) no fim do menu principal. Editável em Configurações → "Respostas automáticas".
+- **Seleção de opção por palavra:** `matchMenuByText` casa a mensagem (sem acento) contra palavras do título e `keywords[]` do item; só aceita se houver UM casamento (ambíguo → fallback, não chuta). Roda depois de tentar pelo número.
 - **Contagem de tentativas inválidas do menu é ATÔMICA no banco** via função Postgres `bump_bot_fallback(profile_id, phone, max)` (`SELECT ... FOR UPDATE` + `UPDATE` numa transação). Isso existe porque duas mensagens DIFERENTES do cliente em poucos segundos conseguiam, cada uma, "cruzar o limite" antes da outra gravar, e o cliente recebia o aviso de escalonamento 2-3x (confirmado nos logs do servidor). NÃO voltar a ler/decidir/gravar o contador no código da aplicação.
 - Ao cruzar o limite: avisa UMA vez ("vou te encaminhar") e **permanece em `menu`** (não vai pra `human`). Se o cliente digitar uma opção válida depois, o bot continua ajudando. Só silencia de vez se: (a) cliente pede "falar com atendente" explicitamente, ou (b) profissional responde manualmente (`fromMe`).
 - **Cumprimentos soltos** ("oi", "boa tarde"… lista `PLEASANTRIES`) no meio do menu NÃO contam como tentativa inválida — só reenviam o menu (cliente costuma mandar cumprimento e pergunta em mensagens separadas).
@@ -82,6 +88,9 @@ Arquivos `supabase/migration_*.sql` — cada um se documenta no topo. Ao ler o c
 - `migration_bot_human_pause.sql` — coluna `last_outbound_at` em `bot_conversations`.
 - `migration_bot_owner_engaged.sql` — coluna `human_owner_engaged`.
 - `migration_bot_atomic_fallback.sql` — função `bump_bot_fallback()`.
+- `migration_bot_outbound_texts.sql` — coluna `last_outbound_texts` (detecção de resposta manual por conteúdo). **Rodada out/2026.**
+- `migration_bot_faqs.sql` — coluna `bot_faqs jsonb` em `profiles` (FAQ automática). **Rodada out/2026.**
+- `migration_clientes_tags.sql` — coluna `tags text[]` em `clients` (etiquetas do CRM). **Rodada out/2026.**
 - `schema_current.sql` — snapshot do schema real (disaster recovery / referência de colunas).
 
 ## 8. Legal / LGPD (já implementado)
@@ -98,15 +107,18 @@ Arquivos `supabase/migration_*.sql` — cada um se documenta no topo. Ao ler o c
 3. Toda migração SQL nova: deixar claro que ele precisa rodar antes de considerar o fix "ativo".
 4. Comunicação em português, direto ao ponto, honesto sobre limitações e custos.
 
-## 10. Pendências conhecidas (propostas, aguardando priorização)
+## 10. Melhorias já entregues (Fase 3 + bot, out/2026)
 
-- **Financeiro mais completo:** MRR de recorrência, ranking de clientes por faturamento, faturamento por serviço, filtro por período customizado/cliente/status, paginação (hoje baixa tudo no client, limite silencioso de 100 na lista). (O card "A receber" já foi corrigido para mostrar só o mês atual.)
-- **CRM mais completo:** tags/etiquetas, ordenação (por LTV/recência), segmentação de clientes VIP, histórico de notas com data, exportar CSV, detecção de duplicados.
-- **Lote 6 (opcional):** lembrete anti-no-show D-1, comprovante de pagamento.
+- **Dashboard** reconstruído como painel de cobrança (a receber hoje/semana, atraso, recebido no mês, aniversariantes, listas de vencem-hoje/atrasadas).
+- **Financeiro:** MRR (receita recorrente estimada), ranking "clientes que mais pagaram", filtro por status na lista + paginação "ver mais" (fim do corte silencioso em 100). Card "A receber" só do mês atual.
+- **CRM (clientes):** etiquetas/tags (filtro + sugestões), ordenação (A–Z / recentes / maior gasto), exportar CSV, detecção de duplicados por telefone, total gasto por cliente.
+- **Bot:** entende opção por palavra, FAQ automática (palavra-chave + opção "Dúvidas frequentes"), e detecção de resposta manual por conteúdo (ver seção 5).
+
+Pendências abertas: nenhuma crítica. Possível futuro: comprovante de pagamento, histórico de notas com data no CRM.
 
 ## 11. ⚠️ Nota de segurança (pendência real)
 
-- O **git remote local embute um Personal Access Token do GitHub** (`https://ghp_...@github.com/...`) em texto puro. Recomendado ao Anderson: revogar esse token em GitHub → Settings → Developer settings → Personal access tokens, e reconfigurar o remote sem token embutido. Não resolvido ainda.
+- **RESOLVIDO (out/2026):** o git remote não embute mais token — passou a `https://github.com/andersonnpereira/agendapix.git` usando o Git Credential Manager do Windows (conta `andersonnpereira`). Se aparecer erro 403 "denied to playtecnologia01-sketch", é a conta Google errada autenticando: limpar a credencial github.com do Windows (`git credential reject`) e logar de novo com `andersonnpereira` no popup do GCM.
 - Versões anteriores deste arquivo chegaram a conter o valor literal de `EVOLUTION_API_KEY` no histórico do git. Se o repositório for público, essa chave deve ser considerada exposta e rotacionada (gerar nova, atualizar `AUTHENTICATION_API_KEY` no docker-compose do servidor + `EVOLUTION_API_KEY` na Vercel). A partir desta versão, o valor não é mais escrito aqui.
 
 ## 12. Memória local (não portátil)

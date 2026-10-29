@@ -102,6 +102,10 @@ export default function ConfiguracoesPage() {
   const [msgLembreteAmanha, setMsgLembreteAmanha] = useState("");
   const [msgCobrancaVencida, setMsgCobrancaVencida] = useState("");
 
+  // FAQ automática do bot
+  type FaqItem = { keywords: string[]; answer: string; imageUrl?: string };
+  const [botFaqs, setBotFaqs] = useState<FaqItem[]>([]);
+
   // Identidade visual
   const [brandColor, setBrandColor] = useState("#16A34A");
   const [avatarUrl, setAvatarUrl] = useState("");
@@ -246,6 +250,7 @@ export default function ConfiguracoesPage() {
       setMsgLembreteAmanha((p as Record<string, unknown>).msg_lembrete_amanha as string || DEFAULT_MSG_LEMBRETE_AMANHA);
       setMsgCobrancaVencida((p as Record<string, unknown>).msg_cobranca_vencida as string || DEFAULT_MSG_COBRANCA_VENCIDA);
       setBotEnabled((p as Record<string, unknown>).bot_enabled as boolean ?? false);
+      setBotFaqs(Array.isArray((p as Record<string, unknown>).bot_faqs) ? ((p as Record<string, unknown>).bot_faqs as FaqItem[]) : []);
       setBotFallbackMessage((p as Record<string, unknown>).bot_fallback_message as string || BOT_DEFAULTS.fallback);
       setBotFallbackMaxTries((p as Record<string, unknown>).bot_fallback_max_tries as number ?? BOT_DEFAULTS.fallbackMaxTries);
       setBotTypingDelayMs((p as Record<string, unknown>).bot_typing_delay_ms as number ?? BOT_DEFAULTS.typingDelayMs);
@@ -320,6 +325,9 @@ export default function ConfiguracoesPage() {
         msg_cobranca_vencida: msgCobrancaVencida || null,
         bot_enabled: botEnabled,
         bot_flows: botFlows,
+        bot_faqs: botFaqs
+          .map((f) => ({ keywords: (f.keywords || []).map((k) => k.trim()).filter(Boolean), answer: (f.answer || "").trim(), imageUrl: f.imageUrl?.trim() || undefined }))
+          .filter((f) => f.keywords.length > 0 && f.answer),
         bot_fallback_message: botFallbackMessage || null,
         bot_fallback_max_tries: botFallbackMaxTries,
         bot_typing_delay_ms: botTypingDelayMs,
@@ -709,6 +717,76 @@ export default function ConfiguracoesPage() {
           vars={["{nome}", "{servico}", "{valor}", "{pix}", "{data}"]}
           varLabels={{ "{nome}": "Nome do cliente", "{servico}": "Serviço", "{valor}": "Valor (R$)", "{pix}": "Chave Pix", "{data}": "Vencimento" }}
         />
+      </section>
+
+
+      {/* FAQ automática */}
+      <section className="card space-y-4">
+        <div>
+          <h2 className="font-semibold text-slate-900">Respostas automáticas (FAQ)</h2>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Quando o cliente escrever uma das palavras-chave, o bot responde na hora — mesmo no meio do menu.
+            Ex: palavras <span className="font-mono">travando, buffer</span> → resposta de como resolver. A ordem importa (a primeira que casar responde).
+          </p>
+        </div>
+
+        {botFaqs.length === 0 && (
+          <p className="text-sm text-slate-400">Nenhuma resposta automática cadastrada ainda.</p>
+        )}
+
+        {botFaqs.map((faq, idx) => (
+          <div key={idx} className="border border-slate-200 rounded-xl p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-500">#{idx + 1}</span>
+              <button
+                type="button"
+                className="text-xs text-red-500 hover:underline"
+                onClick={() => setBotFaqs(botFaqs.filter((_, i) => i !== idx))}
+              >
+                Remover
+              </button>
+            </div>
+            <div>
+              <label className="label text-xs">Palavras-chave (separadas por vírgula)</label>
+              <input
+                className="input text-sm"
+                value={faq.keywords.join(", ")}
+                onChange={(e) => {
+                  const kws = e.target.value.split(",").map((k) => k.trim()).filter(Boolean);
+                  setBotFaqs(botFaqs.map((f, i) => (i === idx ? { ...f, keywords: kws } : f)));
+                }}
+                placeholder="travando, buffer, lento"
+              />
+            </div>
+            <div>
+              <label className="label text-xs">Resposta</label>
+              <textarea
+                className="input resize-y text-sm"
+                rows={3}
+                value={faq.answer}
+                onChange={(e) => setBotFaqs(botFaqs.map((f, i) => (i === idx ? { ...f, answer: e.target.value } : f)))}
+                placeholder="Ex: Está travando? Feche e abra o app, e teste seu wi-fi. Se persistir, me chame por aqui. 👍"
+              />
+            </div>
+            <div>
+              <label className="label text-xs">Imagem (URL, opcional)</label>
+              <input
+                className="input text-sm"
+                value={faq.imageUrl || ""}
+                onChange={(e) => setBotFaqs(botFaqs.map((f, i) => (i === idx ? { ...f, imageUrl: e.target.value } : f)))}
+                placeholder="https://..."
+              />
+            </div>
+          </div>
+        ))}
+
+        <button
+          type="button"
+          className="btn border border-slate-200 text-sm w-full"
+          onClick={() => setBotFaqs([...botFaqs, { keywords: [], answer: "" }])}
+        >
+          + Adicionar resposta automática
+        </button>
       </section>
 
 

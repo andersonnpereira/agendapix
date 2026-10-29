@@ -12,7 +12,16 @@ export interface BotFlowItem {
   value?: string;              // texto livre enviado ao cliente
   imageUrl?: string;           // imagem opcional enviada junto (texto vira legenda)
   nextFlow?: string;           // ID do próximo fluxo (sub-menu)
+  keywords?: string[];         // sinônimos p/ o cliente escolher digitando (ex: "assinar","plano")
   action?: BotSpecialAction | "custom" | "link" | "message"; // legado ou ação especial
+}
+
+// Resposta automática por palavra-chave (FAQ) — responde dúvidas repetidas
+// na hora, sem o cliente precisar passar pelo menu.
+export interface BotFaq {
+  keywords: string[];   // gatilhos (ex: ["travando","buffer","travando"])
+  answer: string;       // resposta enviada
+  imageUrl?: string;    // imagem opcional
 }
 
 // Um fluxo (pode ser o menu principal ou um sub-menu)
@@ -75,6 +84,47 @@ const PLEASANTRIES = ["oi","olá","ola","oi!","olá!","hi","hello","opa","eae","
 
 function fmtBRL(cents: number): string {
   return "R$ " + (cents / 100).toFixed(2).replace(".", ",");
+}
+
+// Remove acentos p/ casar texto sem depender de o cliente acentuar certo.
+function stripAccents(s: string): string {
+  return s.normalize("NFD").replace(/[̀-ͯ]/g, "");
+}
+
+// Casa a mensagem do cliente com uma opção do menu POR PALAVRA (além do
+// número): "suporte" → "Suporte técnico", "assinar" → "Quero assinar" etc.
+// Procura nas palavras do título e nas keywords (sinônimos) do item, sem
+// acento. Só retorna quando há UM único casamento — se ficar ambíguo
+// (casa 0 ou 2+), devolve -1 e o fluxo segue pro fallback (não chuta).
+function matchMenuByText(rawText: string, items: BotFlowItem[]): number {
+  const q = stripAccents(rawText.trim().toLowerCase());
+  if (q.length < 3) return -1;
+  const hits: number[] = [];
+  items.forEach((item, i) => {
+    const title = stripAccents((item.title || "").toLowerCase());
+    const titleTokens = title.split(/[^a-z0-9]+/).filter((t) => t.length >= 3);
+    const kw = (item.keywords || []).map((k) => stripAccents((k || "").toLowerCase().trim())).filter(Boolean);
+    if (
+      titleTokens.includes(q) ||
+      (q.length >= 4 && title.includes(q)) ||
+      kw.some((k) => k === q || (q.length >= 4 && (q.includes(k) || k.includes(q))))
+    ) {
+      hits.push(i);
+    }
+  });
+  return hits.length === 1 ? hits[0] : -1;
+}
+
+// Casa a mensagem com uma FAQ: se qualquer palavra-chave (sem acento, mín. 3
+// letras) aparecer na mensagem, devolve a FAQ. Ordem do array = prioridade.
+function matchFaq(rawText: string, faqs: BotFaq[]): BotFaq | null {
+  const q = stripAccents(rawText.toLowerCase());
+  if (q.length < 3) return null;
+  for (const f of faqs) {
+    const kws = (f.keywords || []).map((k) => stripAccents((k || "").toLowerCase().trim())).filter((k) => k.length >= 3);
+    if (kws.some((k) => q.includes(k))) return f;
+  }
+  return null;
 }
 
 // Normaliza um telefone para comparação: só dígitos, remove DDI 55 e o
@@ -230,6 +280,7 @@ export async function handleBotMessage(profileId: string, phone: string, text: s
   const fallbackMaxTries = (p.bot_fallback_max_tries as number | null) ?? BOT_DEFAULTS.fallbackMaxTries;
 
   const flows = resolveFlows(p);
+  const botFaqs = (Array.isArray(p.bot_faqs) ? (p.bot_faqs as BotFaq[]) : []);
 
   async function reply(message: string, imageUrl?: string) {
     await simulateTyping(instanceName, apiKey, phone, typingDelay);
@@ -335,6 +386,13 @@ export async function handleBotMessage(profileId: string, phone: string, text: s
   // Saudações ("oi", "olá"…) não são restart explícito — se state === "menu",
   // viram entrada inválida → fallback (bot não reinicia no meio da conversa)
 
+  // FAQ: uma dúvida reconhecida (ex: "travando", "qual app") é respondida na
+  // hora. Só avalia quando o bot está ativo e não é restart/consulta de nome —
+  // em "cobranca_lookup" o texto é o nome do cliente, não pode ser sequestrado.
+  const faqHit = (!isExplicitRestart && state !== "human" && state !== "cobranca_lookup")
+    ? matchFaq(text, botFaqs)
+    : null;
+
   // Gatilho: só bloqueia ativações frias (state === idle, sem ser restart
   // explícito, não modo humano). "menu"/"0"/etc. sempre reabrem o bot — o
   // resto (saudações, palavras livres) respeita o trigger_mode configurado
@@ -362,6 +420,9 @@ export async function handleBotMessage(profileId: string, phone: string, text: s
     else if (triggerMode === "new_session") activate = isNewSession();
     else if (triggerMode === "keywords_or_new") activate = keywordMatch() || isNewSession();
 
+    // Uma dúvida que casa com uma FAQ também ativa o bot (responde na hora).
+    if (faqHit) activate = true;
+
     if (!activate) {
       console.log("[whatsapp-bot] gatilho não ativado:", { triggerMode, normalized, firstWord });
       return;
@@ -376,21 +437,37 @@ export async function handleBotMessage(profileId: string, phone: string, text: s
   const fallbackMsg = (p.bot_fallback_message as string | null) || BOT_DEFAULTS.fallback;
   const humanMsg = (p.bot_human_message as string | null) || BOT_DEFAULTS.human;
 
-  // Estado idle → mostrar menu principal
+  // Estado idle → responder FAQ (se houver) e/ou mostrar menu principal
   if (state === "idle") {
     newOwnerEngaged = false; // conversa nova — zera qualquer engajamento de um ciclo anterior
     const mainFlow = flows.find((f) => f.id === "main") || flows[0];
+    if (faqHit) await reply(faqHit.answer, faqHit.imageUrl);
     await reply(buildFlowText(mainFlow, businessName), mainFlow.imageUrl);
     newState = "menu";
     newCurrentFlowId = mainFlow.id;
 
   } else if (state === "menu") {
     const currentFlow = flows.find((f) => f.id === currentFlowId) || flows[0];
+    // 1º tenta pelo número; se não for um número válido, tenta casar por
+    // palavra (nome da opção ou sinônimo) — assim o cliente pode digitar
+    // "suporte"/"assinar" em vez de decorar o número.
     const choice = parseInt(normalized) - 1;
-    const item = currentFlow?.items[choice];
+    let item = currentFlow?.items[choice];
+    if (!item) {
+      const byText = matchMenuByText(normalized, currentFlow?.items || []);
+      if (byText >= 0) item = currentFlow.items[byText];
+    }
     const isPleasantry = PLEASANTRIES.includes(normalized) || PLEASANTRIES.includes(firstWord);
 
-    if (!item && isPleasantry) {
+    if (!item && faqHit) {
+      // Dúvida reconhecida no meio do menu — responde na hora e mantém o
+      // cliente no menu, sem contar como tentativa inválida.
+      await reply(faqHit.answer, faqHit.imageUrl);
+      newState = "menu";
+      newFallbackCount = fallbackCount;
+      newCurrentFlowId = currentFlowId;
+
+    } else if (!item && isPleasantry) {
       // Cumprimento solto no meio do menu ("oi", "boa tarde"…) — muito comum o
       // cliente mandar isso e só na mensagem seguinte a pergunta de verdade.
       // Não conta como tentativa inválida, só relembra as opções.

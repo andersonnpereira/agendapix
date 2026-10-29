@@ -103,7 +103,7 @@ export default function ConfiguracoesPage() {
   const [msgCobrancaVencida, setMsgCobrancaVencida] = useState("");
 
   // FAQ automática do bot
-  type FaqItem = { keywords: string[]; answer: string; imageUrl?: string };
+  type FaqItem = { keywords: string[]; answer: string; imageUrl?: string; title?: string };
   const [botFaqs, setBotFaqs] = useState<FaqItem[]>([]);
 
   // Identidade visual
@@ -326,7 +326,7 @@ export default function ConfiguracoesPage() {
         bot_enabled: botEnabled,
         bot_flows: botFlows,
         bot_faqs: botFaqs
-          .map((f) => ({ keywords: (f.keywords || []).map((k) => k.trim()).filter(Boolean), answer: (f.answer || "").trim(), imageUrl: f.imageUrl?.trim() || undefined }))
+          .map((f) => ({ keywords: (f.keywords || []).map((k) => k.trim()).filter(Boolean), answer: (f.answer || "").trim(), imageUrl: f.imageUrl?.trim() || undefined, title: f.title?.trim() || undefined }))
           .filter((f) => f.keywords.length > 0 && f.answer),
         bot_fallback_message: botFallbackMessage || null,
         bot_fallback_max_tries: botFallbackMaxTries,
@@ -727,6 +727,7 @@ export default function ConfiguracoesPage() {
           <p className="text-xs text-slate-500 mt-0.5">
             Quando o cliente escrever uma das palavras-chave, o bot responde na hora — mesmo no meio do menu.
             Ex: palavras <span className="font-mono">travando, buffer</span> → resposta de como resolver. A ordem importa (a primeira que casar responde).
+            Tendo ao menos 1 FAQ, o bot também mostra uma opção <span className="font-medium">"❓ Dúvidas frequentes"</span> no menu.
           </p>
         </div>
 
@@ -745,6 +746,15 @@ export default function ConfiguracoesPage() {
               >
                 Remover
               </button>
+            </div>
+            <div>
+              <label className="label text-xs">Título (aparece no menu de dúvidas)</label>
+              <input
+                className="input text-sm"
+                value={faq.title || ""}
+                onChange={(e) => setBotFaqs(botFaqs.map((f, i) => (i === idx ? { ...f, title: e.target.value } : f)))}
+                placeholder="Ex: Está travando"
+              />
             </div>
             <div>
               <label className="label text-xs">Palavras-chave (separadas por vírgula)</label>

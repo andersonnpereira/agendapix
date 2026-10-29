@@ -1,8 +1,8 @@
 import { createAdminClient } from "@/lib/supabase-admin";
 import { sendWhatsApp, sendWhatsAppImage, normalizeWhatsAppPhone } from "@/lib/whatsapp";
 
-export type BotState = "idle" | "menu" | "cobranca_lookup" | "human";
-export type BotSpecialAction = "schedule" | "charges" | "human";
+export type BotState = "idle" | "menu" | "cobranca_lookup" | "human" | "faq_menu";
+export type BotSpecialAction = "schedule" | "charges" | "human" | "faq";
 export type BotTriggerMode = "always" | "keywords" | "new_session" | "keywords_or_new";
 
 // Um item dentro de um fluxo
@@ -22,6 +22,7 @@ export interface BotFaq {
   keywords: string[];   // gatilhos (ex: ["travando","buffer","travando"])
   answer: string;       // resposta enviada
   imageUrl?: string;    // imagem opcional
+  title?: string;       // rótulo exibido na opção "Dúvidas frequentes" do menu
 }
 
 // Um fluxo (pode ser o menu principal ou um sub-menu)
@@ -207,6 +208,21 @@ function resolveFlows(p: Record<string, unknown>): BotFlow[] {
   return DEFAULT_FLOWS;
 }
 
+// Rótulo curto de uma FAQ para listar no menu de dúvidas (título ou 1ª palavra-chave).
+function faqLabel(f: BotFaq): string {
+  const t = (f.title || "").trim();
+  if (t) return t;
+  const k = (f.keywords || []).find((x) => (x || "").trim());
+  return k ? k.charAt(0).toUpperCase() + k.slice(1) : "Dúvida";
+}
+
+function buildFaqMenuText(faqs: BotFaq[]): string {
+  const items = faqs.slice(0, 15)
+    .map((f, i) => `${MENU_NUMBERS[i]} ${faqLabel(f)}`)
+    .join("\n");
+  return `❓ *Dúvidas frequentes*\n\n${items}\n\n_Digite o número da dúvida, ou *menu* para voltar._`;
+}
+
 function buildFlowText(flow: BotFlow, businessName: string): string {
   const items = flow.items.slice(0, 15)
     .map((item, i) => `${MENU_NUMBERS[i]} ${item.emoji} ${item.title}`)
@@ -280,7 +296,18 @@ export async function handleBotMessage(profileId: string, phone: string, text: s
   const fallbackMaxTries = (p.bot_fallback_max_tries as number | null) ?? BOT_DEFAULTS.fallbackMaxTries;
 
   const flows = resolveFlows(p);
-  const botFaqs = (Array.isArray(p.bot_faqs) ? (p.bot_faqs as BotFaq[]) : []);
+  const botFaqs = (Array.isArray(p.bot_faqs) ? (p.bot_faqs as BotFaq[]) : []).filter((f) => f && (f.answer || "").trim());
+  // Se há FAQs cadastradas, adiciona automaticamente uma opção "❓ Dúvidas
+  // frequentes" ao final do menu principal (a menos que já exista uma opção
+  // com ação "faq" configurada manualmente).
+  if (botFaqs.length > 0) {
+    const mainIdx = flows.findIndex((f) => f.id === "main");
+    const main = flows[mainIdx] ?? flows[0];
+    if (main && !main.items.some((it) => it.action === "faq")) {
+      const withFaq: BotFlow = { ...main, items: [...main.items, { emoji: "❓", title: "Dúvidas frequentes", action: "faq" }] };
+      if (mainIdx >= 0) flows[mainIdx] = withFaq; else flows[0] = withFaq;
+    }
+  }
 
   async function reply(message: string, imageUrl?: string) {
     await simulateTyping(instanceName, apiKey, phone, typingDelay);
@@ -551,6 +578,17 @@ export async function handleBotMessage(profileId: string, phone: string, text: s
         }
         newCurrentFlowId = "main";
 
+      } else if (item.action === "faq") {
+        if (freeText || item.imageUrl) await reply(freeText, item.imageUrl);
+        if (botFaqs.length > 0) {
+          await reply(buildFaqMenuText(botFaqs));
+          newState = "faq_menu";
+        } else {
+          await reply("Sem dúvidas cadastradas no momento. Envie *menu* para voltar. 🙂");
+          newState = "idle";
+        }
+        newCurrentFlowId = "main";
+
       } else if (item.action === "human") {
         await reply(freeText || humanMsg, item.imageUrl);
         newState = "human";
@@ -565,6 +603,25 @@ export async function handleBotMessage(profileId: string, phone: string, text: s
         newCurrentFlowId = "main";
       }
     }
+
+  } else if (state === "faq_menu") {
+    // Cliente está na lista de dúvidas: escolhe pelo número (ou pelo texto da
+    // própria pergunta). Responde a dúvida e mantém a lista aberta p/ outra.
+    const idx = parseInt(normalized) - 1;
+    let chosen = botFaqs[idx];
+    if (!chosen) {
+      const hit = matchFaq(text, botFaqs);
+      if (hit) chosen = hit;
+    }
+    if (chosen) {
+      await reply(chosen.answer, chosen.imageUrl);
+      await reply(buildFaqMenuText(botFaqs));
+      newState = "faq_menu";
+    } else {
+      await reply(`Não encontrei essa dúvida. 🙂\n\n${buildFaqMenuText(botFaqs)}`);
+      newState = "faq_menu";
+    }
+    newCurrentFlowId = "main";
 
   } else if (state === "cobranca_lookup") {
     // Escapa metacaracteres de LIKE (%, _, \) para evitar wildcard injection

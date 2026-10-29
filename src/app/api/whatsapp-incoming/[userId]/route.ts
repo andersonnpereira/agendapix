@@ -1,6 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { handleBotMessage, handleOwnerOutbound } from "@/lib/whatsapp-bot";
 
+// Extrai o telefone real (só dígitos) da chave do evento. Em @s.whatsapp.net
+// é o próprio remoteJid; em modo @lid o número verdadeiro vem em senderPn /
+// remoteJidAlt / participantAlt. Pega o primeiro campo que seja um JID de
+// telefone de verdade (@s.whatsapp.net) — ignora os ids opacos @lid.
+function extractRealPhone(key: Record<string, unknown>): string | null {
+  const candidates = [key.remoteJid, key.remoteJidAlt, key.senderPn, key.participantAlt, key.participant];
+  for (const c of candidates) {
+    if (typeof c === "string" && c.endsWith("@s.whatsapp.net")) {
+      const digits = c.replace("@s.whatsapp.net", "").replace(/\D/g, "");
+      if (digits) return digits;
+    }
+  }
+  return null;
+}
+
 // SQL necessário no Supabase (rodar uma vez):
 // CREATE TABLE IF NOT EXISTS public.bot_conversations (
 //   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -66,17 +81,25 @@ export async function POST(
   const key = (data.key as Record<string, unknown>) || {};
   const remoteJid = (key.remoteJid as string) || "";
 
-  // Bot SÓ responde conversa individual (@s.whatsapp.net).
-  // Exclui grupos (@g.us), comunidades, newsletters (@newsletter),
-  // status (status@broadcast) e o formato @lid — jamais ativar em grupo.
-  if (!remoteJid.endsWith("@s.whatsapp.net")) {
+  // Rejeita o que NÃO é conversa 1-a-1: grupos (@g.us), comunidades,
+  // newsletters (@newsletter) e status/broadcast. NÃO rejeita @lid — esse é
+  // o novo endereçamento individual do WhatsApp (privacidade), e é justamente
+  // nele que vêm as respostas manuais do profissional (fromMe). Rejeitar @lid
+  // fazia o bot nunca saber que o humano entrou e continuar respondendo.
+  if (/@g\.us$|@newsletter$|@broadcast$|status@/i.test(remoteJid)) {
     console.log("[bot-incoming] ignorado — não é conversa individual:", remoteJid);
     return NextResponse.json({ ok: true, skipped: "notIndividualChat", remoteJid });
   }
 
-  const phone = remoteJid.replace("@s.whatsapp.net", "").replace(/\D/g, "");
+  // Resolve o telefone REAL: em modo @lid o remoteJid é um id opaco, e o
+  // número verdadeiro (@s.whatsapp.net) vem num campo auxiliar. Procura em
+  // todos os candidatos e pega o primeiro que seja um telefone de verdade —
+  // assim o mesmo contato converge na mesma chave em bot_conversations,
+  // venha a mensagem como @s.whatsapp.net ou como @lid.
+  const phone = extractRealPhone(key);
   if (!phone) {
-    return NextResponse.json({ ok: true, skipped: "noPhone" });
+    console.log("[bot-incoming] sem telefone resolvível:", { remoteJid, keys: Object.keys(key) });
+    return NextResponse.json({ ok: true, skipped: "noPhone", remoteJid });
   }
 
   // Mensagens com fromMe=true são as que SAEM do número do profissional —

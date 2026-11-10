@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { createClient } from "@/lib/supabase-browser";
 import { formatBRL } from "@/lib/format";
 
@@ -16,20 +16,37 @@ type Charge = {
   recurrence: "none" | "weekly" | "biweekly" | "monthly";
 };
 
+type PeriodMode = "semana" | "mes" | "mes_passado" | "custom";
+type View = "lancamentos" | "pessoas";
+type StatusFilter = "todos" | "pago" | "pendente" | "atrasado";
+
 const STATUS_LABEL: Record<string, { label: string; color: string }> = {
   pago:     { label: "Pago",     color: "bg-brand-light text-brand-dark" },
   pendente: { label: "Pendente", color: "bg-amber-100 text-amber-700" },
   atrasado: { label: "Atrasado", color: "bg-red-100 text-red-600" },
 };
 
+function toKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function fmtBR(d: string | null): string {
+  if (!d) return "";
+  const [y, m, day] = d.slice(0, 10).split("-");
+  return `${day}/${m}/${y}`;
+}
+
 export default function FinanceiroPage() {
   const supabase = createClient();
   const [charges, setCharges] = useState<Charge[]>([]);
   const [loading, setLoading] = useState(true);
-  const [period, setPeriod] = useState<"mes" | "trimestre" | "semestre" | "ano">("mes");
-  const [statusFilter, setStatusFilter] = useState<"todos" | "pago" | "pendente" | "atrasado">("todos");
+
+  const [periodMode, setPeriodMode] = useState<PeriodMode>("mes");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+  const [view, setView] = useState<View>("lancamentos");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("todos");
+  const [search, setSearch] = useState("");
   const [visibleCount, setVisibleCount] = useState(50);
-  const [hoverBar, setHoverBar] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -46,387 +63,314 @@ export default function FinanceiroPage() {
   useEffect(() => { load(); }, [load]);
 
   const now = new Date();
-  const thisMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-  const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  const lastMonthKey = `${lastMonthDate.getFullYear()}-${String(lastMonthDate.getMonth() + 1).padStart(2, "0")}`;
+  const todayKey = toKey(now);
 
-  const paid = charges.filter((c) => c.status === "pago");
-  const pending = charges.filter((c) => c.status === "pendente");
-  const overdue = charges.filter((c) => c.status === "atrasado");
+  // ─── Período que comanda a tela ────────────────────────────────────────────
+  const period = useMemo(() => {
+    if (periodMode === "semana") {
+      const dow = (now.getDay() + 6) % 7; // 0 = segunda
+      const mon = new Date(now); mon.setDate(now.getDate() - dow);
+      const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+      return { start: toKey(mon), end: toKey(sun), label: "esta semana" };
+    }
+    if (periodMode === "mes_passado") {
+      const s = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const e = new Date(now.getFullYear(), now.getMonth(), 0);
+      return { start: toKey(s), end: toKey(e), label: "mês passado" };
+    }
+    if (periodMode === "custom") {
+      const s = customFrom || "0000-01-01";
+      const e = customTo || "9999-12-31";
+      return { start: s <= e ? s : e, end: s <= e ? e : s, label: "período" };
+    }
+    const s = new Date(now.getFullYear(), now.getMonth(), 1);
+    const e = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    return { start: toKey(s), end: toKey(e), label: "este mês" };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [periodMode, customFrom, customTo]);
 
-  const thisMonthRevenue = paid
-    .filter((c) => (c.paid_at || "").startsWith(thisMonthKey))
-    .reduce((s, c) => s + c.amount_cents, 0);
+  const inPeriod = (d: string | null) => {
+    if (!d) return false;
+    const k = d.slice(0, 10);
+    return k >= period.start && k <= period.end;
+  };
 
-  const lastMonthRevenue = paid
-    .filter((c) => (c.paid_at || "").startsWith(lastMonthKey))
-    .reduce((s, c) => s + c.amount_cents, 0);
+  // ─── Números do período ────────────────────────────────────────────────────
+  // Recebido = pago COM data de pagamento no período.
+  // A receber = em aberto (pendente/atrasado) COM vencimento no período.
+  const recebidas = charges.filter((c) => c.status === "pago" && inPeriod(c.paid_at));
+  const aReceber  = charges.filter((c) => c.status !== "pago" && inPeriod(c.due_date));
+  const aVencer   = aReceber.filter((c) => (c.due_date || "") >= todayKey);
+  const vencidas  = aReceber.filter((c) => (c.due_date || "") < todayKey);
 
-  const pendingTotal = pending.reduce((s, c) => s + c.amount_cents, 0);
-  // Card "A receber" mostra só o que vence neste mês — pendingTotal (todos os
-  // meses) continua servindo de base pro cálculo de inadimplência abaixo.
-  const pendingThisMonth = pending.filter((c) => (c.due_date || "").startsWith(thisMonthKey));
-  const pendingThisMonthTotal = pendingThisMonth.reduce((s, c) => s + c.amount_cents, 0);
-  const overdueTotal = overdue.reduce((s, c) => s + c.amount_cents, 0);
-  const totalReceived = paid.reduce((s, c) => s + c.amount_cents, 0);
+  const sum = (list: Charge[]) => list.reduce((s, c) => s + (c.amount_cents || 0), 0);
+  const recebidoTotal = sum(recebidas);
+  const aReceberTotal = sum(aReceber);
+  const aVencerTotal  = sum(aVencer);
+  const vencidoTotal  = sum(vencidas);
 
-  // Ticket médio
-  const ticketMedio = paid.length > 0 ? Math.round(totalReceived / paid.length) : 0;
+  const ticketMedio = recebidas.length > 0 ? Math.round(recebidoTotal / recebidas.length) : 0;
+  const totalPrevisto = recebidoTotal + aReceberTotal;
+  const pctRecebido = totalPrevisto > 0 ? Math.round((recebidoTotal / totalPrevisto) * 100) : 0;
 
-  // Taxa de inadimplência
-  const totalBase = totalReceived + pendingTotal + overdueTotal;
-  const inadimplencia = totalBase > 0 ? (overdueTotal / totalBase) * 100 : 0;
-
-  // Receita recorrente estimada (MRR): cada assinante ativo tem 1 cobrança em
-  // aberto com recorrência != none; normaliza o valor para mensal.
+  // MRR (independe do período — assinaturas ativas agora)
   const MONTHLY_FACTOR: Record<string, number> = { weekly: 52 / 12, biweekly: 26 / 12, monthly: 1 };
   const recurringOpen = charges.filter((c) => c.recurrence !== "none" && c.status !== "pago");
-  const mrr = Math.round(
-    recurringOpen.reduce((s, c) => s + c.amount_cents * (MONTHLY_FACTOR[c.recurrence] || 1), 0)
-  );
+  const mrr = Math.round(recurringOpen.reduce((s, c) => s + c.amount_cents * (MONTHLY_FACTOR[c.recurrence] || 1), 0));
 
-  // Ranking de clientes por faturamento (cobranças pagas)
-  const byClient: Record<string, number> = {};
-  for (const c of paid) {
-    const name = (c.client_name || "—").trim();
-    byClient[name] = (byClient[name] || 0) + c.amount_cents;
-  }
-  const topClients = Object.entries(byClient)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5)
-    .map(([name, cents]) => ({ name, cents }));
+  // ─── Lista do período (lançamentos) ────────────────────────────────────────
+  // Um lançamento entra se foi recebido OU vence no período (bate com os cards).
+  const s = search.trim().toLowerCase();
+  const periodCharges = charges.filter((c) => recebidas.includes(c) || aReceber.includes(c));
+  const matched = periodCharges
+    .filter((c) => statusFilter === "todos" || c.status === statusFilter)
+    .filter((c) => !s || (c.client_name || "").toLowerCase().includes(s) || (c.description || "").toLowerCase().includes(s))
+    .sort((a, b) => (b.paid_at || b.due_date || b.created_at).localeCompare(a.paid_at || a.due_date || a.created_at));
+  const visible = matched.slice(0, visibleCount);
 
-  // 6-month chart
-  const monthChart = Array.from({ length: 6 }, (_, i) => {
-    const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    const revenue = paid
-      .filter((c) => (c.paid_at || "").startsWith(key))
-      .reduce((s, c) => s + c.amount_cents, 0);
-    const label = d.toLocaleDateString("pt-BR", { month: "short" }).replace(".", "");
-    return { key, label, revenue, isCurrent: key === thisMonthKey };
-  });
-  const maxRevenue = Math.max(...monthChart.map((m) => m.revenue), 1);
+  // ─── Visão por pessoa ──────────────────────────────────────────────────────
+  const pessoas = useMemo(() => {
+    const map: Record<string, { nome: string; pago: number; aReceber: number; vencido: number; qtd: number }> = {};
+    for (const c of periodCharges) {
+      const nome = (c.client_name || "—").trim();
+      if (!map[nome]) map[nome] = { nome, pago: 0, aReceber: 0, vencido: 0, qtd: 0 };
+      map[nome].qtd++;
+      if (c.status === "pago" && inPeriod(c.paid_at)) map[nome].pago += c.amount_cents;
+      if (c.status !== "pago" && inPeriod(c.due_date)) {
+        map[nome].aReceber += c.amount_cents;
+        if ((c.due_date || "") < todayKey) map[nome].vencido += c.amount_cents;
+      }
+    }
+    return Object.values(map)
+      .filter((p) => !s || p.nome.toLowerCase().includes(s))
+      .sort((a, b) => (b.aReceber - a.aReceber) || (b.pago - a.pago) || a.nome.localeCompare(b.nome, "pt-BR"));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [periodCharges, s, todayKey]);
 
-  // Previsão próximo mês: média dos últimos 3 meses
-  const last3 = monthChart.slice(-3);
-  const avgLast3 = last3.length > 0
-    ? Math.round(last3.reduce((s, m) => s + m.revenue, 0) / last3.length)
-    : 0;
-
-  // Transaction list filter
-  const periodMonths = period === "mes" ? 1 : period === "trimestre" ? 3 : period === "semestre" ? 6 : 12;
-  const fromDate = new Date(now.getFullYear(), now.getMonth() - (periodMonths - 1), 1);
-  const fromStr = fromDate.toISOString().slice(0, 10);
-  const matched = charges.filter(
-    (c) =>
-      (c.paid_at || c.due_date || c.created_at) >= fromStr &&
-      (statusFilter === "todos" || c.status === statusFilter)
-  );
-  const filtered = matched.slice(0, visibleCount);
-
-  const periodPaid = matched.filter((c) => c.status === "pago").reduce((s, c) => s + c.amount_cents, 0);
-
-  const growth =
-    lastMonthRevenue > 0
-      ? Math.round(((thisMonthRevenue - lastMonthRevenue) / lastMonthRevenue) * 100)
-      : null;
-
-  const fmt = (d: string | null) => {
-    if (!d) return "";
-    const [y, m, day] = d.slice(0, 10).split("-");
-    return `${day}/${m}/${y}`;
-  };
-
-  // CSV export
-  const exportCSV = () => {
+  function exportCSV() {
     const header = ["Cliente", "Descrição", "Valor (R$)", "Status", "Vencimento", "Pago em"];
     const rows = matched.map((c) => [
-      c.client_name || "",
-      c.description || "",
+      c.client_name || "", c.description || "",
       ((c.amount_cents || 0) / 100).toFixed(2).replace(".", ","),
-      STATUS_LABEL[c.status]?.label || c.status,
-      fmt(c.due_date),
-      fmt(c.paid_at),
+      STATUS_LABEL[c.status]?.label || c.status, fmtBR(c.due_date), fmtBR(c.paid_at),
     ]);
-    const csvContent = [header, ...rows]
-      .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(";"))
-      .join("\n");
-    const blob = new Blob(["﻿" + csvContent], { type: "text/csv;charset=utf-8;" });
+    const csv = [header, ...rows].map((r) => r.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(";")).join("\n");
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.href = url;
-    link.download = `financeiro_${period}_${now.toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    link.href = url; link.download = `financeiro_${period.start}_a_${period.end}.csv`;
+    document.body.appendChild(link); link.click(); document.body.removeChild(link);
     URL.revokeObjectURL(url);
-  };
+  }
 
   if (loading) return <p className="text-slate-400 text-sm pt-4">Carregando...</p>;
 
+  const resetPaging = () => setVisibleCount(50);
+
   return (
     <div className="space-y-5 pb-4">
-      {/* Header */}
       <div className="flex items-center justify-between gap-2">
         <h1 className="text-2xl font-bold text-slate-900">Financeiro</h1>
-        <button
-          onClick={exportCSV}
-          className="flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 active:bg-slate-100 transition-colors"
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1M12 12v6m0 0l-3-3m3 3l3-3M12 3v9" />
-          </svg>
-          Exportar CSV
-        </button>
+        <button onClick={exportCSV} className="btn border border-slate-200 text-sm px-3 py-2">⬇ CSV</button>
       </div>
 
-      {/* Summary cards — grid 2x2 */}
+      {/* Filtro de período — comanda toda a tela */}
+      <div className="flex flex-wrap gap-2">
+        {([
+          { key: "semana", label: "Esta semana" },
+          { key: "mes", label: "Este mês" },
+          { key: "mes_passado", label: "Mês passado" },
+          { key: "custom", label: "Personalizado" },
+        ] as const).map((f) => (
+          <button
+            key={f.key}
+            onClick={() => { setPeriodMode(f.key); resetPaging(); }}
+            className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+              periodMode === f.key ? "bg-brand text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+            }`}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+      {periodMode === "custom" && (
+        <div className="flex items-center gap-2">
+          <input type="date" className="input text-sm" value={customFrom} onChange={(e) => { setCustomFrom(e.target.value); resetPaging(); }} />
+          <span className="text-slate-400 text-sm">até</span>
+          <input type="date" className="input text-sm" value={customTo} onChange={(e) => { setCustomTo(e.target.value); resetPaging(); }} />
+        </div>
+      )}
+
+      {/* Os 2 números que importam no período */}
       <div className="grid grid-cols-2 gap-3">
-        {/* Total recebido — full width */}
-        <div className="card py-3 space-y-1 col-span-2 bg-brand-light border-brand/20">
-          <p className="text-xs text-brand-dark font-medium">Total recebido (histórico)</p>
-          <p className="text-3xl font-bold text-brand-dark">{formatBRL(totalReceived)}</p>
-          <p className="text-xs text-brand-dark/70">
-            {paid.length} pagamento{paid.length !== 1 ? "s" : ""} confirmado{paid.length !== 1 ? "s" : ""}
-          </p>
+        <div className="card py-4 space-y-1 bg-brand-light border-brand/20">
+          <p className="text-xs text-brand-dark font-medium">✅ Recebido ({period.label})</p>
+          <p className="text-2xl font-bold text-brand-dark">{formatBRL(recebidoTotal)}</p>
+          <p className="text-xs text-brand-dark/70">{recebidas.length} pagamento{recebidas.length !== 1 ? "s" : ""}</p>
         </div>
-
-        {/* Este mês */}
-        <div className="card py-3 space-y-1">
-          <p className="text-xs text-slate-500">Este mês</p>
-          <p className="text-lg font-bold text-slate-900">{formatBRL(thisMonthRevenue)}</p>
-          {growth !== null && (
-            <p className={`text-xs font-semibold ${growth >= 0 ? "text-brand" : "text-red-500"}`}>
-              {growth >= 0 ? "▲" : "▼"} {Math.abs(growth)}% vs anterior
-            </p>
-          )}
+        <div className="card py-4 space-y-1 bg-amber-50 border-amber-200">
+          <p className="text-xs text-amber-700 font-medium">⏳ A receber ({period.label})</p>
+          <p className="text-2xl font-bold text-amber-700">{formatBRL(aReceberTotal)}</p>
+          <p className="text-xs text-amber-700/70">{aReceber.length} cobrança{aReceber.length !== 1 ? "s" : ""} em aberto</p>
         </div>
+      </div>
 
-        {/* Mês anterior */}
-        <div className="card py-3 space-y-1">
-          <p className="text-xs text-slate-500">Mês anterior</p>
-          <p className="text-lg font-bold text-slate-900">{formatBRL(lastMonthRevenue)}</p>
-          <p className="text-xs text-slate-400">
-            {paid.filter((c) => (c.paid_at || "").startsWith(lastMonthKey)).length}{" "}
-            pagamento{paid.filter((c) => (c.paid_at || "").startsWith(lastMonthKey)).length !== 1 ? "s" : ""}
-          </p>
+      {/* Quebra do "a receber" + barra de progresso */}
+      <div className="card py-3 space-y-3">
+        <div className="grid grid-cols-2 gap-3 text-center">
+          <div>
+            <p className="text-xs text-slate-500">A vencer</p>
+            <p className="text-base font-bold text-slate-900">{formatBRL(aVencerTotal)}</p>
+            <p className="text-[11px] text-slate-400">{aVencer.length} cobrança{aVencer.length !== 1 ? "s" : ""}</p>
+          </div>
+          <div>
+            <p className="text-xs text-slate-500">Vencido</p>
+            <p className="text-base font-bold text-red-600">{formatBRL(vencidoTotal)}</p>
+            <p className="text-[11px] text-slate-400">{vencidas.length} atrasada{vencidas.length !== 1 ? "s" : ""}</p>
+          </div>
         </div>
-
-        {/* A receber */}
-        <div className="card py-3 space-y-1">
-          <p className="text-xs text-slate-500">A receber (este mês)</p>
-          <p className="text-lg font-bold text-amber-600">{formatBRL(pendingThisMonthTotal)}</p>
-          <p className="text-xs text-slate-400">{pendingThisMonth.length} pendente{pendingThisMonth.length !== 1 ? "s" : ""}</p>
-        </div>
-
-        {/* Em atraso */}
-        <div className="card py-3 space-y-1">
-          <p className="text-xs text-slate-500">Em atraso</p>
-          <p className="text-lg font-bold text-red-600">{formatBRL(overdueTotal)}</p>
-          <p className="text-xs text-slate-400">{overdue.length} atrasada{overdue.length !== 1 ? "s" : ""}</p>
-        </div>
-
-        {/* Ticket médio */}
-        <div className="card py-3 space-y-1">
-          <p className="text-xs text-slate-500">Ticket médio</p>
-          <p className="text-lg font-bold text-slate-900">{formatBRL(ticketMedio)}</p>
-          <p className="text-xs text-slate-400">por pagamento</p>
-        </div>
-
-        {/* Taxa de inadimplência */}
-        <div className="card py-3 space-y-1">
-          <p className="text-xs text-slate-500">Inadimplência</p>
-          <p className={`text-lg font-bold ${inadimplencia > 15 ? "text-red-600" : inadimplencia > 5 ? "text-amber-600" : "text-slate-900"}`}>
-            {inadimplencia.toFixed(1).replace(".", ",")}%
-          </p>
-          <p className="text-xs text-slate-400">sobre total geral</p>
-        </div>
-
-        {/* Receita recorrente (MRR) */}
-        {mrr > 0 && (
-          <div className="card py-3 space-y-1 col-span-2 bg-blue-50 border-blue-100">
-            <p className="text-xs text-blue-700 font-medium">Receita recorrente estimada</p>
-            <p className="text-2xl font-bold text-blue-800">{formatBRL(mrr)}<span className="text-sm font-medium text-blue-600">/mês</span></p>
-            <p className="text-xs text-blue-600/70">{recurringOpen.length} assinatura{recurringOpen.length !== 1 ? "s" : ""} ativa{recurringOpen.length !== 1 ? "s" : ""} (semanal/quinzenal normalizado p/ mês)</p>
+        {totalPrevisto > 0 && (
+          <div className="space-y-1">
+            <div className="flex justify-between text-[11px] text-slate-500">
+              <span>Recebido de {formatBRL(totalPrevisto)} previsto</span>
+              <span className="font-semibold text-brand">{pctRecebido}%</span>
+            </div>
+            <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+              <div className="h-full bg-brand rounded-full" style={{ width: `${pctRecebido}%` }} />
+            </div>
           </div>
         )}
       </div>
 
-      {/* Ranking de clientes */}
-      {topClients.length > 0 && (
-        <div className="card py-4 space-y-2.5">
-          <p className="text-sm font-semibold text-slate-900">🏆 Clientes que mais pagaram</p>
-          {topClients.map((c, i) => {
-            const pct = topClients[0].cents > 0 ? (c.cents / topClients[0].cents) * 100 : 0;
-            return (
-              <div key={c.name} className="space-y-1">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-700 truncate">{i + 1}. {c.name}</span>
-                  <span className="font-semibold text-brand ml-2 shrink-0">{formatBRL(c.cents)}</span>
-                </div>
-                <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                  <div className="h-full bg-brand rounded-full" style={{ width: `${pct}%` }} />
-                </div>
-              </div>
-            );
-          })}
+      {/* KPIs secundários */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="card py-3 text-center">
+          <p className="text-sm font-bold text-slate-900">{formatBRL(ticketMedio)}</p>
+          <p className="text-[11px] text-slate-500 mt-0.5">Ticket médio</p>
         </div>
-      )}
-
-      {/* Previsão próximo mês */}
-      <div className="card py-3 flex items-center justify-between gap-3">
-        <div>
-          <p className="text-sm font-semibold text-slate-900">Previsão próximo mês</p>
-          <p className="text-xs text-slate-400">Média dos últimos 3 meses</p>
+        <div className="card py-3 text-center">
+          <p className="text-sm font-bold text-blue-700">{mrr > 0 ? formatBRL(mrr) : "—"}</p>
+          <p className="text-[11px] text-slate-500 mt-0.5">Recorrente/mês</p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-blue-100 text-blue-700">
-            Estimativa
-          </span>
-          <p className="text-lg font-bold text-slate-900">{formatBRL(avgLast3)}</p>
+        <div className="card py-3 text-center">
+          <p className="text-sm font-bold text-slate-900">{new Set(periodCharges.map((c) => (c.client_name || "—").trim())).size}</p>
+          <p className="text-[11px] text-slate-500 mt-0.5">Pessoas</p>
         </div>
       </div>
 
-      {/* 6-month chart */}
-      <div className="card py-4 space-y-4">
-        <p className="text-sm font-semibold text-slate-900">Receita mensal — últimos 6 meses</p>
-        <div className="flex items-end gap-2" style={{ height: "120px" }}>
-          {monthChart.map((m) => {
-            const isHovered = hoverBar === m.key;
-            const barHeight = Math.max((m.revenue / maxRevenue) * 80, m.revenue > 0 ? 6 : 0);
-            return (
-              <div
-                key={m.key}
-                className="flex-1 flex flex-col items-center justify-end gap-1 relative"
-                onMouseEnter={() => setHoverBar(m.key)}
-                onMouseLeave={() => setHoverBar(null)}
-              >
-                {/* Tooltip */}
-                {isHovered && m.revenue > 0 && (
-                  <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 z-10 pointer-events-none">
-                    <div className="bg-slate-800 text-white text-xs font-semibold px-2 py-1 rounded-md whitespace-nowrap shadow-lg">
-                      {formatBRL(m.revenue)}
-                    </div>
-                    <div className="w-2 h-2 bg-slate-800 rotate-45 mx-auto -mt-1" />
-                  </div>
-                )}
-
-                {/* Value label (non-hover) */}
-                {!isHovered && m.revenue > 0 && (
-                  <span className="text-xs text-slate-500 text-center leading-none">
-                    {formatBRL(m.revenue).replace("R$ ", "R$")}
-                  </span>
-                )}
-
-                <div
-                  className={`w-full rounded-t-lg transition-all cursor-default ${
-                    isHovered
-                      ? m.isCurrent
-                        ? "bg-brand/80"
-                        : "bg-slate-400"
-                      : m.isCurrent
-                      ? "bg-brand"
-                      : "bg-slate-200"
-                  }`}
-                  style={{ height: `${barHeight}px` }}
-                />
-                <span className="text-xs text-slate-400 capitalize">{m.label}</span>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Transactions */}
+      {/* Lista: alternar Lançamentos × Por pessoa */}
       <div className="space-y-3">
-        <div className="flex items-center justify-between gap-2">
-          <p className="font-semibold text-slate-900">Movimentações</p>
-          <select
-            className="input text-sm py-1.5 w-auto"
-            value={period}
-            onChange={(e) => { setPeriod(e.target.value as typeof period); setVisibleCount(50); }}
-          >
-            <option value="mes">Este mês</option>
-            <option value="trimestre">Últimos 3 meses</option>
-            <option value="semestre">Últimos 6 meses</option>
-            <option value="ano">Último ano</option>
-          </select>
-        </div>
-
-        {/* Filtro por status */}
-        <div className="flex flex-wrap gap-2">
-          {([
-            { key: "todos", label: "Todas" },
-            { key: "pago", label: "Pagas" },
-            { key: "pendente", label: "Pendentes" },
-            { key: "atrasado", label: "Atrasadas" },
-          ] as const).map((f) => (
+        <div className="flex items-center gap-2">
+          <div className="flex rounded-lg border border-slate-200 overflow-hidden">
             <button
-              key={f.key}
-              onClick={() => { setStatusFilter(f.key); setVisibleCount(50); }}
-              className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                statusFilter === f.key ? "bg-brand text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-              }`}
+              onClick={() => setView("lancamentos")}
+              className={`px-3 py-1.5 text-xs font-medium ${view === "lancamentos" ? "bg-brand text-white" : "text-slate-500 hover:bg-slate-50"}`}
             >
-              {f.label}
+              Lançamentos
             </button>
-          ))}
-          <span className="ml-auto text-xs text-slate-400 self-center">{matched.length} no período</span>
+            <button
+              onClick={() => setView("pessoas")}
+              className={`px-3 py-1.5 text-xs font-medium border-l border-slate-200 ${view === "pessoas" ? "bg-brand text-white" : "text-slate-500 hover:bg-slate-50"}`}
+            >
+              Por pessoa
+            </button>
+          </div>
+          <span className="ml-auto text-xs text-slate-400">
+            {view === "pessoas" ? `${pessoas.length} pessoa${pessoas.length !== 1 ? "s" : ""}` : `${matched.length} lançamento${matched.length !== 1 ? "s" : ""}`}
+          </span>
         </div>
 
-        {filtered.length === 0 ? (
-          <div className="card text-center text-slate-500 text-sm py-8">
-            <p className="text-2xl mb-2">💰</p>
-            <p>Nenhuma movimentação neste período.</p>
-          </div>
-        ) : (
-          <>
-            <div className="space-y-2">
-              {filtered.map((c) => {
-                const st = STATUS_LABEL[c.status];
-                return (
-                  <div key={c.id} className="card py-3 flex items-center justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-slate-900 truncate">
-                        {c.client_name || "—"}
-                        {c.description ? <span className="text-slate-400"> · {c.description}</span> : null}
-                      </p>
-                      <p className="text-xs text-slate-400">
-                        {c.status === "pago" && c.paid_at
-                          ? `Pago em ${fmt(c.paid_at)}`
-                          : c.due_date
-                          ? `Vence ${fmt(c.due_date)}`
-                          : ""}
-                      </p>
-                    </div>
-                    <div className="flex flex-col items-end gap-1 shrink-0">
-                      <span className={`font-bold text-sm ${c.status === "pago" ? "text-brand" : c.status === "atrasado" ? "text-red-600" : "text-slate-900"}`}>
-                        {formatBRL(c.amount_cents)}
-                      </span>
-                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${st.color}`}>
-                        {st.label}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+        <input
+          className="input text-sm"
+          placeholder="Buscar por pessoa ou descrição..."
+          value={search}
+          onChange={(e) => { setSearch(e.target.value); resetPaging(); }}
+        />
 
-            {matched.length > filtered.length && (
+        {view === "lancamentos" && (
+          <div className="flex flex-wrap gap-2">
+            {([
+              { key: "todos", label: "Todas" },
+              { key: "pago", label: "Pagas" },
+              { key: "pendente", label: "A vencer" },
+              { key: "atrasado", label: "Atrasadas" },
+            ] as const).map((f) => (
               <button
-                onClick={() => setVisibleCount((v) => v + 50)}
-                className="btn border border-slate-200 text-sm w-full py-2.5 text-slate-600 hover:bg-slate-50"
+                key={f.key}
+                onClick={() => { setStatusFilter(f.key); resetPaging(); }}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                  statusFilter === f.key ? "bg-brand text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                }`}
               >
-                Ver mais ({matched.length - filtered.length} restante{matched.length - filtered.length !== 1 ? "s" : ""})
+                {f.label}
               </button>
-            )}
+            ))}
+          </div>
+        )}
 
-            <div className="card bg-brand-light border-brand/20 py-3 flex items-center justify-between">
-              <p className="text-sm font-semibold text-brand-dark">Total recebido no período</p>
-              <p className="font-bold text-brand text-lg">{formatBRL(periodPaid)}</p>
+        {/* ── Lançamentos ── */}
+        {view === "lancamentos" && (
+          matched.length === 0 ? (
+            <div className="card text-center text-slate-500 text-sm py-8">
+              <p className="text-2xl mb-2">💰</p>
+              <p>Nenhuma movimentação neste período.</p>
             </div>
-          </>
+          ) : (
+            <>
+              <div className="space-y-2">
+                {visible.map((c) => {
+                  const st = STATUS_LABEL[c.status];
+                  return (
+                    <div key={c.id} className="card py-3 flex items-center justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-slate-900 truncate">
+                          {c.client_name || "—"}
+                          {c.description ? <span className="text-slate-400"> · {c.description}</span> : null}
+                        </p>
+                        <p className="text-xs text-slate-400">
+                          {c.status === "pago" && c.paid_at ? `Pago em ${fmtBR(c.paid_at)}` : c.due_date ? `Vence ${fmtBR(c.due_date)}` : ""}
+                        </p>
+                      </div>
+                      <div className="flex flex-col items-end gap-1 shrink-0">
+                        <span className={`font-bold text-sm ${c.status === "pago" ? "text-brand" : c.status === "atrasado" ? "text-red-600" : "text-slate-900"}`}>
+                          {formatBRL(c.amount_cents)}
+                        </span>
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${st.color}`}>{st.label}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {matched.length > visible.length && (
+                <button onClick={() => setVisibleCount((v) => v + 50)} className="btn border border-slate-200 text-sm w-full py-2.5 text-slate-600 hover:bg-slate-50">
+                  Ver mais ({matched.length - visible.length} restante{matched.length - visible.length !== 1 ? "s" : ""})
+                </button>
+              )}
+            </>
+          )
+        )}
+
+        {/* ── Por pessoa ── */}
+        {view === "pessoas" && (
+          pessoas.length === 0 ? (
+            <div className="card text-center text-slate-500 text-sm py-8">Nenhuma pessoa neste período.</div>
+          ) : (
+            <div className="space-y-2">
+              {pessoas.map((p) => (
+                <div key={p.nome} className="card py-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-semibold text-slate-900 truncate">{p.nome}</p>
+                    <span className="text-[11px] text-slate-400 shrink-0">{p.qtd} cobrança{p.qtd !== 1 ? "s" : ""}</span>
+                  </div>
+                  <div className="flex items-center gap-4 mt-1.5 text-xs">
+                    {p.pago > 0 && <span className="text-brand font-semibold">✅ {formatBRL(p.pago)}</span>}
+                    {p.aReceber > 0 && <span className="text-amber-600 font-semibold">⏳ {formatBRL(p.aReceber)}</span>}
+                    {p.vencido > 0 && <span className="text-red-600 font-semibold">🔴 {formatBRL(p.vencido)} vencido</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
         )}
       </div>
     </div>

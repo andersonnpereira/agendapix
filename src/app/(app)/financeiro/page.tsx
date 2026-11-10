@@ -51,12 +51,23 @@ export default function FinanceiroPage() {
   const load = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-    const { data } = await supabase
-      .from("charges")
-      .select("id, client_name, description, amount_cents, status, due_date, paid_at, created_at, recurrence")
-      .eq("profile_id", user.id)
-      .order("created_at", { ascending: false });
-    setCharges((data as Charge[]) || []);
+    // Pagina em blocos de 1000 — o Supabase limita cada consulta a 1000 linhas
+    // por padrão, então sem isso cobranças ficavam de fora e o filtro mostrava
+    // menos do que existe de verdade.
+    const PAGE = 1000;
+    const all: Charge[] = [];
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await supabase
+        .from("charges")
+        .select("id, client_name, description, amount_cents, status, due_date, paid_at, created_at, recurrence")
+        .eq("profile_id", user.id)
+        .order("created_at", { ascending: false })
+        .range(from, from + PAGE - 1);
+      if (error || !data || data.length === 0) break;
+      all.push(...(data as Charge[]));
+      if (data.length < PAGE) break;
+    }
+    setCharges(all);
     setLoading(false);
   }, [supabase]);
 

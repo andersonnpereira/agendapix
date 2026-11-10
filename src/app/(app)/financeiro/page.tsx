@@ -188,7 +188,10 @@ export default function FinanceiroPage() {
   return (
     <div className="space-y-5 pb-4">
       <div className="flex items-center justify-between gap-2">
-        <h1 className="text-2xl font-bold text-slate-900">Financeiro</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Financeiro</h1>
+          <p className="text-xs text-slate-400">{charges.length} cobrança{charges.length !== 1 ? "s" : ""} no total · {periodChargesAll.length} vencendo no período</p>
+        </div>
         <button onClick={exportCSV} className="btn border border-slate-200 text-sm px-3 py-2">⬇ CSV</button>
       </div>
 

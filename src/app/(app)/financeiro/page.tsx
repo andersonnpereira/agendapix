@@ -44,7 +44,7 @@ export default function FinanceiroPage() {
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
   const [view, setView] = useState<View>("lancamentos");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("todos");
+  const [statusFilter, setStatusFilter] = useState<"todos" | "pago" | "a_vencer" | "atrasado">("todos");
   const [search, setSearch] = useState("");
   const [visibleCount, setVisibleCount] = useState(50);
 
@@ -95,13 +95,19 @@ export default function FinanceiroPage() {
     return k >= period.start && k <= period.end;
   };
 
-  // ─── Números do período ────────────────────────────────────────────────────
-  // Recebido = pago COM data de pagamento no período.
-  // A receber = em aberto (pendente/atrasado) COM vencimento no período.
-  const recebidas = charges.filter((c) => c.status === "pago" && inPeriod(c.paid_at));
-  const aReceber  = charges.filter((c) => c.status !== "pago" && inPeriod(c.due_date));
-  const aVencer   = aReceber.filter((c) => (c.due_date || "") >= todayKey);
-  const vencidas  = aReceber.filter((c) => (c.due_date || "") < todayKey);
+  // ─── Números do período (por COMPETÊNCIA = data de vencimento) ──────────────
+  // "Cobranças do período" = todas que VENCEM no período (sem due_date, usa a
+  // data de criação como âncora), divididas em pagas × a receber. Assim toda
+  // cobrança do mês é contada uma vez e nenhuma some (nem as pagas adiantado).
+  const periodChargesAll = charges.filter((c) => inPeriod(c.due_date || c.created_at));
+  const recebidas = periodChargesAll.filter((c) => c.status === "pago");
+  const aReceber  = periodChargesAll.filter((c) => c.status !== "pago");
+  const aVencer   = aReceber.filter((c) => (c.due_date || "9999-12-31") >= todayKey);
+  const vencidas  = aReceber.filter((c) => (c.due_date || "9999-12-31") < todayKey);
+
+  // Bucket exibido na lista/filtro (coerente com os cards acima).
+  const bucket = (c: Charge): "pago" | "atrasado" | "a_vencer" =>
+    c.status === "pago" ? "pago" : (c.due_date || "9999-12-31") < todayKey ? "atrasado" : "a_vencer";
 
   const sum = (list: Charge[]) => list.reduce((s, c) => s + (c.amount_cents || 0), 0);
   const recebidoTotal = sum(recebidas);
@@ -119,11 +125,11 @@ export default function FinanceiroPage() {
   const mrr = Math.round(recurringOpen.reduce((s, c) => s + c.amount_cents * (MONTHLY_FACTOR[c.recurrence] || 1), 0));
 
   // ─── Lista do período (lançamentos) ────────────────────────────────────────
-  // Um lançamento entra se foi recebido OU vence no período (bate com os cards).
+  // Todos os lançamentos que vencem no período (bate com os cards).
   const s = search.trim().toLowerCase();
-  const periodCharges = charges.filter((c) => recebidas.includes(c) || aReceber.includes(c));
+  const periodCharges = periodChargesAll;
   const matched = periodCharges
-    .filter((c) => statusFilter === "todos" || c.status === statusFilter)
+    .filter((c) => statusFilter === "todos" || bucket(c) === statusFilter)
     .filter((c) => !s || (c.client_name || "").toLowerCase().includes(s) || (c.description || "").toLowerCase().includes(s))
     .sort((a, b) => (b.paid_at || b.due_date || b.created_at).localeCompare(a.paid_at || a.due_date || a.created_at));
   const visible = matched.slice(0, visibleCount);
@@ -135,10 +141,11 @@ export default function FinanceiroPage() {
       const nome = (c.client_name || "—").trim();
       if (!map[nome]) map[nome] = { nome, pago: 0, aReceber: 0, vencido: 0, qtd: 0 };
       map[nome].qtd++;
-      if (c.status === "pago" && inPeriod(c.paid_at)) map[nome].pago += c.amount_cents;
-      if (c.status !== "pago" && inPeriod(c.due_date)) {
+      if (c.status === "pago") {
+        map[nome].pago += c.amount_cents;
+      } else {
         map[nome].aReceber += c.amount_cents;
-        if ((c.due_date || "") < todayKey) map[nome].vencido += c.amount_cents;
+        if ((c.due_date || "9999-12-31") < todayKey) map[nome].vencido += c.amount_cents;
       }
     }
     return Object.values(map)
@@ -204,14 +211,14 @@ export default function FinanceiroPage() {
       {/* Os 2 números que importam no período */}
       <div className="grid grid-cols-2 gap-3">
         <div className="card py-4 space-y-1 bg-brand-light border-brand/20">
-          <p className="text-xs text-brand-dark font-medium">✅ Recebido ({period.label})</p>
+          <p className="text-xs text-brand-dark font-medium">✅ Já recebido ({period.label})</p>
           <p className="text-2xl font-bold text-brand-dark">{formatBRL(recebidoTotal)}</p>
-          <p className="text-xs text-brand-dark/70">{recebidas.length} pagamento{recebidas.length !== 1 ? "s" : ""}</p>
+          <p className="text-xs text-brand-dark/70">{recebidas.length} de {periodChargesAll.length} cobrança{periodChargesAll.length !== 1 ? "s" : ""}</p>
         </div>
         <div className="card py-4 space-y-1 bg-amber-50 border-amber-200">
           <p className="text-xs text-amber-700 font-medium">⏳ A receber ({period.label})</p>
           <p className="text-2xl font-bold text-amber-700">{formatBRL(aReceberTotal)}</p>
-          <p className="text-xs text-amber-700/70">{aReceber.length} cobrança{aReceber.length !== 1 ? "s" : ""} em aberto</p>
+          <p className="text-xs text-amber-700/70">{aReceber.length} em aberto</p>
         </div>
       </div>
 
@@ -292,7 +299,7 @@ export default function FinanceiroPage() {
             {([
               { key: "todos", label: "Todas" },
               { key: "pago", label: "Pagas" },
-              { key: "pendente", label: "A vencer" },
+              { key: "a_vencer", label: "A vencer" },
               { key: "atrasado", label: "Atrasadas" },
             ] as const).map((f) => (
               <button

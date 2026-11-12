@@ -16,6 +16,10 @@ type Charge = {
   recurrence: "none" | "weekly" | "biweekly" | "monthly";
 };
 
+// Linha exibida no período: uma cobrança real OU uma ocorrência projetada
+// (recorrente que ainda não virou cobrança de verdade).
+type Row = Charge & { projected?: boolean };
+
 type PeriodMode = "semana" | "mes" | "mes_passado" | "custom";
 type View = "lancamentos" | "pessoas";
 type StatusFilter = "todos" | "pago" | "pendente" | "atrasado";
@@ -34,6 +38,22 @@ function fmtBR(d: string | null): string {
   const [y, m, day] = d.slice(0, 10).split("-");
   return `${day}/${m}/${y}`;
 }
+// Avança uma data (YYYY-MM-DD) pelo intervalo da recorrência. No mensal soma 1
+// mês com clamp do dia (31/jan → 28/fev) para não "estourar" o mês.
+function addInterval(dateKey: string, rec: Charge["recurrence"]): string {
+  const [y, m, d] = dateKey.slice(0, 10).split("-").map(Number);
+  if (rec === "weekly" || rec === "biweekly") {
+    const dt = new Date(y, m - 1, d);
+    dt.setDate(dt.getDate() + (rec === "weekly" ? 7 : 14));
+    return toKey(dt);
+  }
+  const nm = m === 12 ? 1 : m + 1;
+  const ny = m === 12 ? y + 1 : y;
+  const lastDay = new Date(ny, nm, 0).getDate();
+  const nd = Math.min(d, lastDay);
+  return `${ny}-${String(nm).padStart(2, "0")}-${String(nd).padStart(2, "0")}`;
+}
+const RECUR_LABEL: Record<string, string> = { weekly: "semanal", biweekly: "quinzenal", monthly: "mensal" };
 
 export default function FinanceiroPage() {
   const supabase = createClient();
@@ -47,6 +67,7 @@ export default function FinanceiroPage() {
   const [statusFilter, setStatusFilter] = useState<"todos" | "pago" | "a_vencer" | "atrasado">("todos");
   const [search, setSearch] = useState("");
   const [visibleCount, setVisibleCount] = useState(50);
+  const [projetar, setProjetar] = useState(true);
 
   const load = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -110,21 +131,54 @@ export default function FinanceiroPage() {
   // "Cobranças do período" = todas que VENCEM no período (sem due_date, usa a
   // data de criação como âncora), divididas em pagas × a receber. Assim toda
   // cobrança do mês é contada uma vez e nenhuma some (nem as pagas adiantado).
-  const periodChargesAll = charges.filter((c) => inPeriod(c.due_date || c.created_at));
-  const recebidas = periodChargesAll.filter((c) => c.status === "pago");
-  const aReceber  = periodChargesAll.filter((c) => c.status !== "pago");
-  const aVencer   = aReceber.filter((c) => (c.due_date || "9999-12-31") >= todayKey);
-  const vencidas  = aReceber.filter((c) => (c.due_date || "9999-12-31") < todayKey);
+  const periodReais = charges.filter((c) => inPeriod(c.due_date || c.created_at));
 
-  // Bucket exibido na lista/filtro (coerente com os cards acima).
-  const bucket = (c: Charge): "pago" | "atrasado" | "a_vencer" =>
-    c.status === "pago" ? "pago" : (c.due_date || "9999-12-31") < todayKey ? "atrasado" : "a_vencer";
+  // ─── Projeção de recorrentes ────────────────────────────────────────────────
+  // O sistema só cria a cobrança do próximo ciclo quando a atual é marcada paga.
+  // Então um assinante mensal com a cobrança de novembro ainda em aberto NÃO tem
+  // registro de dezembro — e some do filtro de dezembro. A projeção resolve isso:
+  // para cada cobrança recorrente EM ABERTO, projeta os próximos vencimentos
+  // (somando o intervalo) e inclui no período as ocorrências que caem nele.
+  // É previsão, não cobrança real — fica marcada como "Projeção". Não projeta em
+  // período totalmente no passado (lá o que houve é fato, não previsão).
+  const periodNoPassado = period.end < todayKey;
+  const projecoes = useMemo<Row[]>(() => {
+    if (!projetar || periodNoPassado) return [];
+    const out: Row[] = [];
+    for (const c of charges) {
+      if (c.recurrence === "none" || c.status === "pago" || !c.due_date) continue;
+      let d = c.due_date.slice(0, 10);
+      for (let i = 0; i < 400; i++) {
+        d = addInterval(d, c.recurrence);
+        if (d > period.end) break;
+        if (d >= period.start) {
+          out.push({ ...c, id: `proj-${c.id}-${d}`, due_date: d, paid_at: null, status: "pendente", projected: true });
+        }
+      }
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [charges, period.start, period.end, projetar, periodNoPassado]);
 
-  const sum = (list: Charge[]) => list.reduce((s, c) => s + (c.amount_cents || 0), 0);
+  // Conjunto do período = cobranças reais + ocorrências projetadas.
+  const periodCharges: Row[] = [...periodReais, ...projecoes];
+  const recebidas = periodReais.filter((c) => c.status === "pago"); // projeção nunca é "pago"
+  const aReceber  = periodCharges.filter((c) => c.status !== "pago"); // abertas reais + projetadas
+
+  // Bucket exibido na lista/filtro. Projeção é sempre "a vencer" (previsto) —
+  // nunca "vencido", porque a cobrança ainda nem foi gerada.
+  const bucket = (c: Row): "pago" | "atrasado" | "a_vencer" =>
+    c.status === "pago" ? "pago" : c.projected ? "a_vencer" : (c.due_date || "9999-12-31") < todayKey ? "atrasado" : "a_vencer";
+
+  const aVencer  = aReceber.filter((c) => bucket(c) === "a_vencer");
+  const vencidas = aReceber.filter((c) => bucket(c) === "atrasado");
+
+  const sum = (list: Row[]) => list.reduce((s, c) => s + (c.amount_cents || 0), 0);
   const recebidoTotal = sum(recebidas);
   const aReceberTotal = sum(aReceber);
   const aVencerTotal  = sum(aVencer);
   const vencidoTotal  = sum(vencidas);
+  const projetadoTotal = sum(projecoes);
 
   const ticketMedio = recebidas.length > 0 ? Math.round(recebidoTotal / recebidas.length) : 0;
   const totalPrevisto = recebidoTotal + aReceberTotal;
@@ -138,7 +192,6 @@ export default function FinanceiroPage() {
   // ─── Lista do período (lançamentos) ────────────────────────────────────────
   // Todos os lançamentos que vencem no período (bate com os cards).
   const s = search.trim().toLowerCase();
-  const periodCharges = periodChargesAll;
   const matched = periodCharges
     .filter((c) => statusFilter === "todos" || bucket(c) === statusFilter)
     .filter((c) => !s || (c.client_name || "").toLowerCase().includes(s) || (c.description || "").toLowerCase().includes(s))
@@ -147,16 +200,17 @@ export default function FinanceiroPage() {
 
   // ─── Visão por pessoa ──────────────────────────────────────────────────────
   const pessoas = useMemo(() => {
-    const map: Record<string, { nome: string; pago: number; aReceber: number; vencido: number; qtd: number }> = {};
+    const map: Record<string, { nome: string; pago: number; aReceber: number; vencido: number; projetado: number; qtd: number }> = {};
     for (const c of periodCharges) {
       const nome = (c.client_name || "—").trim();
-      if (!map[nome]) map[nome] = { nome, pago: 0, aReceber: 0, vencido: 0, qtd: 0 };
+      if (!map[nome]) map[nome] = { nome, pago: 0, aReceber: 0, vencido: 0, projetado: 0, qtd: 0 };
       map[nome].qtd++;
       if (c.status === "pago") {
         map[nome].pago += c.amount_cents;
       } else {
         map[nome].aReceber += c.amount_cents;
-        if ((c.due_date || "9999-12-31") < todayKey) map[nome].vencido += c.amount_cents;
+        if (c.projected) map[nome].projetado += c.amount_cents;
+        else if ((c.due_date || "9999-12-31") < todayKey) map[nome].vencido += c.amount_cents;
       }
     }
     return Object.values(map)
@@ -170,7 +224,7 @@ export default function FinanceiroPage() {
     const rows = matched.map((c) => [
       c.client_name || "", c.description || "",
       ((c.amount_cents || 0) / 100).toFixed(2).replace(".", ","),
-      STATUS_LABEL[c.status]?.label || c.status, fmtBR(c.due_date), fmtBR(c.paid_at),
+      c.projected ? "Projeção" : (STATUS_LABEL[c.status]?.label || c.status), fmtBR(c.due_date), fmtBR(c.paid_at),
     ]);
     const csv = [header, ...rows].map((r) => r.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(";")).join("\n");
     const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
@@ -190,7 +244,10 @@ export default function FinanceiroPage() {
       <div className="flex items-center justify-between gap-2">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Financeiro</h1>
-          <p className="text-xs text-slate-400">{charges.length} cobrança{charges.length !== 1 ? "s" : ""} no total · {periodChargesAll.length} vencendo no período</p>
+          <p className="text-xs text-slate-400">
+            {periodReais.length} cobrança{periodReais.length !== 1 ? "s" : ""} no período
+            {projecoes.length > 0 ? ` + ${projecoes.length} projetada${projecoes.length !== 1 ? "s" : ""}` : ""}
+          </p>
         </div>
         <button onClick={exportCSV} className="btn border border-slate-200 text-sm px-3 py-2">⬇ CSV</button>
       </div>
@@ -222,17 +279,42 @@ export default function FinanceiroPage() {
         </div>
       )}
 
+      {/* Projeção de recorrentes — liga/desliga a previsão dos próximos ciclos */}
+      <button
+        onClick={() => { setProjetar((v) => !v); resetPaging(); }}
+        className={`flex items-center gap-2 text-xs px-3 py-2 rounded-lg border transition-colors w-full justify-between ${
+          projetar ? "bg-indigo-50 border-indigo-200 text-indigo-700" : "bg-slate-50 border-slate-200 text-slate-500"
+        }`}
+      >
+        <span className="flex items-center gap-2">
+          <span className={`w-9 h-5 rounded-full relative transition-colors ${projetar ? "bg-indigo-500" : "bg-slate-300"}`}>
+            <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all ${projetar ? "left-[18px]" : "left-0.5"}`} />
+          </span>
+          <span className="font-medium">Projetar recorrentes</span>
+        </span>
+        <span className="text-[11px] opacity-80 text-right">
+          {periodNoPassado
+            ? "período passado — sem projeção"
+            : projetar
+              ? `+${formatBRL(projetadoTotal)} previstos de ${projecoes.length} assinatura${projecoes.length !== 1 ? "s" : ""}`
+              : "mostrando só cobranças já geradas"}
+        </span>
+      </button>
+
       {/* Os 2 números que importam no período */}
       <div className="grid grid-cols-2 gap-3">
         <div className="card py-4 space-y-1 bg-brand-light border-brand/20">
           <p className="text-xs text-brand-dark font-medium">✅ Já recebido ({period.label})</p>
           <p className="text-2xl font-bold text-brand-dark">{formatBRL(recebidoTotal)}</p>
-          <p className="text-xs text-brand-dark/70">{recebidas.length} de {periodChargesAll.length} cobrança{periodChargesAll.length !== 1 ? "s" : ""}</p>
+          <p className="text-xs text-brand-dark/70">{recebidas.length} de {periodReais.length} cobrança{periodReais.length !== 1 ? "s" : ""}</p>
         </div>
         <div className="card py-4 space-y-1 bg-amber-50 border-amber-200">
           <p className="text-xs text-amber-700 font-medium">⏳ A receber ({period.label})</p>
           <p className="text-2xl font-bold text-amber-700">{formatBRL(aReceberTotal)}</p>
-          <p className="text-xs text-amber-700/70">{aReceber.length} em aberto</p>
+          <p className="text-xs text-amber-700/70">
+            {aReceber.length} em aberto
+            {projecoes.length > 0 ? ` · ${projecoes.length} projetada${projecoes.length !== 1 ? "s" : ""}` : ""}
+          </p>
         </div>
       </div>
 
@@ -242,7 +324,10 @@ export default function FinanceiroPage() {
           <div>
             <p className="text-xs text-slate-500">A vencer</p>
             <p className="text-base font-bold text-slate-900">{formatBRL(aVencerTotal)}</p>
-            <p className="text-[11px] text-slate-400">{aVencer.length} cobrança{aVencer.length !== 1 ? "s" : ""}</p>
+            <p className="text-[11px] text-slate-400">
+              {aVencer.length} cobrança{aVencer.length !== 1 ? "s" : ""}
+              {projetadoTotal > 0 ? <span className="text-indigo-500"> · {formatBRL(projetadoTotal)} projeção</span> : null}
+            </p>
           </div>
           <div>
             <p className="text-xs text-slate-500">Vencido</p>
@@ -342,21 +427,25 @@ export default function FinanceiroPage() {
                 {visible.map((c) => {
                   const st = STATUS_LABEL[c.status];
                   return (
-                    <div key={c.id} className="card py-3 flex items-center justify-between gap-2">
+                    <div key={c.id} className={`card py-3 flex items-center justify-between gap-2 ${c.projected ? "border-dashed border-indigo-200 bg-indigo-50/40" : ""}`}>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-slate-900 truncate">
                           {c.client_name || "—"}
                           {c.description ? <span className="text-slate-400"> · {c.description}</span> : null}
                         </p>
                         <p className="text-xs text-slate-400">
-                          {c.status === "pago" && c.paid_at ? `Pago em ${fmtBR(c.paid_at)}` : c.due_date ? `Vence ${fmtBR(c.due_date)}` : ""}
+                          {c.projected
+                            ? `Previsto ${fmtBR(c.due_date)} · ${RECUR_LABEL[c.recurrence] || "recorrente"}`
+                            : c.status === "pago" && c.paid_at ? `Pago em ${fmtBR(c.paid_at)}` : c.due_date ? `Vence ${fmtBR(c.due_date)}` : ""}
                         </p>
                       </div>
                       <div className="flex flex-col items-end gap-1 shrink-0">
-                        <span className={`font-bold text-sm ${c.status === "pago" ? "text-brand" : c.status === "atrasado" ? "text-red-600" : "text-slate-900"}`}>
+                        <span className={`font-bold text-sm ${c.projected ? "text-indigo-600" : c.status === "pago" ? "text-brand" : c.status === "atrasado" ? "text-red-600" : "text-slate-900"}`}>
                           {formatBRL(c.amount_cents)}
                         </span>
-                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${st.color}`}>{st.label}</span>
+                        {c.projected
+                          ? <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">Projeção</span>
+                          : <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${st.color}`}>{st.label}</span>}
                       </div>
                     </div>
                   );
@@ -383,10 +472,11 @@ export default function FinanceiroPage() {
                     <p className="text-sm font-semibold text-slate-900 truncate">{p.nome}</p>
                     <span className="text-[11px] text-slate-400 shrink-0">{p.qtd} cobrança{p.qtd !== 1 ? "s" : ""}</span>
                   </div>
-                  <div className="flex items-center gap-4 mt-1.5 text-xs">
+                  <div className="flex items-center flex-wrap gap-x-4 gap-y-1 mt-1.5 text-xs">
                     {p.pago > 0 && <span className="text-brand font-semibold">✅ {formatBRL(p.pago)}</span>}
                     {p.aReceber > 0 && <span className="text-amber-600 font-semibold">⏳ {formatBRL(p.aReceber)}</span>}
                     {p.vencido > 0 && <span className="text-red-600 font-semibold">🔴 {formatBRL(p.vencido)} vencido</span>}
+                    {p.projetado > 0 && <span className="text-indigo-600 font-semibold">🔮 {formatBRL(p.projetado)} projeção</span>}
                   </div>
                 </div>
               ))}

@@ -142,6 +142,10 @@ export default function FinanceiroPage() {
   // É previsão, não cobrança real — fica marcada como "Projeção". Não projeta em
   // período totalmente no passado (lá o que houve é fato, não previsão).
   const periodNoPassado = period.end < todayKey;
+  // Horizonte máximo da projeção: 3 meses a partir de hoje. Sem isso, filtrar um
+  // período distante geraria anos de ocorrências futuras (previsão sem sentido).
+  const horizonte = toKey(new Date(now.getFullYear(), now.getMonth() + 3, now.getDate()));
+  const projEnd = period.end < horizonte ? period.end : horizonte;
   const projecoes = useMemo<Row[]>(() => {
     if (!projetar || periodNoPassado) return [];
     const out: Row[] = [];
@@ -150,7 +154,7 @@ export default function FinanceiroPage() {
       let d = c.due_date.slice(0, 10);
       for (let i = 0; i < 400; i++) {
         d = addInterval(d, c.recurrence);
-        if (d > period.end) break;
+        if (d > projEnd) break;
         if (d >= period.start) {
           out.push({ ...c, id: `proj-${c.id}-${d}`, due_date: d, paid_at: null, status: "pendente", projected: true });
         }
@@ -158,7 +162,7 @@ export default function FinanceiroPage() {
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [charges, period.start, period.end, projetar, periodNoPassado]);
+  }, [charges, period.start, projEnd, projetar, periodNoPassado]);
 
   // Conjunto do período = cobranças reais + ocorrências projetadas.
   const periodCharges: Row[] = [...periodReais, ...projecoes];

@@ -36,16 +36,30 @@ export async function POST(req: NextRequest) {
   const admin = createAdminClient();
   const { data: convs } = await admin
     .from("bot_conversations")
-    .select("id, phone, state")
+    .select("id, phone, state, last_message_at")
     .eq("profile_id", user.id)
     .limit(5000);
   const matches = (convs || []).filter((c) => phoneMatchKey(c.phone as string) === key);
 
   if (action === "status") {
-    return NextResponse.json({
-      exists: matches.length > 0,
-      paused: matches.some((m) => m.state === "human"),
+    // IMPORTANTE: o estado "human" fica gravado no banco até a próxima mensagem
+    // do cliente, mas na prática EXPIRA após bot_human_timeout_hours de
+    // inatividade (o bot volta a responder sozinho). Então "pausado de verdade"
+    // = está em human E teve interação dentro da janela. Conversas antigas
+    // aparecem como ativas (vão ser respondidas se a pessoa chamar), que é a
+    // mesma regra aplicada em handleBotMessage.
+    const { data: prof } = await admin
+      .from("profiles").select("bot_human_timeout_hours").eq("id", user.id).single();
+    const rh = (prof?.bot_human_timeout_hours as number | null) ?? 24;
+    const HUMAN_MAX_HOURS = 24 * 30;
+    const effTimeout = rh > 0 ? Math.min(rh, HUMAN_MAX_HOURS) : HUMAN_MAX_HOURS;
+    const nowMs = Date.now();
+    const paused = matches.some((m) => {
+      if (m.state !== "human") return false;
+      const hoursSince = (nowMs - new Date(m.last_message_at as string).getTime()) / 3_600_000;
+      return hoursSince <= effTimeout;
     });
+    return NextResponse.json({ exists: matches.length > 0, paused });
   }
 
   const nowIso = new Date().toISOString();

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { handleBotMessage, handleOwnerOutbound } from "@/lib/whatsapp-bot";
+import { handleBotMessage, handleOwnerOutbound, handleClientMedia } from "@/lib/whatsapp-bot";
 
 function phoneFromJid(v: unknown): string | null {
   if (typeof v === "string" && v.endsWith("@s.whatsapp.net")) {
@@ -159,6 +159,21 @@ export async function POST(
       console.error("[bot-incoming] erro ao processar fromMe:", e);
     }
     return NextResponse.json({ ok: true, skipped: "fromMe" });
+  }
+
+  // Imagem recebida do cliente (geralmente comprovante de pagamento). O bot
+  // NÃO responde nada: pausa a conversa e avisa o dono. Tratado antes do
+  // "noText" porque imagem normalmente vem sem texto (só legenda).
+  const messageType = ((data.messageType as string) || "").toLowerCase();
+  const imageMsg = message.imageMessage as Record<string, unknown> | undefined;
+  if (imageMsg || messageType === "imagemessage") {
+    const caption = (imageMsg?.caption as string) || text || "";
+    try {
+      await handleClientMedia(userId, phone, caption);
+    } catch (e) {
+      console.error("[bot-incoming] erro ao processar imagem:", e);
+    }
+    return NextResponse.json({ ok: true, handled: "image" });
   }
 
   if (!text.trim()) {

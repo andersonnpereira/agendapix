@@ -301,6 +301,44 @@ export async function handleOwnerOutbound(profileId: string, phone: string, text
   console.log("[whatsapp-bot] resposta manual do profissional detectada — bot pausado:", { profileId, phone });
 }
 
+// Cliente enviou uma IMAGEM (tipicamente um comprovante de pagamento Pix).
+// Regra pedida: o bot NÃO responde NADA ao cliente. Em vez disso:
+//   • pausa a conversa (state=human + engaged) — o dono vai conferir e dar baixa
+//     manualmente, e o bot para de empurrar menu por cima disso;
+//   • avisa o dono no WhatsApp que chegou um comprovante.
+export async function handleClientMedia(profileId: string, phone: string, caption?: string): Promise<void> {
+  const admin = createAdminClient();
+  const { data: _raw } = await admin.from("profiles").select("*").eq("id", profileId).single();
+  if (!_raw) { console.warn("[whatsapp-bot] perfil não encontrado (media):", profileId); return; }
+  const p = _raw as unknown as Record<string, unknown>;
+  if (!p.bot_enabled) { console.log("[whatsapp-bot] bot desativado — ignora media:", profileId); return; }
+
+  // Pausa a conversa para o atendimento humano (sem responder ao cliente).
+  await admin.from("bot_conversations").upsert(
+    { profile_id: profileId, phone, state: "human", human_owner_engaged: true, last_message_at: new Date().toISOString(), fallback_count: 0 },
+    { onConflict: "profile_id,phone" }
+  );
+
+  const notifyPhone = (p.bot_notify_phone as string | null)?.trim();
+  if (!notifyPhone) {
+    console.warn("[whatsapp-bot] comprovante recebido mas bot_notify_phone não configurado:", { profileId });
+    return;
+  }
+  const provider = ((p.whatsapp_provider as string) || "evolution") as "mock"|"zapi"|"evolution"|"ultramsg";
+  const capLine = caption && caption.trim() ? `\n📝 "${caption.trim().slice(0, 200)}"` : "";
+  const msg =
+    `🤖 *Bot*\n📎 *Comprovante/imagem recebido*\n` +
+    `Cliente: *${phone}*${capLine}\n\n` +
+    `_Não respondi nada ao cliente. Confira no WhatsApp e dê baixa manualmente se o pagamento confirmar._`;
+  // Tenta 2x — um aviso de comprovante não pode se perder por uma falha pontual.
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const r = await sendWhatsApp({ to: normalizeWhatsAppPhone(notifyPhone), message: msg, provider, token: (p.whatsapp_token as string) || undefined, instanceId: (p.whatsapp_instance_id as string) || undefined });
+    if (r.ok) return;
+    console.error(`[whatsapp-bot] aviso de comprovante falhou (${attempt}/2):`, r.error, { profileId });
+    if (attempt === 1) await new Promise((r) => setTimeout(r, 1500));
+  }
+}
+
 export async function handleBotMessage(profileId: string, phone: string, text: string): Promise<void> {
   const admin = createAdminClient();
   const { data: _raw } = await admin.from("profiles").select("*").eq("id", profileId).single();

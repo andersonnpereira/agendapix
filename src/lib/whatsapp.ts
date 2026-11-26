@@ -30,6 +30,18 @@ export function normalizeWhatsAppPhone(raw: string): string {
   return hasPlus ? digits : (digits.startsWith("55") ? digits : `55${digits}`);
 }
 
+// Chave de COMPARAÇÃO de telefone, tolerante às variações de JID do WhatsApp:
+// só dígitos, sem DDI 55 e sem o 9º dígito do celular → DDD + 8 dígitos. Assim
+// "5511999998888", "11999998888" e "1199998888" convergem na mesma chave (o
+// DDD é preservado, então não colide entre DDDs). Usada para casar o número
+// cadastrado com o `phone` gravado em bot_conversations (que vem do JID).
+export function phoneMatchKey(raw: string | null | undefined): string {
+  let d = (raw || "").replace(/\D/g, "");
+  if (d.length >= 12 && d.startsWith("55")) d = d.slice(2);
+  if (d.length === 11) d = d.slice(0, 2) + d.slice(3);
+  return d;
+}
+
 export interface SendWhatsAppParams {
   to: string; // apenas dígitos, com DDI: "5511999998888"
   message: string;

@@ -1,16 +1,44 @@
 import { NextRequest, NextResponse } from "next/server";
 import { handleBotMessage, handleOwnerOutbound } from "@/lib/whatsapp-bot";
 
-// Extrai o telefone real (só dígitos) da chave do evento. Em @s.whatsapp.net
-// é o próprio remoteJid; em modo @lid o número verdadeiro vem em senderPn /
-// remoteJidAlt / participantAlt. Pega o primeiro campo que seja um JID de
-// telefone de verdade (@s.whatsapp.net) — ignora os ids opacos @lid.
-function extractRealPhone(key: Record<string, unknown>): string | null {
-  const candidates = [key.remoteJid, key.remoteJidAlt, key.senderPn, key.participantAlt, key.participant];
-  for (const c of candidates) {
-    if (typeof c === "string" && c.endsWith("@s.whatsapp.net")) {
-      const digits = c.replace("@s.whatsapp.net", "").replace(/\D/g, "");
-      if (digits) return digits;
+function phoneFromJid(v: unknown): string | null {
+  if (typeof v === "string" && v.endsWith("@s.whatsapp.net")) {
+    const digits = v.replace("@s.whatsapp.net", "").replace(/\D/g, "");
+    return digits || null;
+  }
+  return null;
+}
+
+// Extrai o telefone real (só dígitos) do PARCEIRO da conversa (o cliente).
+//
+// Crítico para fromMe (resposta manual do dono): o campo `senderPn` é o número
+// de QUEM ENVIOU — numa fromMe isso é o DONO, não o cliente. Se usássemos
+// senderPn como chave, a pausa "humano assumiu" seria gravada na conversa do
+// próprio dono e o bot continuaria respondendo o cliente. Por isso:
+//   • o parceiro da conversa é sempre o remoteJid (e variantes @lid → *Alt);
+//   • em mensagens recebidas (inbound) o remetente É o cliente, então senderPn
+//     vale como reserva;
+//   • em fromMe, qualquer telefone que NÃO seja o do remetente (dono) serve —
+//     varre a chave inteira para achar o número do cliente, seja qual for o
+//     nome do campo que a Evolution usar.
+function extractRealPhone(key: Record<string, unknown>, fromMe: boolean): string | null {
+  const senderPhone = phoneFromJid(key.senderPn); // em fromMe = o dono
+  // 1) Preferência absoluta: o parceiro da conversa.
+  for (const f of [key.remoteJid, key.remoteJidAlt, (key as Record<string, unknown>).remoteJidAlternate, (key as Record<string, unknown>).chatId]) {
+    const p = phoneFromJid(f);
+    if (p && (!fromMe || p !== senderPhone)) return p;
+  }
+  if (!fromMe) {
+    // 2) Inbound: o remetente é o cliente.
+    for (const f of [key.senderPn, key.participantAlt, key.participant]) {
+      const p = phoneFromJid(f);
+      if (p) return p;
+    }
+  } else {
+    // 3) fromMe: qualquer campo com telefone real que não seja o do dono.
+    for (const v of Object.values(key)) {
+      const p = phoneFromJid(v);
+      if (p && p !== senderPhone) return p;
     }
   }
   return null;
@@ -91,15 +119,22 @@ export async function POST(
     return NextResponse.json({ ok: true, skipped: "notIndividualChat", remoteJid });
   }
 
-  // Resolve o telefone REAL: em modo @lid o remoteJid é um id opaco, e o
-  // número verdadeiro (@s.whatsapp.net) vem num campo auxiliar. Procura em
-  // todos os candidatos e pega o primeiro que seja um telefone de verdade —
-  // assim o mesmo contato converge na mesma chave em bot_conversations,
-  // venha a mensagem como @s.whatsapp.net ou como @lid.
-  const phone = extractRealPhone(key);
+  const fromMe = key.fromMe === true || key.fromMe === "true";
+
+  // Resolve o telefone REAL do CLIENTE (parceiro da conversa). Em fromMe isso
+  // NÃO pode ser o senderPn (que é o dono) — ver extractRealPhone.
+  const phone = extractRealPhone(key, fromMe);
   if (!phone) {
-    console.log("[bot-incoming] sem telefone resolvível:", { remoteJid, keys: Object.keys(key) });
-    return NextResponse.json({ ok: true, skipped: "noPhone", remoteJid });
+    // Diagnóstico sem vazar números: mostra só os NOMES dos campos e o tipo de
+    // JID de cada um (@lid / telefone / outro), para ajustar caso a Evolution
+    // use um nome de campo diferente para o número do cliente em fromMe.
+    const shape: Record<string, string> = {};
+    for (const [k, v] of Object.entries(key)) {
+      if (typeof v === "string") shape[k] = v.endsWith("@s.whatsapp.net") ? "phone" : v.endsWith("@lid") ? "lid" : v.includes("@") ? "other-jid" : "scalar";
+      else shape[k] = typeof v;
+    }
+    console.log("[bot-incoming] sem telefone resolvível:", { fromMe, shape });
+    return NextResponse.json({ ok: true, skipped: "noPhone" });
   }
 
   // Extrai texto — tenta vários formatos da Evolution API
@@ -117,7 +152,7 @@ export async function POST(
   // no celular. handleOwnerOutbound diferencia os dois comparando o TEXTO: se
   // bate com algo que o bot enviou há pouco, é eco (ignora); se é diferente, é
   // resposta manual → o bot pausa para essa conversa.
-  if (key.fromMe === true || key.fromMe === "true") {
+  if (fromMe) {
     try {
       await handleOwnerOutbound(userId, phone, text);
     } catch (e) {
